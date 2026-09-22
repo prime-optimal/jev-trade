@@ -340,7 +340,7 @@ function parseMeta(raw: Record<string, unknown> | null): Meta | null {
     coin: typeof raw.coin === "string" ? raw.coin : "BTC",
     pair: typeof raw.pair === "string" ? raw.pair : "BTC-USD",
     explorerTx: typeof raw.explorerTx === "string" ? raw.explorerTx : "",
-    tickMs: typeof raw.tickMs === "number" ? raw.tickMs : 60000,
+    tickMs: typeof raw.tickMs === "number" ? raw.tickMs : 30000,
     sleeves: parseSleeves(raw.sleeves),
   };
 }

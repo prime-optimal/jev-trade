@@ -25,7 +25,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Updated `web/public/llms.txt` to name OpenRouter as the default Jev API.
 - The dashboard dev server now allows this machine's LAN IPv4 addresses in `allowedDevOrigins`, and with `NEXT_PUBLIC_API_URL` unset the dashboard reads the bot at the page's own host on port 3000. Opening it by LAN IP no longer needs a manual `next.config.ts` edit.
 - Added `railway` just recipes: `deploy-plan`, `deploy-infra`, `deploy-setup`, `deploy` and `deploy-status`.
-- Changed the default `TICK_MS` from 2000 to 60000, so each sleeve asks Jev once a minute. The dashboard chart timeframes are unchanged and still only group prices into candles.
+- Changed the default `TICK_MS` from 2000 to 30000, so each sleeve asks Jev every 30 seconds. The dashboard chart timeframes are unchanged and still only group prices into candles.
 - Removed the 30 second Jev pause after a credit or provider error. The next tick calls Jev again instead of emitting late holds without a call.
 - Changed bot startup log separators to plain punctuation.
 - Fixed pre-existing root TypeScript errors with type-only changes in `src/config.ts`, `src/model.ts`, and `src/market.ts`. Root and dashboard typechecks now pass.
@@ -41,4 +41,4 @@ All notable changes to this project are documented here. This changelog starts f
 
 ## Known issues
 
-- A sleeve emits a synthetic late hold without calling Jev when its previous Jev call is still running at the next tick. Provider calls have a 4,000 ms deadline, so this cannot happen at the 60,000 ms default tick. It can only happen if `TICK_MS` is set below that deadline, and that conflicts with the product claim that Jev decides on every tick.
+- A sleeve emits a synthetic late hold without calling Jev when its previous Jev call is still running at the next tick. Provider calls have a 4,000 ms deadline, so this cannot happen at the 30,000 ms default tick. It can only happen if `TICK_MS` is set below that deadline, and that conflicts with the product claim that Jev decides on every tick.

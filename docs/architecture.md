@@ -60,7 +60,7 @@ flowchart LR
 
 | Setting | Default | Work performed |
 | --- | ---: | --- |
-| `TICK_MS` | 60000 ms | Advances the local tick, summarizes book and tape state, asks the model, emits a block event, and queues the resulting order action. |
+| `TICK_MS` | 30000 ms | Advances the local tick, summarizes book and tape state, asks the model, emits a block event, and queues the resulting order action. |
 | `PRICE_MS` | 200 ms | Emits a price event when the mid changes and adds live mids to chart data. It does not ask the model or place an order. |
 
 Book WebSocket messages may trigger either cadence when its interval has elapsed. A timer also checks the decision cadence, so a quiet book can still produce ticks.
