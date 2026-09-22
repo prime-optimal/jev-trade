@@ -4,6 +4,7 @@
   "type": "module",
   "license": "MIT",
   "homepage": "https://www.jev-trade.com",
+  "packageManager": "bun@1.3.14",
   "repository": {
     "type": "git",
     "url": "https://github.com/aowang-ai/jev-trade.git"
@@ -12,7 +13,8 @@
     "bun": ">=1.2.0"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "railway": "^3.11.0"
   },
   "peerDependencies": {
     "typescript": "^7.0.2"
@@ -27,7 +29,7 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "dev:web": "bun --cwd web run dev",
+    "dev:web": "bun run --cwd web dev",
     "test": "bun test test"
   }
 }

@@ -1,21 +1,22 @@
 const env = (key: string, fallback?: string) => process.env[key] ?? fallback;
 
-export type JevProvider = "typesafe" | "gateway";
+export type JevProvider = "openrouter" | "typesafe" | "gateway";
 
-export function resolveJevProvider(e: {
-  JEV_PROVIDER?: string;
-  TYPESAFE_API_KEY?: string;
-  AI_GATEWAY_API_KEY?: string;
-}): JevProvider {
+type Env = Record<string, string | undefined>;
+
+export const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
+
+export function resolveJevProvider(e: Env): JevProvider {
   const explicit = e.JEV_PROVIDER?.trim().toLowerCase();
-  if (explicit === "typesafe" || explicit === "gateway") return explicit;
-  if (explicit) throw new Error("JEV_PROVIDER must be typesafe or gateway");
+  if (explicit === "openrouter" || explicit === "typesafe" || explicit === "gateway") return explicit;
+  if (explicit) throw new Error("JEV_PROVIDER must be openrouter, typesafe, or gateway");
+  if (e.OPENROUTER_API_KEY?.trim()) return "openrouter";
   if (e.TYPESAFE_API_KEY?.trim()) return "typesafe";
   if (e.AI_GATEWAY_API_KEY?.trim()) return "gateway";
-  return "typesafe";
+  return "openrouter";
 }
 
-export function resolveJevModelId(e: { JEV_MODEL_ID?: string }, provider: JevProvider): string {
+export function resolveJevModelId(e: Env, provider: JevProvider): string {
   const set = e.JEV_MODEL_ID?.trim();
   if (set) return set;
   return provider === "gateway" ? "typesafe-ai/jev" : "jev-latest";
@@ -24,14 +25,17 @@ export function resolveJevModelId(e: { JEV_MODEL_ID?: string }, provider: JevPro
 export function assertJevCredentials(
   model: string,
   provider: JevProvider,
-  e: { TYPESAFE_API_KEY?: string; AI_GATEWAY_API_KEY?: string },
+  e: Env,
 ): void {
   if (model !== "jev") return;
+  if (provider === "openrouter" && !e.OPENROUTER_API_KEY?.trim()) {
+    throw new Error("MODEL=jev with JEV_PROVIDER=openrouter needs OPENROUTER_API_KEY. Get a key at https://openrouter.ai/settings/keys.");
+  }
   if (provider === "typesafe" && !e.TYPESAFE_API_KEY?.trim()) {
     throw new Error("MODEL=jev with JEV_PROVIDER=typesafe needs TYPESAFE_API_KEY. Get a key at https://docs.typesafe.ai/ or set JEV_PROVIDER=gateway with AI_GATEWAY_API_KEY.");
   }
   if (provider === "gateway" && !e.AI_GATEWAY_API_KEY?.trim()) {
-    throw new Error("MODEL=jev with JEV_PROVIDER=gateway needs AI_GATEWAY_API_KEY. Or set JEV_PROVIDER=typesafe with TYPESAFE_API_KEY.");
+    throw new Error("MODEL=jev with JEV_PROVIDER=gateway needs AI_GATEWAY_API_KEY. Or set JEV_PROVIDER=openrouter with OPENROUTER_API_KEY.");
   }
 }
 
@@ -56,7 +60,7 @@ export const config = {
   closeSlippageBps: Number(env("CLOSE_SLIPPAGE_BPS", "5")),
   horizonBlocks: Number(env("HORIZON_BLOCKS", "100")),
   model: env("MODEL", "mock") as "mock" | "jev",
-  /** typesafe = official TypeSafe API. gateway = Vercel AI Gateway. */
+  /** openrouter = OpenRouter. typesafe = official TypeSafe API. gateway = Vercel AI Gateway. */
   jevProvider,
   jevModelId,
   jevUsdPerMTok: 0.042,

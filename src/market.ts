@@ -1,7 +1,7 @@
 import { ApiRequestError, ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { formatPrice, formatSize, SymbolConverter } from "@nktkas/hyperliquid/utils";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { config } from "./config";
+import { config, hexKey } from "./config";
 import { accountFromClearinghouse, fillDir, FillPnlBook, type ClearinghouseLike, type FillPnlLike, type VenueAccount } from "./account";
 import { quotePrice, takerPrice } from "./book";
 import type { Feed } from "./feed";
@@ -50,7 +50,7 @@ export class Market {
     this.coin = sleeve.coin;
     this.pair = sleeve.pair;
     this.label = sleeve.label;
-    this.wallet = config.dryRun || !sleeve.privateKey ? null : privateKeyToAccount(sleeve.privateKey);
+    this.wallet = config.dryRun || !sleeve.privateKey ? null : privateKeyToAccount(hexKey(sleeve.privateKey));
     const transport = new HttpTransport({ isTestnet: config.hlTestnet });
     this.info = new InfoClient({ transport });
     if (this.wallet) this.ex = new ExchangeClient({ transport, wallet: this.wallet });
@@ -85,13 +85,13 @@ export class Market {
     await this.refresh();
     if (this.address) await this.seedFills();
     const net = config.hlTestnet ? "testnet" : "mainnet";
-    console.log(`hyperliquid · ${this.pair} ${net} · ${this.coin} asset ${this.assetId} · szDecimals ${this.szDecimals} · max ${this.maxLeverage}x · ${config.dryRun ? "DRY RUN" : `wallet ${this.address}`}`);
+    console.log(`hyperliquid ${this.pair} ${net}, ${this.coin} asset ${this.assetId}, szDecimals ${this.szDecimals}, max ${this.maxLeverage}x, ${config.dryRun ? "DRY RUN" : `wallet ${this.address}`}`);
     if (this.wallet) {
       const a = this.account;
       const side = !a || !a.positionSz ? "flat" : a.positionSz > 0 ? "long" : "short";
       const size = a ? Math.abs(a.positionSz) : 0;
       const entry = a?.entryPrice != null ? ` @ ${a.entryPrice}` : "";
-      console.log(`${this.label} · withdrawable $${this.margin.usdc.toFixed(2)} · account $${(a?.accountValue ?? 0).toFixed(2)} · ${side} ${size} ${this.coin}${entry}`);
+      console.log(`${this.label}: withdrawable $${this.margin.usdc.toFixed(2)}, account $${(a?.accountValue ?? 0).toFixed(2)}, ${side} ${size} ${this.coin}${entry}`);
     }
   }
 
@@ -152,7 +152,7 @@ export class Market {
   async refresh() {
     if (!this.address) return;
     try {
-      this.applyClearinghouse(await this.info.clearinghouseState({ user: this.address }));
+      this.applyClearinghouse(await this.info.clearinghouseState({ user: this.address }) as unknown as ClearinghouseLike);
     } catch {
       // keep last balances
     }

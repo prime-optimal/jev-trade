@@ -13,7 +13,10 @@ import { useFeed } from "@/lib/useFeed";
 import type { BlockEvent, Meta, SleeveFeed } from "@/lib/types";
 import styles from "./page.module.css";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = RAW_API_URL
+  ? /^https?:\/\//.test(RAW_API_URL) ? RAW_API_URL : `https://${RAW_API_URL}`
+  : typeof window === "undefined" ? "http://localhost:3000" : `${window.location.protocol}//${window.location.hostname}:3000`;
 
 const EMPTY: SleeveFeed = { events: [], tape: [], latest: null, avgLatencyMs: 0 };
 

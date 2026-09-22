@@ -14,6 +14,7 @@ The bot is Bun. The dashboard is Next in `web/`. That split is intentional: keys
 - `Bun.serve()` for the SSE API. WebSocket is built-in.
 - Prefer `Bun.file` over `node:fs` read/write when touching new I/O
 - Bun loads `.env`. Do not add dotenv.
+- Use `just` recipes for setup, local processes, and checks. `just dev` and `just start` inject secrets through fnox.
 
 Bot listens on `PORT` (default 3000). Dashboard `web/` is Next on 3001.
 
@@ -33,6 +34,12 @@ Tests live in `test/`, not next to `src/`.
 ```sh
 bun test
 ```
+
+## Docs
+
+[`docs/`](docs/) is the maintainer map. Every behavior, configuration, or deployment change must update the matching document and add an entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md).
+
+Railway infrastructure is TypeScript in [`.railway/railway.ts`](.railway/railway.ts). Never add `railway.json`. Exactly one live bot process may run against the wallets.
 
 ## The core message (do not break this)
 

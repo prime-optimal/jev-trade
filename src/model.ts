@@ -1,6 +1,6 @@
 import { experimental_evaluate as evaluate } from "ai";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
-import { assertJevCredentials, config } from "./config";
+import { assertJevCredentials, config, OPENROUTER_BASE_URL, type JevProvider } from "./config";
 import { leverageRungs, liveIntent, parseLeverage, quoteAction, type Bias, type Intent } from "./plan";
 import type { Action, Side } from "./types";
 
@@ -131,7 +131,7 @@ export function jevQuestions(state: TradeState) {
   }
   const ctx = `${asset} ${state.market}. position has side/size/entry. indicators are 1m sma/ema/rsi/vol. asset is mark/oracle/funding/oi. trades and book are the tape.`;
   const bias = {
-    type: "choice",
+    type: "choice" as const,
     instructions: {
       question: `long or short ${asset}?`,
       goal: `${state.market}`,
@@ -144,7 +144,7 @@ export function jevQuestions(state: TradeState) {
     },
   };
   const leverage = {
-    type: "choice",
+    type: "choice" as const,
     instructions: {
       question: `cross leverage for ${asset}?`,
       goal: `current ${levNow}. max ${state.maxLeverage}x.`,
@@ -157,7 +157,7 @@ export function jevQuestions(state: TradeState) {
     return {
       bias,
       intent: {
-        type: "choice",
+        type: "choice" as const,
         instructions: {
           question: `open or hold ${asset}?`,
           goal: `position=${stance}.`,
@@ -167,7 +167,7 @@ export function jevQuestions(state: TradeState) {
         criteria: {
           open: "open",
           hold: "hold",
-        },
+        } as Record<string, string>,
       },
       leverage,
     };
@@ -175,7 +175,7 @@ export function jevQuestions(state: TradeState) {
   return {
     bias,
     intent: {
-      type: "choice",
+      type: "choice" as const,
       instructions: {
         question: `open, close, or hold ${asset}?`,
         goal: `position=${stance}.`,
@@ -186,7 +186,7 @@ export function jevQuestions(state: TradeState) {
         open: "open",
         close: "close",
         hold: "hold",
-      },
+      } as Record<string, string>,
     },
     leverage,
   };
@@ -302,8 +302,17 @@ export function decideFromJevAnswers(
 }
 
 let typesafe: TypeSafeClient | undefined;
+let openrouter: TypeSafeClient | undefined;
 
-function typesafeClient(): TypeSafeClient {
+function sdkClient(provider: Exclude<JevProvider, "gateway">): TypeSafeClient {
+  if (provider === "openrouter") {
+    return (openrouter ??= new TypeSafeClient({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: OPENROUTER_BASE_URL,
+      defaultModel: config.jevModelId,
+      retry: { maxRetries: 0 },
+    }));
+  }
   return (typesafe ??= new TypeSafeClient({
     apiKey: process.env.TYPESAFE_API_KEY,
     defaultModel: config.jevModelId,
@@ -336,7 +345,7 @@ async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputT
       });
       return { answers: r.answers, inputTokens: r.usage?.inputTokens ?? 0 };
     }
-    const r = await typesafeClient().systemOne(
+    const r = await sdkClient(config.jevProvider).systemOne(
       {
         model: config.jevModelId,
         state: seen as never,
@@ -349,7 +358,7 @@ async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputT
   return withDeadline(run(), JEV_DEADLINE_MS);
 }
 
-/** Real Jev. JEV_PROVIDER selects official TypeSafe or Vercel AI Gateway. */
+/** Real Jev. JEV_PROVIDER selects OpenRouter, official TypeSafe, or Vercel AI Gateway. */
 export class JevModel implements Model {
   readonly name = "jev";
 
