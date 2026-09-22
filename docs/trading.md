@@ -56,6 +56,6 @@ Before mainnet, verify `HL_TESTNET=false`, wallet assignment by coin, quote noti
 
 ## Product rules
 
-Jev makes the buy or sell decision from the price feed on every Hyperliquid decision tick. Code may normalize malformed answers and translate Jev's intent into an order, but indicators never gate the call. Known exception: late ticks, described below and in [jev-provider.md](jev-provider.md), are emitted without a Jev call. See the Known issues section of [CHANGELOG.md](../CHANGELOG.md).
+Jev makes the buy or sell decision from the price feed on every Hyperliquid decision tick. Code may normalize malformed answers and translate Jev's intent into an order, but indicators never gate the call. Known exception: a tick that arrives while the previous Jev call is still running is emitted as late without a Jev call. See [jev-provider.md](jev-provider.md) and the Known issues section of [CHANGELOG.md](../CHANGELOG.md).
 
-`hold` is a Jev answer. It is not a skipped tick. Never force a buy or sell to keep an order active. A late tick means the prior Jev call is still running or Jev is temporarily paused after a credit error. It is recorded as late and must not be presented as a Jev hold decision.
+`hold` is a Jev answer. It is not a skipped tick. Never force a buy or sell to keep an order active. A late tick means the prior Jev call is still running, or the Jev call on that tick failed. It is recorded as late and must not be presented as a Jev hold decision.

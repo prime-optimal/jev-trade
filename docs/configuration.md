@@ -8,7 +8,7 @@ The bot reads environment values in [`src/config.ts`](../src/config.ts), [`src/s
 | --- | --- | --- | --- | --- |
 | `HL_COINS` | `BTC,ETH,SOL,DOGE,BNB` | [`src/sleeves.ts`](../src/sleeves.ts) | No | Comma-separated Hyperliquid perps. Creates one sleeve per nonempty entry. |
 | `HL_TESTNET` | `true` | [`src/config.ts`](../src/config.ts) | No | Selects testnet. Only the exact string `false` selects mainnet. |
-| `TICK_MS` | `2000` | [`src/config.ts`](../src/config.ts) | No | Decision and requote cadence in milliseconds. |
+| `TICK_MS` | `60000` | [`src/config.ts`](../src/config.ts) | No | Decision and requote cadence in milliseconds. Each tick calls Jev once per sleeve unless that sleeve's previous call is still running. The dashboard chart timeframe does not change it. |
 | `PRICE_MS` | `200`, minimum `50` | [`src/config.ts`](../src/config.ts) | No | Chart and live-mid cadence in milliseconds. This does not call Jev. |
 | `QUOTE_USD` | `40` | [`src/config.ts`](../src/config.ts) | No | Target notional in USD for one entry quote. |
 | `QUOTE_INSIDE_TICKS` | `1` | [`src/config.ts`](../src/config.ts) | No | Number of price ticks an entry quote moves inside the touch. |

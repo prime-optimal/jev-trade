@@ -66,7 +66,7 @@ The repository rules are recorded in [`CLAUDE.md`](../CLAUDE.md):
 - Use Bun commands and APIs for the bot. Use `Bun.serve()` for HTTP and SSE, built-in WebSocket support, and `Bun.file` for new file I/O.
 - Keep the Bun bot and Next dashboard as separate runtimes. Credentials, Jev evaluation, and orders stay in the bot.
 - Put tests under `test/` and run them with `bun test`.
-- Keep Jev as the decision maker on every Hyperliquid decision tick. `hold` is a valid Jev answer. Late ticks (previous call still running, or provider pause) currently skip the Jev call; see Known issues in [`CHANGELOG.md`](../CHANGELOG.md).
+- Keep Jev as the decision maker on every Hyperliquid decision tick. `hold` is a valid Jev answer. A tick that arrives while the previous Jev call is still running currently skips the Jev call; see Known issues in [`CHANGELOG.md`](../CHANGELOG.md).
 - Rendered text must not contain middle dots, em dashes, or en dashes.
 - Do not add blinking or pulsing indicators.
 

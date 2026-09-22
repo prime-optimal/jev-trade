@@ -45,11 +45,11 @@ OpenRouter and TypeSafe use `TypeSafeClient.systemOne()`. Gateway uses AI SDK `e
 
 Every provider call has a 4,000 ms deadline. SDK request retries are disabled with `maxRetries: 0`, including both the client and call settings for OpenRouter and TypeSafe. The AI SDK gateway call also sets `maxRetries: 0`.
 
-## Errors, late ticks, and credit pauses
+## Errors and late ticks
 
 [`Trader.onBlock()`](../src/trader.ts) permits only one model call at a time. If the next tick arrives while a call is busy, it does not start another call. It emits a late block with a synthetic hold-shaped decision whose `late` field is `true`. This is not a Jev decision and does not increment the decision count.
 
-A model timeout or other provider error logs the error and emits the same late event. Errors matching HTTP 402, `no available TypeSafe API credits`, or `insufficient credits` also set a 30,000 ms pause through `jevUnavailable()`. Every tick during that pause is emitted as late without calling Jev. Late handling does not enqueue an order or cancel the existing resting order.
+A model timeout or other provider error logs the error and emits the same late event for that tick. Jev was asked and did not answer. Nothing pauses after an error: the next tick calls Jev again, including after HTTP 402, `no available TypeSafe API credits`, or `insufficient credits`, which `jevUnavailable()` labels in the log. Late handling does not enqueue an order or cancel the existing resting order.
 
 A successful Jev `hold` is different: it increments the decision count, has `late: false`, and cancels the standing quote. See [Trading behavior](trading.md) for order semantics.
 
