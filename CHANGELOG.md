@@ -41,6 +41,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Changed paper trading to the default unless `DRY_RUN=false` is set explicitly.
 - Separated price-stream connectivity from trading state in the dashboard Header. Public visitors can see run status but cannot control the shared executor.
 - Changed sleeve initialization and retry so neither starts decision loops while Off, Expired, or after process restart.
+- Kept the Off control plane available when initial sleeve resources fail, with visible retryable errors and recovery that cannot start trading by itself. Operator Start runs the available sleeves when at least one is ready, and recovered sleeves join only an active run. Later settings replacements remain atomic and preserve the prior executor on failure.
 
 ### Removed
 

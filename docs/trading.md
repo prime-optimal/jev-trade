@@ -2,19 +2,19 @@
 
 ## Runs own execution
 
-The Bun process starts its HTTP services and prepares stopped execution resources, but it starts Off. It does not trade on startup. Only the private operator API can start the shared executor.
+The Bun process starts its public and private HTTP services and prepares stopped execution resources, but it starts Off. It does not trade on startup. If a transport is temporarily unavailable, the affected sleeve remains visible with its failure and retries while Off; recovery prepares the sleeve but does not start decisions or orders. Only the private operator API can start the shared executor. Start requires at least one ready sleeve, starts only the available sleeves, and leaves unavailable sleeves retrying without fabricated decisions for their missing feeds.
 
 Each Start creates a new `runId` and a full configured duration, 30 minutes by default. The lifecycle records authoritative `startedAt`, `deadlineAt`, `stoppedAt`, `durationMs`, and `stopReason` timestamps. An absolute wall-clock deadline and a monotonic deadline guard prevent a clock rollback from extending a run. The scheduled timer is only a wake-up. Guards also reject work after awaited inference and before order submission.
 
 Expiry invalidates execution immediately, stops scheduling, and runs the same cleanup as manual Off. The cleanup cancels only bot-owned resting orders for the affected coin. It is bounded to ten seconds for the lifecycle response, but a timed-out cleanup keeps running and remains tracked. `attention-required` blocks Start. Reconcile reports that cleanup is still pending until the in-flight work settles, then either completes the transition or retries a failed cleanup.
 
-Stop does not liquidate an accepted position and does not revoke wallet authorization. Already submitted work may need reconciliation. Expired and manually stopped runs never restart automatically. Sleeve retry is disabled unless a run is currently Running. Process restart starts Off rather than restoring an old run.
+Stop does not liquidate an accepted position and does not revoke wallet authorization. Already submitted work may need reconciliation. Expired and manually stopped runs never restart automatically. A failed sleeve may recover resources while Off, but it cannot start work until an operator starts a run. Process restart starts Off rather than restoring an old run.
 
 Live orders carry a stable Jev client-order-ID namespace with the Hyperliquid asset ID. On startup, each coin discovers matching namespaced orders left by an earlier process, reconciles pending order status through the venue, and cleans up only those orders. Orders for another coin and orders without the Jev namespace, including legacy orders, are never canceled by this recovery. The process warns that unidentified orders need manual review.
 
 ## Settings and mode
 
-Operator Save applies one validated settings snapshot only while Off or Expired. It rebuilds the executor and its feeds before the new values become applied. Guest browser settings do not affect Bun execution.
+Operator Save applies one validated settings snapshot only while Off or Expired. It builds the replacement executor and its feeds before the new values become applied. A failed replacement is discarded and the previous executor is resumed unchanged; its retry callbacks cannot run inside the replacement transaction. Guest browser settings do not affect Bun execution.
 
 Paper mode is the default. `DRY_RUN` must be the exact string `false` to select real mode from environment configuration. Real Start additionally requires a configured wallet for the relevant sleeve, matching official network endpoints, a successful preflight, and explicit confirmation. A missing wallet cannot place real orders. Brave Wallet is not part of this implementation.
 

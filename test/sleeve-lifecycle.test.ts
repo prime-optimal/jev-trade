@@ -100,3 +100,85 @@ describe("per-sleeve lifecycle", () => {
     ]);
   });
 });
+
+test("retries a committed sleeve while Off without starting it and defers during replacement", async () => {
+  const timers: Array<() => void> = [];
+  const started: string[] = [];
+  let attempts = 0;
+  let committed = true;
+  const meta = metadata();
+  const lifecycle = createSleeveLifecycle({
+    specs: [specs[0]!],
+    meta,
+    autoStart: false,
+    retryDelayMs: 1,
+    canRetry: () => committed,
+    schedule: (run) => {
+      timers.push(run);
+      return 0;
+    },
+    initialize: async (spec) => {
+      attempts++;
+      if (attempts === 1) throw new Error("endpoint unavailable");
+      return {
+        wallet: null,
+        view: { coin: spec.coin, history: () => [], tape: () => [] },
+        start: () => started.push(spec.coin),
+      };
+    },
+    onStatus: () => {},
+  });
+
+  await lifecycle.initializeAll();
+  expect(meta.sleeves[0]).toMatchObject({ status: "retrying", error: "endpoint unavailable" });
+
+  committed = false;
+  timers.shift()!();
+  expect(attempts).toBe(1);
+  expect(timers).toHaveLength(1);
+
+  committed = true;
+  timers.shift()!();
+  await lifecycle.settled();
+  expect(meta.sleeves[0]).toMatchObject({ status: "live", error: null });
+  expect(started).toEqual([]);
+});
+
+test("starts ready sleeves and joins a recovered sleeve to the running executor", async () => {
+  const timers: Array<() => void> = [];
+  const attempts = new Map<string, number>();
+  const started: string[] = [];
+  const lifecycle = createSleeveLifecycle({
+    specs,
+    meta: metadata(),
+    autoStart: false,
+    retryDelayMs: 1,
+    schedule: (run) => {
+      timers.push(run);
+      return 0;
+    },
+    initialize: async (spec) => {
+      const attempt = (attempts.get(spec.coin) ?? 0) + 1;
+      attempts.set(spec.coin, attempt);
+      if (spec.coin === "ETH" && attempt === 1) throw new Error("ETH feed unavailable");
+      return {
+        wallet: null,
+        view: { coin: spec.coin, history: () => [], tape: () => [] },
+        start: () => started.push(spec.coin),
+      };
+    },
+    onStatus: () => {},
+  });
+
+  await lifecycle.initializeAll();
+  expect(lifecycle.anyReady()).toBe(true);
+  expect(lifecycle.allReady()).toBe(false);
+
+  lifecycle.startAll();
+  expect(started).toEqual(["BTC"]);
+
+  timers.shift()!();
+  await lifecycle.settled();
+  expect(lifecycle.allReady()).toBe(true);
+  expect(started).toEqual(["BTC", "ETH"]);
+});

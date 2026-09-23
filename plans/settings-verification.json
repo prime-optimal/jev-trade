@@ -210,5 +210,45 @@
         "fill": null
       }
     ]
+  },
+  "startupRepair": {
+    "tests": {
+      "passed": 124,
+      "failed": 0,
+      "assertions": 498,
+      "files": 24
+    },
+    "backendTypecheck": "passed",
+    "configuration": {
+      "coins": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "DOGE",
+        "BNB"
+      ],
+      "network": "testnet",
+      "mode": "paper",
+      "model": "mock",
+      "tickMs": 30000,
+      "priceMs": 1000
+    },
+    "startupStatus": "off",
+    "allFiveFeedsReady": true,
+    "decisions": {
+      "BTC": "buy",
+      "ETH": "sell",
+      "SOL": "sell",
+      "DOGE": "sell",
+      "BNB": "sell"
+    },
+    "manualStopStatus": "off",
+    "regressions": [
+      "Initial unavailable endpoint keeps public and private controls reachable with a retrying sleeve",
+      "Off retries recover without starting trading",
+      "Healthy sleeves can start while failed sleeves retry and later join the run"
+    ],
+    "userEnvModified": false,
+    "walletKeysInjected": false
   }
 }

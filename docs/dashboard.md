@@ -44,7 +44,7 @@ Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. 
 
 A 45-second event gap reconnects the stream. Before the first snapshot, the timeout is 90 seconds. Retry delay starts at one second and caps at ten seconds. `ping` events keep the connection active. Run state is also polled from public `GET /run` every two seconds, and operator state is polled every five seconds when the local channel exists.
 
-Every configured sleeve remains visible if initialization fails. Healthy sleeves continue independently. A failed sleeve can retry only while the authoritative run is Running. It cannot restart an expired or manually stopped run.
+Every configured sleeve remains visible if initialization fails. Startup remains Off, and retrying while Off only prepares resources. After an operator starts a run, healthy sleeves continue independently and a recovered sleeve joins that active run. An unavailable sleeve produces no fabricated decisions, and recovery cannot restart an expired or manually stopped run.
 
 ## Shared wire types
 

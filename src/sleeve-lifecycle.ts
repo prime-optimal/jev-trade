@@ -18,6 +18,7 @@ export interface SleeveLifecycle {
   views: SleeveView[];
   initializeAll(): Promise<void>;
   allReady(): boolean;
+  anyReady(): boolean;
   startAll(): void;
   stopAll(): void;
   disposeAll(): void;
@@ -66,6 +67,21 @@ export function createSleeveLifecycle(options: SleeveLifecycleOptions): SleeveLi
 
   const publish = (sleeve: SleeveMeta) => options.onStatus({ ...sleeve });
 
+  const scheduleRetry = (index: number, sleeve: SleeveMeta) => {
+    schedule(() => {
+      if (disposed) return;
+      if (options.canRetry?.() === false) {
+        scheduleRetry(index, sleeve);
+        return;
+      }
+      sleeve.status = "starting";
+      sleeve.error = null;
+      sleeve.retryAt = null;
+      publish(sleeve);
+      track(attempt(index));
+    }, retryDelayMs);
+  };
+
   const attempt = async (index: number): Promise<void> => {
     if (disposed || initializedByIndex.has(index)) return;
     const spec = options.specs[index]!;
@@ -89,15 +105,9 @@ export function createSleeveLifecycle(options: SleeveLifecycleOptions): SleeveLi
       sleeve.status = "retrying";
       sleeve.error = publicError(error);
       sleeve.retryAt = now() + retryDelayMs;
+      console.warn(`${sleeve.label} initialization failed, retrying: ${sleeve.error}`);
       publish(sleeve);
-      schedule(() => {
-        if (disposed || options.canRetry?.() === false) return;
-        sleeve.status = "starting";
-        sleeve.error = null;
-        sleeve.retryAt = null;
-        publish(sleeve);
-        track(attempt(index));
-      }, retryDelayMs);
+      scheduleRetry(index, sleeve);
     }
   };
 
@@ -113,6 +123,7 @@ export function createSleeveLifecycle(options: SleeveLifecycleOptions): SleeveLi
       for (const [index] of options.specs.entries()) await track(attempt(index));
     },
     allReady: () => initializedByIndex.size === options.specs.length,
+    anyReady: () => initializedByIndex.size > 0,
     startAll: () => {
       if (disposed || running) return;
       running = true;

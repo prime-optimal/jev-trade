@@ -46,6 +46,7 @@ let server: PublicServer | null = null;
 let activeSettings: TradingSettings | null = null;
 let activeApiKey: string | undefined;
 let activeGuard: RunGuard | null = null;
+let rebuildingExecutor = false;
 
 const runLifecycle = createRunLifecycle({
   durationMinutes: 30,
@@ -53,7 +54,7 @@ const runLifecycle = createRunLifecycle({
   hooks: {
     async start(guard) {
       const current = executor;
-      if (!current || !current.lifecycle.allReady()) throw new Error("execution resources are not ready");
+      if (!current || !current.lifecycle.anyReady()) throw new Error("no execution resources are ready");
       activeGuard = guard;
       for (const sleeve of current.sleeves) sleeve.trader.setRunGuard(guard);
       guard.assertLive();
@@ -105,7 +106,10 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
     meta: candidateMeta,
     views: candidateViews,
     autoStart: false,
-    canRetry: () => committed && runLifecycle.snapshot().status === "running",
+    canRetry: () => committed
+      && !rebuildingExecutor
+      && executor?.lifecycle === lifecycle
+      && ["off", "running"].includes(runLifecycle.snapshot().status),
     onStatus: (sleeve) => {
       if (sleeve.coin === first?.coin && sleeve.status === "live") candidateMeta.wallet = sleeve.wallet;
       if (committed) server?.broadcastSleeve(sleeve);
@@ -163,8 +167,32 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
     },
   });
 
+  const commitCandidate = () => {
+    previousExecutor?.lifecycle.disposeAll();
+    executor = { lifecycle, sleeves };
+    views.splice(0, views.length, ...candidateViews);
+    meta.wallet = candidateMeta.wallet;
+    meta.dryRun = candidateMeta.dryRun;
+    meta.coin = candidateMeta.coin;
+    meta.pair = candidateMeta.pair;
+    meta.market = candidateMeta.market;
+    meta.explorerTx = candidateMeta.explorerTx;
+    meta.tickMs = candidateMeta.tickMs;
+    meta.sleeves.splice(0, meta.sleeves.length, ...candidateMeta.sleeves);
+    activeSettings = { ...settings, enabledCoins: [...settings.enabledCoins] };
+    activeApiKey = apiKey;
+    committed = true;
+    for (const sleeve of meta.sleeves) server?.broadcastSleeve(sleeve);
+  };
+
+  rebuildingExecutor = true;
   await lifecycle.initializeAll();
+  rebuildingExecutor = false;
   if (!lifecycle.allReady()) {
+    if (!previousSettings) {
+      commitCandidate();
+      return;
+    }
     const failed = candidateMeta.sleeves.find((sleeve) => sleeve.error)?.error ?? "execution resources failed to initialize";
     lifecycle.disposeAll();
     if (previousSettings) {
@@ -179,21 +207,7 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
     throw new Error(failed);
   }
 
-  executor?.lifecycle.disposeAll();
-  executor = { lifecycle, sleeves };
-  views.splice(0, views.length, ...candidateViews);
-  meta.wallet = candidateMeta.wallet;
-  meta.dryRun = candidateMeta.dryRun;
-  meta.coin = candidateMeta.coin;
-  meta.pair = candidateMeta.pair;
-  meta.market = candidateMeta.market;
-  meta.explorerTx = candidateMeta.explorerTx;
-  meta.tickMs = candidateMeta.tickMs;
-  meta.sleeves.splice(0, meta.sleeves.length, ...candidateMeta.sleeves);
-  activeSettings = { ...settings, enabledCoins: [...settings.enabledCoins] };
-  activeApiKey = apiKey;
-  committed = true;
-  for (const sleeve of meta.sleeves) server?.broadcastSleeve(sleeve);
+  commitCandidate();
 }
 
 const operator = createOperatorControl({ lifecycle: runLifecycle, rebuild: rebuildExecutor });
