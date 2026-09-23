@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createSleeveLifecycle, RETRY_DELAY_MS } from "../src/sleeve-lifecycle";
 import type { Meta, SleeveMeta } from "../src/types";
 import type { SleeveConfig } from "../src/sleeves";
@@ -68,7 +68,13 @@ describe("per-sleeve lifecycle", () => {
       ["ETH", "starting"],
     ]);
 
-    await lifecycle.initializeAll();
+    const warning = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await lifecycle.initializeAll();
+      expect(warning).toHaveBeenCalledWith("ETH initialization failed, retrying: HTTP 429: rate limited secret detail");
+    } finally {
+      warning.mockRestore();
+    }
 
     expect(meta.sleeves[0]).toMatchObject({ coin: "BTC", status: "live", error: null, retryAt: null });
     expect(meta.sleeves[1]).toMatchObject({
@@ -129,7 +135,13 @@ test("retries a committed sleeve while Off without starting it and defers during
     onStatus: () => {},
   });
 
-  await lifecycle.initializeAll();
+  const warning = spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    await lifecycle.initializeAll();
+    expect(warning).toHaveBeenCalledWith("BTC initialization failed, retrying: endpoint unavailable");
+  } finally {
+    warning.mockRestore();
+  }
   expect(meta.sleeves[0]).toMatchObject({ status: "retrying", error: "endpoint unavailable" });
 
   committed = false;
@@ -170,7 +182,13 @@ test("starts ready sleeves and joins a recovered sleeve to the running executor"
     onStatus: () => {},
   });
 
-  await lifecycle.initializeAll();
+  const warning = spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    await lifecycle.initializeAll();
+    expect(warning).toHaveBeenCalledWith("ETH initialization failed, retrying: ETH feed unavailable");
+  } finally {
+    warning.mockRestore();
+  }
   expect(lifecycle.anyReady()).toBe(true);
   expect(lifecycle.allReady()).toBe(false);
 

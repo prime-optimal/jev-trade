@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import type { DecisionJournalEvent } from "../src/decision-events";
 import type { Market } from "../src/market";
 import { buildJevPrompt, type Model, type ModelDecision, type ModelEvaluation, type TradeState } from "../src/model";
@@ -7,8 +7,17 @@ import { jevUnavailable, Trader } from "../src/trader";
 import { TradeFeed, type MakerFill } from "../src/trades";
 import type { BlockEvent, Book, Quote, Side } from "../src/types";
 
-test("jevUnavailable detects a TypeSafe credit 402", () => {
-  expect(jevUnavailable(new Error("402 Your organization has no available TypeSafe API credits. Please add more credits"))).toBe(true);
+const unavailableCreditDiagnostics = [
+  ["OpenRouter", "402 Insufficient credits. Add more using https://openrouter.ai/settings/credits"],
+  ["official TypeSafe", "402 Your organization has no available TypeSafe API credits. Please add more credits"],
+  ["Vercel AI Gateway", "Insufficient credits. Please add credits to your Vercel AI Gateway account."],
+] as const;
+
+test.each(unavailableCreditDiagnostics)("jevUnavailable detects unavailable %s credits", (_provider, message) => {
+  expect(jevUnavailable(new Error(message))).toBe(true);
+});
+
+test("jevUnavailable does not classify venue rate limits as provider credit failures", () => {
   expect(jevUnavailable(new Error("hyperliquid rate limited"))).toBe(false);
 });
 
@@ -182,22 +191,37 @@ test("a failed Jev call reports no fabricated Jev decision", async () => {
   const model = new ScriptModel();
   const { events, trader } = desk(model);
   model.next = new Error("boom");
-  await trader.onBlock(1);
-  expect(events.find((e) => e.block === 1)?.decision).toBeNull();
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await trader.onBlock(1);
+    expect(events.find((e) => e.block === 1)?.decision).toBeNull();
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("tick 1"), "boom");
+  } finally {
+    log.mockRestore();
+  }
 });
 
-test("Jev is asked again on the tick after a credit error", async () => {
+test.each(unavailableCreditDiagnostics)("Jev retries the next tick after unavailable %s credits", async (_provider, message) => {
   let calls = 0;
   const model = new ScriptModel();
-  model.next = new Error("402 Your organization has no available TypeSafe API credits");
+  model.next = new Error(message);
   const decide = model.decide.bind(model);
   model.decide = (state) => { calls++; return decide(state); };
   const { events, trader } = desk(model);
-  await trader.onBlock(1);
-  model.next = packed({ intent: "hold", bias: "long", action: "hold" });
-  await trader.onBlock(2);
-  expect(calls).toBe(2);
-  expect(events.find((e) => e.block === 2)?.decision?.late).toBe(false);
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await trader.onBlock(1);
+    expect(events.find((e) => e.block === 1)?.decision).toBeNull();
+    model.next = packed({ intent: "hold", bias: "long", action: "hold" });
+    await trader.onBlock(2);
+    expect(calls).toBe(2);
+    expect(events.find((e) => e.block === 2)?.decision?.late).toBe(false);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("retrying next tick"));
+  } finally {
+    log.mockRestore();
+  }
 });
 
 test.each(["Stop", "expiry"] as const)("a successful response after %s is journaled exactly but cannot submit or cancel", async (reason) => {
