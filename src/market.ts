@@ -55,8 +55,7 @@ export class Market {
     this.pair = sleeve.pair;
     this.label = sleeve.label;
     this.runGuard = runGuard;
-    if (!config.dryRun && !sleeve.privateKey) throw new Error(`${this.label}: real trading requires a wallet private key`);
-    this.wallet = config.dryRun ? null : privateKeyToAccount(hexKey(sleeve.privateKey!));
+    this.wallet = config.dryRun || !sleeve.privateKey ? null : privateKeyToAccount(hexKey(sleeve.privateKey));
     const transport = createHttpTransport(undefined, (payload: unknown) => {
       if (isCleanupExchangeRequest(payload)) return;
       this.assertRunLive();
@@ -100,7 +99,7 @@ export class Market {
     await this.refresh();
     if (this.address) await this.seedFills();
     const net = config.hlTestnet ? "testnet" : "mainnet";
-    console.log(`hyperliquid ${this.pair} ${net}, ${this.coin} asset ${this.assetId}, szDecimals ${this.szDecimals}, max ${this.maxLeverage}x, ${config.dryRun ? "DRY RUN" : `wallet ${this.address}`}`);
+    console.log(`hyperliquid ${this.pair} ${net}, ${this.coin} asset ${this.assetId}, szDecimals ${this.szDecimals}, max ${this.maxLeverage}x, ${this.wallet ? `wallet ${this.address}` : "DRY RUN"}`);
     if (this.wallet) {
       const a = this.account;
       const side = !a || !a.positionSz ? "flat" : a.positionSz > 0 ? "long" : "short";

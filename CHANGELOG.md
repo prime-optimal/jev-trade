@@ -51,6 +51,8 @@ All notable changes to this project are documented here. This changelog starts f
 
 - Fixed `dev:web`, which used `bun --cwd web run dev` and printed Bun help instead of starting the dashboard while exiting successfully.
 - Failed sleeve initialization no longer removes the sleeve from the API and dashboard. The bot exposes starting, retrying, and live status, shows the failure in the UI, and retries that sleeve after 30 minutes without restarting healthy sleeves.
+- `DRY_RUN=false` with no wallet key no longer fails every sleeve at startup with "real trading requires a wallet private key". Keyless sleeves run in paper mode again, as they did before the settings page, while keyed sleeves keep real execution.
+- A sleeve that recovers after startup now appears in public history, tape, and snapshot data, and the public wallet updates when the first sleeve recovers.
 - Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
 
 ## Known issues

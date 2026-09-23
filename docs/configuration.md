@@ -25,7 +25,7 @@ The Bun process reads environment values at startup, then exposes an operator-on
 | `RUN_DURATION_MINUTES` | `30` | No | Positive integer minutes for each new run. There is no unlimited mode. |
 | `PRIVATE_KEY` | Unset | Yes | Wallet key for the first configured coin when no wallet map entry exists. |
 | `WALLETS_JSON` | Unset | Yes | Coin-to-wallet mapping overlaid on `.wallets.json`. |
-| `DRY_RUN` | `true` | No | Paper mode unless the exact string `false` is supplied. Real mode also needs a wallet, successful official-network validation, and explicit confirmation at Start. |
+| `DRY_RUN` | `true` | No | Paper mode unless the exact string `false` is supplied. In real mode, sleeves without a wallet key run as paper. Real orders also need successful official-network validation and explicit confirmation at Start. |
 | `MODEL` | `mock` | No | `mock` or `jev`. |
 | `JEV_PROVIDER` | Resolved from configured provider keys, then `openrouter` | No | `openrouter`, `typesafe`, or `gateway`. |
 | `JEV_MODEL_ID` | Provider default | No | Model identifier for the selected Jev provider. |

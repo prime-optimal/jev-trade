@@ -112,7 +112,10 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
       && ["off", "running"].includes(runLifecycle.snapshot().status),
     onStatus: (sleeve) => {
       if (sleeve.coin === first?.coin && sleeve.status === "live") candidateMeta.wallet = sleeve.wallet;
-      if (committed) server?.broadcastSleeve(sleeve);
+      if (!committed || executor?.lifecycle !== lifecycle) return;
+      views.splice(0, views.length, ...candidateViews);
+      meta.wallet = candidateMeta.wallet;
+      server?.broadcastSleeve(sleeve);
     },
     initialize: async (spec) => {
       const feed = new Feed(spec.coin);
@@ -146,7 +149,7 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
           }, fill.ts);
         };
         sleeves.push({ feed, market, trader });
-        console.log(`sleeve ${spec.label} ${spec.pair} ${config.dryRun ? "DRY RUN" : market.address}`);
+        console.log(`sleeve ${spec.label} ${spec.pair} ${market.address ?? "DRY RUN"}`);
         return {
           wallet: market.address,
           view: { coin: spec.coin, history: () => trader.history, tape: () => trader.tape },

@@ -16,7 +16,7 @@ Live orders carry a stable Jev client-order-ID namespace with the Hyperliquid as
 
 Operator Save applies one validated settings snapshot only while Off or Expired. It builds the replacement executor and its feeds before the new values become applied. A failed replacement is discarded and the previous executor is resumed unchanged; its retry callbacks cannot run inside the replacement transaction. Guest browser settings do not affect Bun execution.
 
-Paper mode is the default. `DRY_RUN` must be the exact string `false` to select real mode from environment configuration. Real Start additionally requires a configured wallet for the relevant sleeve, matching official network endpoints, a successful preflight, and explicit confirmation. A missing wallet cannot place real orders. Brave Wallet is not part of this implementation.
+Paper mode is the default. `DRY_RUN` must be the exact string `false` to select real mode from environment configuration. In real mode, a sleeve with no configured wallet key still starts and runs in paper mode with simulated fills; only keyed sleeves can place real orders. Real Start additionally requires matching official network endpoints, a successful preflight, and explicit confirmation. Brave Wallet is not part of this implementation.
 
 A custom transport may pass metadata, WebSocket, and SDK RPC connectivity checks. Real mode remains disabled because the implementation cannot prove a custom endpoint's network identity. Selecting an official endpoint from the other network is rejected.
 
