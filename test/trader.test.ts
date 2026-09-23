@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Market } from "../src/market";
-import type { Model, ModelDecision, TradeState } from "../src/model";
+import type { Model } from "../src/model";
+import type { ModelDecision, TradeState } from "../src/types";
 import { leverageRungs, liveIntent, parseLeverage, planQuote, quoteAction } from "../src/plan";
 import { jevUnavailable, Trader } from "../src/trader";
 import type { BlockEvent, Book, Quote, Side } from "../src/types";

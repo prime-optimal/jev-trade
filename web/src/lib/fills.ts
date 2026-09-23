@@ -1,4 +1,4 @@
-import type { PricePoint } from "./bot-types";
+import type { PricePoint } from "./trading/types";
 
 export type TapeFill = {
   key: string;
