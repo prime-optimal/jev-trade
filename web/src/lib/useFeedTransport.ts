@@ -59,6 +59,7 @@ export function createBrowserTradingAdapter(): BrowserTradingAdapter {
   let disposed = false;
   let busy = false;
   let attention: string | null = null;
+  let attentionRevision = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let lastWakeAt = Date.now();
   const discovery = discoverWallets(window as Window & { navigator: Navigator & { brave?: unknown } });
@@ -83,6 +84,7 @@ export function createBrowserTradingAdapter(): BrowserTradingAdapter {
   };
   const fail = (reason: string) => {
     attention = reason;
+    attentionRevision++;
     scheduler?.stop();
     void session?.stop(reason).then(syncSession).catch(() => syncSession());
     publish({ run: { ...snapshot.run, status: "attention-required", stopReason: reason } });
@@ -320,7 +322,13 @@ export function createBrowserTradingAdapter(): BrowserTradingAdapter {
       } catch (error) { await stop(); throw error; } finally { busy = false; }
     },
     stop,
-    async reconcile() { await session?.reconcile(); syncSession(); },
+    async reconcile() {
+      const current = session;
+      const revision = attentionRevision;
+      await current?.reconcile();
+      if (current && session === current && current.snapshot().status === "off" && attentionRevision === revision) attention = null;
+      syncSession();
+    },
     async dispose() {
       disposed = true; generation++; clearTimeout(retry); clearInterval(timer);
       window.removeEventListener("offline", guard); document.removeEventListener("visibilitychange", guard);
