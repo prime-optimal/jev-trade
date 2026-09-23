@@ -47,24 +47,6 @@ export interface ConnectionValidation {
   checkedAt: number;
 }
 
-export interface OperatorSnapshot {
-  settings: TradingSettings;
-  baseline: TradingSettings;
-  overrides: (keyof TradingSettings)[];
-  redactedEndpoints: (keyof TradingSettings)[];
-  configuration: {
-    model: string;
-    jevProvider: string;
-    jevModelId: string;
-    port: number;
-    providerKeys: { openrouter: boolean; typesafe: boolean; gateway: boolean };
-    walletConfigured: boolean;
-  };
-  apiKeyConfigured: boolean;
-  connection: ConnectionValidation | null;
-  run: RunSnapshot;
-}
-
 export const DEFAULT_SETTINGS: Readonly<TradingSettings> = Object.freeze({
   version: 1,
   network: "testnet",
