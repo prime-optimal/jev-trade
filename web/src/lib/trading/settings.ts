@@ -198,6 +198,19 @@ export function effectiveEndpoints(settings: TradingSettings): { apiUrl: string;
   };
 }
 
+/** A transport change cannot silently retain authority granted for another route. */
+export function authorizationChanged(previous: TradingSettings, next: TradingSettings): boolean {
+  const before = effectiveEndpoints(previous);
+  const after = effectiveEndpoints(next);
+  return previous.network !== next.network
+    || previous.mode !== next.mode
+    || before.apiUrl !== after.apiUrl
+    || before.wsUrl !== after.wsUrl
+    || before.rpcUrl !== after.rpcUrl
+    || previous.hyperliquidApiKeyHeader !== next.hyperliquidApiKeyHeader
+    || previous.hyperliquidApiKeyScheme !== next.hyperliquidApiKeyScheme;
+}
+
 function mayContainCredential(raw: string): boolean {
   const url = new URL(raw);
   return Boolean(url.search) || (url.pathname !== "/" && url.pathname !== "/ws");
