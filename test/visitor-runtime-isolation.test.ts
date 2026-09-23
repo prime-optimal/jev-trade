@@ -88,8 +88,8 @@ describe("visitor runtime environment isolation", () => {
       };
       // Runtime-selected file URL keeps this model import isolated from the test process module cache.
       const { JevModel } = await import(${JSON.stringify(modelUrl)});
-      const decision = await new JevModel().decide(${JSON.stringify(state)});
-      console.log(JSON.stringify({ authorization, action: decision.action, inputTokens: decision.inputTokens }));
+      const evaluation = await new JevModel().decide(${JSON.stringify(state)});
+      console.log(JSON.stringify({ authorization, action: evaluation.decision.action, inputTokens: evaluation.decision.inputTokens }));
     `);
 
     expect(result).toEqual({ authorization: "Bearer visitor-gateway-key", action: "hold", inputTokens: 7 });

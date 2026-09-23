@@ -196,6 +196,8 @@ export class Feed {
           block: this.tick,
           txHash: f.hash,
           orderId: f.oid,
+          tid: f.tid,
+          time: f.time,
           price: Number(f.px),
           size: Number(f.sz),
           updatedSize: -1,

@@ -138,6 +138,27 @@ describe("visitor session gateway", () => {
     expect(forwardedAuth).toBe("Bearer visitor-b");
   });
 
+  test("sends the durable owner token only while creating a capability", async () => {
+    const requestBodies: string[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/sessions")) {
+        requestBodies.push(String(init?.body ?? ""));
+        return Response.json({ token: "new-capability", ownerToken: "fresh-owner-token" });
+      }
+      return Response.json({ status: "off" });
+    }) as typeof fetch;
+    const request = browserRequest("/api/session", {
+      method: "POST",
+      headers: { Cookie: "jev-paper-owner=signed-owner-token" },
+    });
+    const response = await bootstrapSession(request);
+
+    expect(requestBodies).toEqual([JSON.stringify({ ownerToken: "signed-owner-token" })]);
+    expect(response.headers.get("Set-Cookie")).toContain("jev-paper-session=new-capability");
+    expect(response.headers.getSetCookie()).toContainEqual(expect.stringContaining("jev-paper-owner=fresh-owner-token"));
+  });
+
   test("clears expired and deleted capabilities", async () => {
     globalThis.fetch = (async () => Response.json({ error: "gone" }, { status: 410 })) as typeof fetch;
     const expired = await proxySession(withSession(browserRequest("/api/session/run")), ["run"]);

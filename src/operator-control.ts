@@ -1,3 +1,4 @@
+import type { DecisionStore } from "./decision-store";
 import { validateConnection } from "./transport-validation";
 import { SettingsRuntime, type LifecycleControl } from "./settings-runtime";
 import { validateApiKey, validateSettings, type ConnectionValidation, type RunSnapshot, type TradingSettings } from "./settings";
@@ -19,6 +20,8 @@ export interface OperatorControlOptions {
   controlPort?: number;
   allowedOrigin?: string;
   controlHost?: string;
+  decisionStore?: DecisionStore;
+  decisionOwnerId?: string;
 }
 
 export interface OperatorControl {
@@ -142,6 +145,18 @@ export function createOperatorControl(options: OperatorControlOptions): Operator
         return new Response(null, { status: 204, headers });
       }
       if (request.method === "GET" && url.pathname === "/operator") return response(runtime.snapshot(), 200, origin ?? undefined);
+      if (request.method === "GET" && url.pathname === "/decisions") {
+        if (!options.decisionStore || !options.decisionOwnerId) return response({ rows: [], nextBefore: null }, 200, origin ?? undefined);
+        const limitValue = url.searchParams.get("limit");
+        const before = url.searchParams.get("before") ?? undefined;
+        for (const key of url.searchParams.keys()) {
+          if (key !== "limit" && key !== "before") return response({ error: "Unsupported query parameter" }, 400, origin ?? undefined);
+        }
+        return response(await options.decisionStore.list(options.decisionOwnerId, {
+          limit: limitValue === null ? undefined : Number(limitValue),
+          before,
+        }), 200, origin ?? undefined);
+      }
       if (request.method !== "POST" || !MUTATION_PATHS[url.pathname]) return response({ error: "Not found" }, 404, origin ?? undefined);
       if (origin !== allowedOrigin) return response({ error: "Origin is required for operator mutations" }, 403);
       const body = await jsonBody(request);

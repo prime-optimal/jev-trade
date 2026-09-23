@@ -19,6 +19,7 @@ export interface Book {
 
 /** This tick's order. Entries are post-only limits, exits are Ioc takers. */
 export interface Quote {
+  decisionId: string;
   side: Side;
   price: number;
   size: number;
@@ -35,6 +36,7 @@ export interface Quote {
 
 /** A taker hit one of our resting orders. */
 export interface Fill {
+  decisionId: string;
   side: Side;
   size: number;
   price: number;
@@ -68,6 +70,7 @@ export interface PricePoint {
 }
 
 export interface Decision {
+  id: string;
   action: Action;
   intent?: Intent;
   bias?: Bias;

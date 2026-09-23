@@ -1,7 +1,9 @@
 const COOKIE_NAME = "jev-paper-session";
+const OWNER_COOKIE_NAME = "jev-paper-owner";
 const COOKIE_PATH = "/api/session";
 const MAX_BODY_BYTES = 64 * 1024;
 const SESSION_MAX_AGE_SECONDS = 10 * 60;
+const OWNER_TOKEN_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 const ROUTES: Readonly<Record<string, readonly string[]>> = {
   operator: ["GET"],
@@ -15,6 +17,7 @@ const ROUTES: Readonly<Record<string, readonly string[]>> = {
   history: ["GET"],
   tape: ["GET"],
   events: ["GET"],
+  decisions: ["GET"],
 };
 
 function jsonError(status: number, error: string): Response {
@@ -85,6 +88,22 @@ export function readSessionCookie(request: Request): string | null {
   }
   return null;
 }
+export function readOwnerCookie(request: Request): string | null {
+  const cookie = request.headers.get("Cookie");
+  if (!cookie) return null;
+  for (const part of cookie.split(";")) {
+    const [rawName, ...rawValue] = part.trim().split("=");
+    if (rawName !== OWNER_COOKIE_NAME) continue;
+    try {
+      const token = decodeURIComponent(rawValue.join("="));
+      return token.length > 0 && token.length <= 1024 && !/[\s\x00-\x1f\x7f]/.test(token) ? token : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 
 export function sessionCookie(token: string | null): string {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
@@ -92,6 +111,11 @@ export function sessionCookie(token: string | null): string {
   const lifetime = token ? `; Max-Age=${SESSION_MAX_AGE_SECONDS}` : "; Max-Age=0";
   return `${COOKIE_NAME}=${value}; Path=${COOKIE_PATH}; HttpOnly; SameSite=Strict${secure}${lifetime}`;
 }
+export function ownerCookie(token: string): string {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${OWNER_COOKIE_NAME}=${encodeURIComponent(token)}; Path=${COOKIE_PATH}; HttpOnly; SameSite=Strict${secure}; Max-Age=${OWNER_TOKEN_LIFETIME_SECONDS}`;
+}
+
 
 function authorizedHeaders(token: string, contentType?: string): Headers {
   const headers = new Headers();
@@ -175,11 +199,21 @@ export async function bootstrapSession(request: Request): Promise<Response> {
     }
   }
 
-  const created = await fetch(backendUrl("sessions"), { method: "POST", cache: "no-store", signal: request.signal });
+  const durableOwner = readOwnerCookie(request);
+  const created = await fetch(backendUrl("sessions"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(durableOwner ? { ownerToken: durableOwner } : {}),
+    cache: "no-store",
+    signal: request.signal,
+  });
   if (!created.ok) return new Response(created.body, { status: created.status, headers: { "Content-Type": created.headers.get("Content-Type") ?? "application/json", "Cache-Control": "no-store" } });
-  const payload = await created.json().catch(() => null) as { token?: unknown } | null;
+  const payload = await created.json().catch(() => null) as { token?: unknown; ownerToken?: unknown } | null;
   const token = typeof payload?.token === "string" ? payload.token : "";
-  if (!token || token.length > 512 || /[\s\x00-\x1f\x7f]/.test(token)) return jsonError(502, "The trading service returned an invalid session capability.");
+  const returnedOwner = typeof payload?.ownerToken === "string" ? payload.ownerToken : "";
+  if (!token || token.length > 512 || /[\s\x00-\x1f\x7f]/.test(token) || returnedOwner.length > 1024 || /[\s\x00-\x1f\x7f]/.test(returnedOwner)) {
+    return jsonError(502, "The trading service returned an invalid session capability.");
+  }
 
   const snapshot = await operatorSnapshot(token, request.signal);
   if (!snapshot.ok) {
@@ -187,6 +221,7 @@ export async function bootstrapSession(request: Request): Promise<Response> {
     return snapshot.status === 410 ? expiredResponse() : snapshot;
   }
   snapshot.headers.append("Set-Cookie", sessionCookie(token));
+  if (returnedOwner) snapshot.headers.append("Set-Cookie", ownerCookie(returnedOwner));
   return snapshot;
 }
 
@@ -239,6 +274,9 @@ export async function proxySession(request: Request, path: readonly string[]): P
     const lite = sourceUrl.searchParams.get("lite");
     if (lite !== null && lite !== "1") return jsonError(400, "The events lite flag must be 1.");
     if (lite !== null) suffix = "?lite=1";
+  } else if (route === "decisions") {
+    for (const key of sourceUrl.searchParams.keys()) if (key !== "limit" && key !== "before") return jsonError(400, "Unsupported query parameter.");
+    suffix = sourceUrl.search;
   } else if (sourceUrl.search) {
     return jsonError(400, "Query parameters are not supported for this route.");
   }

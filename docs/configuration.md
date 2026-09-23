@@ -32,6 +32,8 @@ The Bun process reads environment values at startup, then exposes two settings l
 | `OPENROUTER_API_KEY` | Unset | Yes | OpenRouter credential. |
 | `TYPESAFE_API_KEY` | Unset | Yes | Official TypeSafe credential. |
 | `AI_GATEWAY_API_KEY` | Unset | Yes | Vercel AI Gateway credential. |
+| `DATABASE_URL` | Unset | Yes | Optional PostgreSQL connection for durable decision history. Without it, execution still runs but decision history remains process-local only. |
+| `DECISION_OWNER_SECRET` | Unset | Yes | Signs durable visitor owner cookies. Required whenever `DATABASE_URL` enables durable storage and rejected at startup unless it contains at least 32 bytes. |
 | `PORT` | `3000` | No | Public read-only HTTP and SSE port. |
 | `CONTROL_PORT` | `3002` | No | Private operator listener port. The listener always binds `127.0.0.1`. |
 | `CONTROL_ORIGIN` | `http://localhost:3001` | No | Exact local dashboard origin allowed to mutate operator state. It must be an explicit localhost, `127.0.0.1`, or IPv6 loopback HTTP origin. |
@@ -68,14 +70,18 @@ The validator rejects a selected network paired with the other network's officia
 
 ## Visitor sessions and browser persistence
 
-The bot keeps the visitor registry and every visitor Worker in process memory. The default limit is 8 concurrent sessions. A session expires after 10 minutes without a request, permits 2 SSE streams, accepts request bodies up to 64 KiB, limits creation to a burst of 8 with a refill of 16 per minute, and applies a 30-second Start cooldown. Restarting the bot discards every visitor session, run, setting, and history.
+The bot keeps the visitor registry and every visitor Worker in process memory. The default limit is 8 concurrent sessions. A session expires after 10 minutes without a request, permits 2 SSE streams, accepts request bodies up to 64 KiB, limits creation to a burst of 8 with a refill of 16 per minute, and applies a 30-second Start cooldown. Restarting the bot discards visitor capabilities, Workers, runs, applied settings, positions, and other execution state.
 
-Next stores the opaque capability in an HttpOnly, SameSite=Strict cookie under `/api/session`; production adds Secure. Mutations require an Origin equal to the public origin reconstructed from the exact Host and forwarded protocol. A refresh resumes the same Worker and applied settings while the capability remains valid.
+Next stores the opaque capability in an HttpOnly, SameSite=Strict cookie under `/api/session`; production adds Secure. This active capability authorizes visitor requests and scopes decision-history reads. Mutations require an Origin equal to the public origin reconstructed from the exact Host and forwarded protocol. A refresh resumes the same Worker and applied settings while the capability remains valid.
 
-If the session is deleted, expires, or is lost on bot restart, the UI requires a manual Reconnect. It does not silently replace the session. Reconnect creates a fresh Off Worker with defaults, empty history, and all five supported coins.
+With `DATABASE_URL` configured, PostgreSQL stores successful decision history under an opaque owner UUID. `DECISION_OWNER_SECRET` signs a separate HttpOnly owner token and cookie with a one-year browser and server lifetime. That credential restores database ownership when a browser reconnects after session expiry or a bot restart. Query routes do not accept it directly; session creation exchanges it for a new short-lived capability, which is required for each read. Visitor Workers do not connect to PostgreSQL. They post journal events to the parent Bun process, which owns the serialized write queue.
+
+If the session is deleted, expires, or is lost on bot restart, the UI requires a manual Reconnect. It does not silently replace the session. Reconnect creates a fresh Off Worker with defaults and all five supported coins. Durable decision history remains available to the restored owner, while transient Worker state starts fresh.
 
 The selected network uses `jev-trade:network:v1`, and theme uses `jev-trade:theme:v1`. Transport API keys, RPC overrides, credential-bearing URLs, run state, wallet keys, and provider credentials are never stored in the browser. Visitor scope does not accept any of those transport or wallet values.
 
 ## Secret sources
 
 [`fnox.toml`](../fnox.toml) resolves the configured OpenRouter secret at process start. The `just dev` and `just start` recipes use `fnox exec`. Per-coin wallet keys may come from the gitignored `.wallets.json`, `WALLETS_JSON`, and then `PRIVATE_KEY` for the first coin. The settings page shows only configured or missing status for these operator secrets.
+
+Local development may omit `DATABASE_URL`, which disables the durable decision store. If `DATABASE_URL` is set, `DECISION_OWNER_SECRET` must also be set and kept secret. Changing that signing secret invalidates existing owner cookies and prevents them from restoring their prior owner.

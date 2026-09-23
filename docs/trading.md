@@ -16,9 +16,9 @@ Live orders carry a stable Jev client-order-ID namespace with the Hyperliquid as
 
 Local operator Save applies one validated settings snapshot only while Off or Expired. It builds the replacement shared executor and feeds before the new values become applied. A failed replacement is discarded and the previous executor resumes unchanged.
 
-Remote visitors do not control that executor. Each visitor gets a keyless paper runtime in a separate Bun Worker. It starts Off and waits for the visitor to configure, Save, and Start. Save applies settings to that Worker. Start, Stop, expiry, history, and simulated positions also belong only to it. A visitor can select official mainnet or testnet market data, assets, duration, and numeric paper controls. Real mode, wallet or transport credentials, custom destinations, and a decision cadence below 30000 ms are rejected.
+Remote visitors do not control that executor. Each visitor gets a keyless paper runtime in a separate Bun Worker. It starts Off and waits for the visitor to configure, Save, and Start. Save applies settings to that Worker. Start, Stop, expiry, in-memory history, and simulated positions also belong only to it. A visitor can select official mainnet or testnet market data, assets, duration, and numeric paper controls. Real mode, wallet or transport credentials, custom destinations, and a decision cadence below 30000 ms are rejected.
 
-If visitor cleanup reaches `attention-required`, Start remains blocked. Settings offers Reset paper run, which retries reconciliation. Refresh resumes the same Worker and its applied settings. If the capability is removed, the session expires, or the bot restarts, the UI requires an explicit Reconnect. The new session starts Off with defaults and empty history; it cannot recover the prior run.
+If visitor cleanup reaches `attention-required`, Start remains blocked. Settings offers Reset paper run, which retries reconciliation. Refresh resumes the same Worker and its applied settings. If the capability is removed, the session expires, or the bot restarts, the UI requires an explicit Reconnect. The new session starts Off with defaults and fresh execution state. When durable decision storage is enabled, a signed owner cookie can associate the new session with the same decision-history owner. The cookie does not authorize reads without the new active capability.
 
 Paper mode remains the default for the shared executor. `DRY_RUN` must be the exact string `false` to select shared real mode from environment configuration. In real mode, a sleeve with no configured wallet key still runs as paper; only keyed sleeves can place real orders. Real Start additionally requires matching official network endpoints, a successful preflight, and explicit confirmation through the local operator channel. Brave Wallet is not part of this implementation.
 
@@ -36,9 +36,13 @@ Each sleeve has its own `Market`, `Feed`, `Trader`, position, order state, and o
 
 ## What Jev answers
 
-On every scheduled decision tick while Running, [`Trader.onBlock()`](../src/trader.ts) builds a trade state from the latest book, recent mids and trades, position, indicators, venue context, and maximum leverage. It asks Jev for bias, intent, and cross leverage even when an earlier Jev request is still pending. Intent is `open` or `hold` while flat, and `open`, `close`, or `hold` with a position.
+On every scheduled decision tick while Running, [`Trader.onBlock()`](../src/trader.ts) creates an immutable prompt snapshot and asks Jev for bias, intent, and cross leverage. The snapshot stores revision `jev-trade-2026-09-23.1`, the exact market-facing state, and the exact questions used for that evaluation. Intent is `open` or `hold` while flat, and `open`, `close`, or `hold` with a position. The complete input catalog and question wording live in the [Jev model contract](jev-model.md).
 
-Only the newest still-live result may execute. A result that returns after a newer tick or after Stop or expiry is stale, so its exchange work is suppressed. The Jev call still occurred and is not rewritten as a hold.
+Model calls may overlap, so a slow evaluation does not cause the next scheduled tick to be skipped. Every successful decision receives a UUID. Its planned or submitted quote, correlated fills, and later markouts retain that UUID.
+
+Only the newest still-live result may execute. A result that returns after a newer tick or after Stop or expiry is stale, so its exchange work is suppressed. It remains a recorded Jev evaluation and is not rewritten as a hold. Provider failures are recorded as failures and do not fabricate decisions.
+
+At 1, 5, 20, and 100 later ticks, the journal adds both the market return and the return signed to Jev's long or short bias. This includes hold and close decisions, so reviewers can measure the directional answer separately from quote and fill execution.
 
 ## Order mechanics
 

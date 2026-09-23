@@ -1,5 +1,5 @@
 import { ApiRequestError } from "@nktkas/hyperliquid";
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { Market } from "../src/market";
 import type { Quote, Side } from "../src/types";
 import { discoverOwnedOrders, type OwnedOrder } from "../src/owned-orders";
@@ -116,12 +116,12 @@ test("pending exchange acknowledgement remains owned for reconciliation", async 
   const { market, calls } = placementHarness("waitingForFill");
   const maker = market as unknown as {
     sendMaker(size: number, px: number, cancel: number[], base: {
-      side: Side; reduceOnly: boolean; capped: boolean; taker: boolean;
+      decisionId: string; side: Side; reduceOnly: boolean; capped: boolean; taker: boolean;
     }): Promise<Quote>;
     owned: Map<string, OwnedOrder>;
   };
-  await maker.sendMaker(1, 100, [], { side: "buy", reduceOnly: false, capped: false, taker: false });
-  await maker.sendMaker(1, 100, [], { side: "buy", reduceOnly: false, capped: false, taker: false });
+  await maker.sendMaker(1, 100, [], { decisionId: "decision-1", side: "buy", reduceOnly: false, capped: false, taker: false });
+  await maker.sendMaker(1, 100, [], { decisionId: "decision-2", side: "buy", reduceOnly: false, capped: false, taker: false });
   expect(calls()).toBe(1);
   expect([...maker.owned.values()].map(({ state }) => state)).toEqual(["unknown"]);
 });
@@ -130,10 +130,18 @@ test("definite SDK rejection does not become permanent cleanup ambiguity", async
   const { market } = placementHarness(new ApiRequestError({ status: "err" }, "rejected"));
   const maker = market as unknown as {
     sendMaker(size: number, px: number, cancel: number[], base: {
-      side: Side; reduceOnly: boolean; capped: boolean; taker: boolean;
+      decisionId: string; side: Side; reduceOnly: boolean; capped: boolean; taker: boolean;
     }): Promise<Quote>;
     owned: Map<string, OwnedOrder>;
   };
-  await maker.sendMaker(1, 100, [], { side: "buy", reduceOnly: false, capped: false, taker: false });
-  expect(maker.owned.size).toBe(0);
+  const log = spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const quote = await maker.sendMaker(1, 100, [], { decisionId: "decision-1", side: "buy", reduceOnly: false, capped: false, taker: false });
+    expect(quote.status).toBe("reverted");
+    expect(maker.owned.size).toBe(0);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("rejected"));
+  } finally {
+    log.mockRestore();
+  }
 });

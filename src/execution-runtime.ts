@@ -1,4 +1,5 @@
 import { applySettingsToConfig, config } from "./config";
+import type { DecisionJournal, DecisionJournalEvent } from "./decision-events";
 import { Feed } from "./feed";
 import { resetHyperliquidMetadata, safeTransportMessage } from "./hyperliquid";
 import { Market } from "./market";
@@ -40,6 +41,7 @@ export interface ExecutionRuntime {
 export interface ExecutionRuntimeOptions {
   specs: SleeveConfig[];
   durationMinutes?: number;
+  journal?: DecisionJournal;
 }
 
 export function createExecutionRuntime(options: ExecutionRuntimeOptions): ExecutionRuntime {
@@ -67,6 +69,18 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
   let activeGuard: RunGuard | null = null;
   let rebuildingExecutor = false;
   let disposed = false;
+  const inFlight = new Set<Promise<void>>();
+  const settleInFlight = async () => {
+    while (inFlight.size) await Promise.all([...inFlight]);
+  };
+  const drainExecutor = async (current: Executor) => {
+    current.lifecycle.stopAll();
+    for (const sleeve of current.sleeves) sleeve.trader.invalidate();
+    await settleInFlight();
+    await Promise.all(current.sleeves.map((sleeve) => sleeve.trader.drain()));
+    await Promise.all(current.sleeves.map((sleeve) => sleeve.market.cleanupOwned()));
+    await Promise.all(current.sleeves.map((sleeve) => sleeve.trader.drain()));
+  };
   let startupAutostart: StartupAutostart;
 
   const lifecycle = createRunLifecycle({
@@ -88,9 +102,7 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
         const current = executor;
         activeGuard = null;
         if (!current) return;
-        current.lifecycle.stopAll();
-        for (const sleeve of current.sleeves) sleeve.trader.invalidate();
-        await Promise.all(current.sleeves.map((sleeve) => sleeve.market.cleanupOwned()));
+        await drainExecutor(current);
       },
     },
   });
@@ -100,6 +112,14 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
     anyReady: () => executor?.lifecycle.anyReady() ?? false,
     start: () => lifecycle.start(),
   });
+
+  const journal: DecisionJournal | undefined = options.journal && {
+    enqueue(event: DecisionJournalEvent) {
+      options.journal!.enqueue(event.runId == null
+        ? { ...event, runId: lifecycle.snapshot().runId } as DecisionJournalEvent
+        : event);
+    },
+  };
 
   const onEvent = (coin: string) => (event: BlockEvent, timing?: Timing) => {
     sink?.broadcast(event);
@@ -125,7 +145,11 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
     const previousSettings = activeSettings;
     const previousApiKey = activeApiKey;
     const previousExecutor = executor;
-    for (const sleeve of previousExecutor?.sleeves ?? []) sleeve.feed.suspend();
+    if (previousExecutor) {
+      await drainExecutor(previousExecutor);
+      for (const sleeve of previousExecutor.sleeves) sleeve.feed.suspend();
+      await Promise.all(previousExecutor.sleeves.map((sleeve) => sleeve.trader.drain()));
+    }
     applySettingsToConfig(settings, apiKey);
     resetHyperliquidMetadata();
 
@@ -181,11 +205,12 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
           await market.init();
           await market.reconcileStartupOwned();
           await feed.connect();
-          const trader = new Trader(market, createModel(), onEvent(spec.coin), onFill(spec.coin), onQuote(spec.coin));
+          const trader = new Trader(market, createModel(), onEvent(spec.coin), onFill(spec.coin), onQuote(spec.coin), journal);
           trader.attachTradeFeed(feed.trades);
           market.onVenueFill = (fill) => {
             if (!committed) return;
             sink?.broadcastFill(spec.coin, 0, {
+              decisionId: "uncorrelated",
               side: fill.side, size: fill.size, price: fill.price, txHash: fill.hash ?? null,
               orderId: 0, simulated: false, dir: fill.dir,
             }, fill.ts);
@@ -200,7 +225,11 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
               if (!guard) return;
               trader.setRunGuard(guard);
               guard.assertLive();
-              feed.start((tick) => trader.onBlock(tick));
+              feed.start((tick) => {
+                const work = trader.onBlock(tick);
+                inFlight.add(work);
+                void work.finally(() => inFlight.delete(work));
+              });
             },
             stop: () => feed.stop(),
             dispose: () => feed.close(),
@@ -267,7 +296,12 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
       if (disposed) return;
       disposed = true;
       await lifecycle.stop("shutdown");
-      executor?.lifecycle.disposeAll();
+      const active = executor;
+      if (active) {
+        await drainExecutor(active);
+        active.lifecycle.disposeAll();
+        await Promise.all(active.sleeves.map((sleeve) => sleeve.trader.drain()));
+      }
       executor = null;
       sink = null;
     },

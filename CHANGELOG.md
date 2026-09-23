@@ -21,6 +21,13 @@ All notable changes to this project are documented here. This changelog starts f
 - Added isolated keyless visitor paper sessions for #8. Each remote visitor gets an Off Bun Worker with its own settings, feed, lifecycle, history, and simulated trades, while localhost keeps the private shared operator.
 - Added the same-origin Next session gateway with an HttpOnly, SameSite=Strict capability cookie, Secure in production, exact public Origin checks, expiry and reconnect handling, and `BOT_API_URL` runtime routing.
 - Added visitor limits for 8 concurrent sessions, 10-minute inactivity expiry, 2 SSE streams per session, 64 KiB request bodies, creation burst 8 with refill 16 per minute, a 30-second Start cooldown, and a 30000 ms minimum decision cadence.
+- Added a Railpack build gate to `.github/workflows/test.yml`. Every pull request now builds the bot and dashboard contexts with a pinned Railpack and a pinned BuildKit image against the checked-out commit, so a merge to `main` cannot deploy a commit that has never been built.
+- Added branch protection on `main` requiring the `test` and `build` checks and disabling force pushes and branch deletion. Admins are not enforced, so an emergency merge remains possible.
+- Added dashboard install, typecheck, and production build to CI, and pinned CI to Bun 1.3.14 instead of `latest`.
+- Added a Deploying section to `CLAUDE.md` and a Merge gate section to `docs/deployment.md` naming merge to `main` as the deploy trigger and `just deploy` as the optional pre-merge path.
+- Added PostgreSQL decision history with queued parent-process writes, exact revisioned Jev prompt snapshots, decision UUID correlation, individually retained fills with idempotent retry identities, bias-signed 1, 5, 20, and 100 tick markouts, and shutdown draining.
+- Added signed anonymous owner continuity plus capability-scoped visitor decision reads and a loopback-only operator decision endpoint. The owner credential expires after one year, is not accepted by query routes, and must first be exchanged for a short-lived session capability.
+- Added the Jev model contract guide covering every prompt field, exclusion, question, outcome, privacy boundary, and prompt-refinement workflow.
 
 ### Changed
 
@@ -48,6 +55,8 @@ All notable changes to this project are documented here. This changelog starts f
 - Paper-mode process startup now arms one configured-duration run that starts when the first sleeve is ready. Failures stay Off and retry, expiry and manual Stop do not loop, process restart creates a new paper run, and real mode still requires a private confirmed Start.
 - Remote settings now apply paper settings to the visitor's Worker instead of changing browser preferences only. Visitors can Save, Start, Stop, and reset cleanup without controlling the shared executor. Refresh resumes the same Worker; an expired or deleted session requires explicit Reconnect to a fresh Off session.
 - Visitor Workers receive an explicit allowlisted runtime environment before importing bot modules. This prevents Bun's parent dotenv values from being compiled into `process.env.NAME` reads inside the Worker.
+- Reorganized Settings into Trading, Jev model, and Connections tabs. The model tab exposes cadence and lookback controls, the current prompt revision and questions, and the full input catalog with explanations.
+- Changed `Model.decide` to return the normalized answer with the exact immutable prompt snapshot used for that evaluation. Successful decisions now retain one ID through quotes and correlated fills.
 
 ### Removed
 
@@ -61,4 +70,5 @@ All notable changes to this project are documented here. This changelog starts f
 - Failed sleeve initialization no longer removes the sleeve from the API and dashboard. The bot exposes starting, retrying, and live status, shows the failure in the UI, and retries that sleeve after 30 minutes without restarting healthy sleeves.
 - `DRY_RUN=false` with no wallet key no longer fails every sleeve at startup with "real trading requires a wallet private key". Keyless sleeves run in paper mode again, as they did before the settings page, while keyed sleeves keep real execution.
 - Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
+- Fixed the Settings page hydration mismatch by resolving local operator scope after mount, and moved the theme bootstrap to Next's managed pre-interactive script path.
 

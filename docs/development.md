@@ -51,7 +51,7 @@ The recipes are defined in [`justfile`](../justfile). Tests belong in [`test/`](
 
 ## Continuous integration
 
-[`.github/workflows/test.yml`](../.github/workflows/test.yml) runs for pull requests and pushes to `main`. Its Ubuntu job checks out the repository, installs the latest Bun through `oven-sh/setup-bun`, runs `bun install --frozen-lockfile`, then runs `bun test`. It does not typecheck or build the dashboard, so run `just check` and `just build-web` locally when a change affects those surfaces.
+[`.github/workflows/test.yml`](../.github/workflows/test.yml) runs for pull requests and pushes to `main`, and both of its jobs are required status checks on `main`. The `test` job installs Bun 1.3.14 through `oven-sh/setup-bun`, installs the root and `web/` dependencies with `--frozen-lockfile`, runs `bun test`, typechecks the bot and the dashboard, then builds the dashboard. The `build` job installs a pinned Railpack, starts a pinned BuildKit container, and builds the bot context and the `web/` context the same way Railway does. Run `just check` and `just build-web` locally before pushing so CI is a confirmation rather than the first signal. Branch protection does not enforce the checks for repository admins, so an admin merge can still bypass a red build.
 
 ## Shared wire types
 

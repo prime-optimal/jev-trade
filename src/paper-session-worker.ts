@@ -58,7 +58,10 @@ try {
     pair: sleevesModule.coinPair(coin),
     label: coin,
   }));
-  const runtime = runtimeModule.createExecutionRuntime({ specs });
+  const runtime = runtimeModule.createExecutionRuntime({
+    specs,
+    journal: { enqueue: (event) => postMessage({ type: "journal", event }) },
+  });
   const operator = operatorModule.createOperatorControl({
     lifecycle: runtime.lifecycle,
     rebuild: runtime.rebuild,
@@ -84,6 +87,7 @@ try {
     operator.close();
     await runtime.dispose();
     server.close();
+    postMessage({ type: "closed" });
   };
   addEventListener("message", (event: MessageEvent<unknown>) => {
     if (typeof event.data !== "object" || event.data === null || !("type" in event.data) || event.data.type !== "close") return;

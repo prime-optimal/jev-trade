@@ -36,20 +36,19 @@ The bot sends the model id `jev-latest` by default ([`resolveJevModelId()`](../s
 
 ## Request and response contract
 
-[`callJev()`](../src/model.ts) sends two top-level inputs:
-
-- `state`: the market-facing subset of `TradeState`, including book, tape, position, indicators, and venue context. Wallet identity and lifetime PnL are excluded.
-- `questions`: independent choice questions for bias, intent, and leverage.
+[`callJev()`](../src/model.ts) sends one immutable prompt snapshot with revision `jev-trade-2026-09-23.1`, the market-facing state, and independent choice questions for bias, intent, and leverage. The journal stores that exact snapshot with every successful decision. The full input and question contract is in [Jev model contract](jev-model.md).
 
 OpenRouter and TypeSafe use `TypeSafeClient.systemOne()`. Gateway uses AI SDK `experimental_evaluate()`. Both paths return answer choices and probability distributions. The adapter also reads input usage as `usage.input_tokens` from the TypeSafe SDK or `usage.inputTokens` from AI SDK, then returns the normalized decision and `inputTokens`.
 
 Every provider call has a 4,000 ms deadline. SDK request retries are disabled with `maxRetries: 0`, including both the client and call settings for OpenRouter and TypeSafe. The AI SDK gateway call also sets `maxRetries: 0`.
 
-## Errors and late ticks
+## Errors, overlap, and stale results
 
-[`Trader.onBlock()`](../src/trader.ts) permits only one model call at a time. If the next tick arrives while a call is busy, it does not start another call. It emits a late block with a synthetic hold-shaped decision whose `late` field is `true`. This is not a Jev decision and does not increment the decision count.
+[`Trader.onBlock()`](../src/trader.ts) starts one Jev evaluation on every scheduled tick while the sleeve is Running, even when an earlier evaluation is pending. Successful decisions receive UUIDs that carry through quotes, fills, and 1, 5, 20, and 100 tick markouts.
 
-A model timeout or other provider error logs the error and emits the same late event for that tick. Jev was asked and did not answer. Nothing pauses after an error: the next tick calls Jev again, including after HTTP 402, `no available TypeSafe API credits`, or `insufficient credits`, which `jevUnavailable()` labels in the log. Late handling does not enqueue an order or cancel the existing resting order.
+Only the newest result from a still-live run may submit exchange work. A response that arrives after a newer tick or after Stop or expiry remains a recorded Jev evaluation, but it is stale and cannot trade. The bot never rewrites a stale response as hold.
+
+A model timeout or other provider error logs and records the failure. It does not fabricate a decision or enqueue order work. The next tick calls Jev again, including after HTTP 402, `no available TypeSafe API credits`, or `insufficient credits`, which `jevUnavailable()` labels in the log.
 
 A successful Jev `hold` is different: it increments the decision count, has `late: false`, and cancels the standing quote. See [Trading behavior](trading.md) for order semantics.
 

@@ -18,6 +18,31 @@ The implementation runs two Bun listeners. The public listener on `PORT`, defaul
 
 The public API has no settings, validation, Start, Stop, or reconcile mutation. Public CORS is for read-only dashboard data, not operator authorization.
 
+## Visitor decision history
+
+`GET /sessions/decisions?limit=&before=` returns durable decision history for the owner associated with the active visitor session. The opaque session capability is required and authorizes the read. The server resolves the owner from that capability and always applies the owner predicate. A signed owner cookie may restore ownership after reconnect or restart. Query routes do not accept that cookie directly; session creation must exchange it for a new short-lived capability.
+
+The Next gateway exposes the same operation as same-origin `GET /api/session/decisions?limit=&before=`. Browser code never receives the capability. `limit` defaults to 50 and is capped at 200. `before` is the opaque cursor returned by the preceding page.
+
+Pages are newest first:
+
+```ts
+interface DecisionPage {
+  rows: Array<{
+    decisionId: string;
+    createdAt: number;
+    updatedAt: number;
+    decision: unknown;
+    quote: unknown | null;
+    fills: unknown[];
+    markouts: Record<string, unknown>;
+  }>;
+  nextBefore: string | null;
+}
+```
+
+Each row joins the successful decision to its quote, correlated fills, and available 1, 5, 20, and 100 tick markouts. The stored decision contains the exact revisioned prompt snapshot described in the [Jev model contract](jev-model.md).
+
 ## Run payload
 
 ```ts
@@ -46,6 +71,7 @@ Mutation bodies must be JSON objects with `Content-Type: application/json` and a
 | Route | Body | Result |
 | --- | --- | --- |
 | `GET /operator` | None | Redacted operator snapshot with applied settings, environment baseline, override names, `redactedEndpoints`, configured or missing secret flags, last connection result, and run state. |
+| `GET /decisions?limit=&before=` | None | Newest-first cursor page of durable decisions for the internal shared-executor owner. This route is loopback-only with the rest of the operator listener. |
 | `POST /settings` | `{ settings, apiKey?, clearedEndpoints? }` | Validates and applies a complete snapshot while Off or Expired. Empty `apiKey` clears it. `clearedEndpoints` may contain `hyperliquidApiUrl`, `hyperliquidWsUrl`, or `rpcUrl` when that field is explicitly cleared. Rebuilds execution resources before commit. |
 | `POST /validate` | `{ settings?, apiKey? }` | Validates the candidate or applied HTTP, WebSocket, and SDK RPC transports while stopped. Returns `200` when compatible and `422` for a completed incompatible check. |
 | `POST /start` | `{ confirmReal? }` | Runs preflight and starts one authoritative run. Real mode requires `confirmReal: true`. Repeated Start while Starting or Running is idempotent. |

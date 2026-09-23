@@ -2,12 +2,13 @@
 
 ## Overview
 
-Railway runs this repository as two services from one GitHub source:
+Railway runs this repository as two application services plus PostgreSQL:
 
 - `bot` builds from the repository root and runs the Bun trading process.
 - `web` builds from [`web/`](../web/) and runs the Next dashboard.
+- `postgres` stores durable decision history and is reachable only through Railway's private service network.
 
-[`.railway/railway.ts`](../.railway/railway.ts#L10-L77) defines both services and the `bot-data` volume. Both services use the Railpack builder. [`railpack.json`](../railpack.json#L1-L6) pins the root build to Bun 1.3.14. Railway evaluates this project graph when `railway config plan` or `railway config apply` runs.
+[`.railway/railway.ts`](../.railway/railway.ts#L10-L88) defines both services, PostgreSQL, and the `bot-data` volume. Both application services use the Railpack builder. [`railpack.json`](../railpack.json#L1-L6) pins the root build to Bun 1.3.14. Railway evaluates this project graph when `railway config plan` or `railway config apply` runs.
 
 Railway Infrastructure as Code replaces the deprecated `railway.json` and `railway.toml` Config as Code model. New services cannot opt into that older model, and Railway stops reading existing Config as Code files on 2026-12-01. Neither service should have a Config File path set in Railway, or two configuration systems will try to manage the same service. See Railway's [Infrastructure as Code guide](https://docs.railway.com/infrastructure-as-code), [IaC reference](https://docs.railway.com/infrastructure-as-code/reference), and [Config as Code notice](https://docs.railway.com/config-as-code).
 
@@ -25,11 +26,31 @@ The `railway` group in the [`justfile`](../justfile) wraps the flow below. Every
 |---|---|
 | `just deploy-plan` | `railway config plan` for `.railway/railway.ts`. Read-only. |
 | `just deploy-infra` | Runs the plan, then `railway config apply`, which asks for confirmation. |
-| `just deploy-setup` | Reads `OPENROUTER_API_KEY` through fnox, writes it to the bot service from stdin without triggering a deploy, then creates or prints both public domains. Approve the 1Password prompt when it appears. |
+| `just deploy-setup` | Reads required secrets through fnox, writes preserved bot secrets without triggering a deploy, then creates or prints both public domains. Approve the 1Password prompt when it appears. |
 | `just deploy` | Runs `just check`, uploads this checkout to `bot` and `web` with `railway up --ci`, streams each build, then prints status. Use it to ship a branch before it merges. |
 | `just deploy-status` | Latest deployment status for `bot` and `web`. |
 
 Both services track GitHub `main`, so a merged push to `main` redeploys whichever service's watch patterns match. `just deploy` is for code that is not on `main` yet. The next push to `main` replaces that upload.
+
+## Merge gate
+
+Because a merge to `main` deploys, [`.github/workflows/test.yml`](../.github/workflows/test.yml) has to prove the merged commit builds, not just that it passes tests. It runs two jobs on every pull request and on pushes to `main`:
+
+- `test` installs both workspaces with `--frozen-lockfile` on the pinned Bun version, runs `bun test`, typechecks the bot and the dashboard, then builds the dashboard.
+- `build` installs a pinned Railpack, starts a pinned BuildKit container, and runs `railpack build` for the bot context (`.`) and the dashboard context (`web`).
+
+Both jobs are required status checks on `main`, so a pull request with a red build cannot be merged through the normal path. `enforce_admins` is off, so a repository admin can still merge past a failure when an emergency demands it. Force pushes and branch deletion on `main` are disabled.
+
+The `build` job runs against `actions/checkout`, which is the git tree. That is what makes it trustworthy: a local `railpack build` reads the working directory, so untracked files such as a local `mise.toml` or agent scaffolding enter the plan and get installed into the image even though Railway's GitHub source never contains them. Reproduce a CI build locally by exporting a commit first:
+
+```sh
+git archive HEAD | tar -x -C /tmp/jev-clean
+docker run --rm --privileged -d --name buildkit moby/buildkit:v0.33.0
+BUILDKIT_HOST='docker-container://buildkit' railpack build --name jev-bot /tmp/jev-clean
+BUILDKIT_HOST='docker-container://buildkit' railpack build --name jev-web /tmp/jev-clean/web
+```
+
+`git archive HEAD` exports the last commit, not the working tree, so commit before using it as a check. Railway does not pin a Railpack builder version, so neither the CI build nor a local build is a byte-for-byte reproduction of a Railway build. Both catch the failures that matter: detection changes, lockfile drift, and build command errors.
 
 First deploy of a fresh project:
 
@@ -56,11 +77,13 @@ If the project already exists, select `jev-trade` and the intended environment i
 railway config plan
 ```
 
-Review the plan. It should create or manage only `bot`, `web`, and the 512 MB `bot-data` volume mounted at `/data`. It should use the `main` branch and preserve the three bot secret variables. Apply only when that exact plan is intended:
+Review the plan. It should create or manage only `bot`, `web`, `postgres`, and the 512 MB `bot-data` volume mounted at `/data`. `DATABASE_URL` must be a service reference to `postgres.env.DATABASE_URL`, not a public database URL or a literal credential. The plan should use the `main` branch and preserve bot secrets. Before applying a plan that first adds `postgres`, set `DECISION_OWNER_SECRET` on `bot` using the secret setup below; otherwise the bot will receive `DATABASE_URL` without the required signing key. Apply only when that exact graph is intended:
 
 ```sh
 railway config apply
 ```
+
+After the database exists, keep application traffic on `DATABASE_URL` and remove any generated public TCP proxy from `postgres`. `railway tcp-proxy list --service postgres --json` must return no proxy before production decision data is written. The database needs only Railway private networking.
 
 The IaC graph does not generate Railway public domains. After the services exist, create one for each service:
 
@@ -75,16 +98,19 @@ Railway injects `PORT` at runtime. The bot's local default of 3000 is not a prod
 railway domain update <domain> --port 8080 --service bot
 ```
 
-Set each secret without putting its value in shell history. `OPENROUTER_API_KEY` is required for the first safe deployment. Add wallet values later, before live trading. If a custom Hyperliquid provider requires an HTTP credential, set `HL_API_KEY` the same way:
+Set each secret without putting its value in shell history. `OPENROUTER_API_KEY` and `DECISION_OWNER_SECRET` are required for the deployed configuration. Generate the owner secret as a high-entropy value and keep it stable, because changing it prevents existing owner cookies from restoring their database owner. Add wallet values later, before live trading. If a custom Hyperliquid provider requires an HTTP credential, set `HL_API_KEY` the same way:
 
 ```sh
 printf '%s' "$OPENROUTER_API_KEY" | railway variables set OPENROUTER_API_KEY --stdin --service bot
+printf '%s' "$DECISION_OWNER_SECRET" | railway variables set DECISION_OWNER_SECRET --stdin --service bot
 printf '%s' "$PRIVATE_KEY" | railway variables set PRIVATE_KEY --stdin --service bot
 printf '%s' "$WALLETS_JSON" | railway variables set WALLETS_JSON --stdin --service bot
 printf '%s' "$HL_API_KEY" | railway variables set HL_API_KEY --stdin --service bot
 ```
 
-The CLI can write these variables but does not expose a sealing flag. In the bot service Variables tab, open each secret variable's menu and choose **Seal**. A sealed value remains available to builds and deployments but cannot be read through the UI or API. Do not replace a variable that `railway variables list --service bot` reports as `<sealed>`. See [Railway variables](https://docs.railway.com/variables).
+The IaC graph injects `DATABASE_URL` from the private PostgreSQL service reference. Do not replace it with a public TCP endpoint, copy it into `web`, or expose PostgreSQL publicly.
+
+The CLI can write these variables but does not expose a sealing flag. In the bot service Variables tab, open each secret variable's menu and choose **Seal**. Seal `DECISION_OWNER_SECRET`, provider keys, wallet values, and transport credentials. A sealed value remains available to builds and deployments but cannot be read through the UI or API. Do not replace a variable that `railway variables list --service bot` reports as `<sealed>`. See [Railway variables](https://docs.railway.com/variables).
 
 The first deployment must keep the safe defaults from [`.railway/railway.ts`](../.railway/railway.ts#L30-L44):
 
@@ -124,14 +150,15 @@ Railway matches every watch pattern from the repository root, even when a servic
 
 ## Single-bot safety
 
-The bot must have one active process. This protects both wallet ownership and the in-memory visitor registry:
+The bot must have one active process. This protects wallet ownership, the in-memory visitor registry, and ordered journal delivery:
 
 - Keep `bot-data` attached at `/data`. A Railway volume prevents old and new deployments of the same service from running at the same time, so deploys have brief downtime.
 - Keep bot replicas at 1. Railway does not support replicas with a mounted volume, and visitor capabilities cannot route across independent registries.
+- Keep PostgreSQL private and let only the bot use its `DATABASE_URL`. Visitor Workers send journal events to the parent Bun process rather than opening database connections.
 - Do not create a second Railway environment, PR environment, or service with the same wallet keys.
 - Do not run a local live bot against wallets used by production.
-- Scope `PRIVATE_KEY` and `WALLETS_JSON` to the production `bot` service. Never add them as shared variables or web variables.
-- Accept deploy downtime. Restarting the bot expires every visitor session; visitors reconnect to a fresh Off worker.
+- Scope `PRIVATE_KEY`, `WALLETS_JSON`, and `DECISION_OWNER_SECRET` to the production `bot` service. Never add them as shared variables or web variables.
+- Accept deploy downtime. Restarting the bot expires active visitor sessions and transient Worker state. Visitors reconnect to a fresh Off worker, while the signed owner cookie can restore access to durable decision history after the new capability is established.
 
 Each active visitor consumes a Bun Worker, venue connections, memory, and model calls while running. Defaults cap the registry at 8 sessions, expire it after 10 idle minutes, allow 2 SSE streams per session, limit creation to burst 8 and refill 16 per minute, cap request bodies at 64 KiB, and enforce a 30-second Start cooldown and 30000 ms minimum decision cadence.
 
