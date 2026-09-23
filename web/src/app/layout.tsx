@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { SettingsProvider } from "@/lib/trading/SettingsProvider";
@@ -89,10 +90,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={plex.variable} suppressHydrationWarning>
       <head>
         <link rel="describedby" href="https://www.jev-trade.com/llms.txt" />
-        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+        <Script id="theme-boot" strategy="beforeInteractive">{themeBoot}</Script>
       </head>
       <body>
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        <script id="jev-trade-json-ld" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
         <SettingsProvider>{children}</SettingsProvider>
       </body>
     </html>

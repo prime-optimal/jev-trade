@@ -68,7 +68,12 @@ function applyTheme(theme: Theme): void {
 
 export function SettingsProvider({ children, owner = null }: { children: ReactNode; owner?: SettingsOwner }) {
   const publicApi = useMemo(resolvePublicApiUrl, []);
-  const localOperatorApi = useMemo(resolveOperatorApiUrl, []);
+  const [scopeResolution, setScopeResolution] = useState<{ operatorApi: string | null; resolved: boolean }>({
+    operatorApi: null,
+    resolved: false,
+  });
+  const localOperatorApi = scopeResolution.operatorApi;
+  const scopeResolved = scopeResolution.resolved;
   const isVisitor = !localOperatorApi;
   const controlApi = isVisitor ? SESSION_API : localOperatorApi;
   const [settings, setSettings] = useState<TradingSettings>({ ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins] });
@@ -78,15 +83,15 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
   const [connection, setConnection] = useState<ConnectionValidation | null>(null);
   const [operator, setOperator] = useState<OperatorSnapshot | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [sessionState, setSessionState] = useState<SessionState>(isVisitor ? "connecting" : "local");
+  const [sessionState, setSessionState] = useState<SessionState>("connecting");
   const keyRef = useRef<string | undefined>(undefined);
   const keyHostRef = useRef<string | null>(null);
   const bootstrapStartedRef = useRef(false);
   const mutationRef = useRef(0);
   const endpointMemoryRef = useRef<EndpointMemory>({});
   const feedApi = isVisitor ? SESSION_API : publicApi;
-  const feed = useFeed(feedApi, !isVisitor || sessionState === "ready");
-  const ready = isVisitor ? sessionState === "ready" : operator !== null;
+  const feed = useFeed(feedApi, scopeResolved && (!isVisitor || sessionState === "ready"));
+  const ready = scopeResolved && (isVisitor ? sessionState === "ready" : operator !== null);
 
   const applySnapshot = useCallback((snapshot: SessionOperatorSnapshot) => {
     const visible = isVisitor ? snapshot.settings : withMemoryEndpoints(snapshot.settings, snapshot.redactedEndpoints, endpointMemoryRef.current);
@@ -120,6 +125,13 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
   }, [applySnapshot, isVisitor]);
 
   useEffect(() => {
+    const operatorApi = resolveOperatorApiUrl();
+    setScopeResolution({ operatorApi, resolved: true });
+    setSessionState(operatorApi ? "local" : "connecting");
+  }, []);
+
+  useEffect(() => {
+    if (!scopeResolved) return;
     const storage = (() => { try { return window.localStorage; } catch { return null; } })();
     const selected = loadSelectedNetwork(storage);
     const loaded = loadSettings(storage, selected.network, owner);
@@ -135,10 +147,10 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
       setNotice(appearance.notice?.message ?? null);
       void reconnect().catch(() => {});
     }
-  }, [isVisitor, owner, reconnect]);
+  }, [isVisitor, owner, reconnect, scopeResolved]);
 
   useEffect(() => {
-    if (!controlApi || (isVisitor && sessionState !== "ready")) return;
+    if (!scopeResolved || !controlApi || (isVisitor && sessionState !== "ready")) return;
     let stopped = false;
     let controller: AbortController | null = null;
     const poll = async () => {
@@ -156,10 +168,10 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
     void poll();
     const interval = window.setInterval(poll, 5_000);
     return () => { stopped = true; controller?.abort(); window.clearInterval(interval); };
-  }, [applySnapshot, controlApi, expireSession, isVisitor, sessionState]);
+  }, [applySnapshot, controlApi, expireSession, isVisitor, scopeResolved, sessionState]);
 
   useEffect(() => {
-    if (isVisitor) return;
+    if (!scopeResolved || isVisitor) return;
     let stopped = false;
     const poll = async () => {
       const revision = mutationRef.current;
@@ -173,7 +185,7 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
     void poll();
     const interval = window.setInterval(poll, 2_000);
     return () => { stopped = true; window.clearInterval(interval); };
-  }, [isVisitor, publicApi]);
+  }, [isVisitor, publicApi, scopeResolved]);
 
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);
