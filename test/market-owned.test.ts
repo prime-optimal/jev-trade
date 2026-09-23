@@ -1,7 +1,8 @@
 import { ApiRequestError } from "@nktkas/hyperliquid";
 import { expect, test } from "bun:test";
 import { Market } from "../src/market";
-import type { Quote, Side } from "../src/types";
+import type { Quote } from "../src/legacy-types";
+import type { Side } from "../src/types";
 import { discoverOwnedOrders, type OwnedOrder } from "../src/owned-orders";
 
 const OWNED = "0x4a455654000000000000000000000001" as const;

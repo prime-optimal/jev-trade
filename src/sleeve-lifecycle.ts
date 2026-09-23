@@ -1,7 +1,7 @@
 import type { SleeveView } from "./server";
 import { safeTransportMessage } from "./hyperliquid";
 import type { SleeveConfig } from "./sleeves";
-import type { Meta, SleeveMeta } from "./types";
+import type { Meta, SleeveMeta } from "./legacy-types";
 
 export const RETRY_DELAY_MS = 1_800_000;
 

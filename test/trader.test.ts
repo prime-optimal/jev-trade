@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import type { Market } from "../src/market";
 import type { Model } from "../src/model";
-import type { ModelDecision, TradeState } from "../src/types";
+import type { ModelDecision, Side, TradeState } from "../src/types";
 import { leverageRungs, liveIntent, parseLeverage, planQuote, quoteAction } from "../src/plan";
 import { jevUnavailable, Trader } from "../src/trader";
-import type { BlockEvent, Book, Quote, Side } from "../src/types";
+import type { BlockEvent, Book, Quote } from "../src/legacy-types";
 
 test("jevUnavailable detects a TypeSafe credit 402", () => {
   expect(jevUnavailable(new Error("402 Your organization has no available TypeSafe API credits. Please add more credits"))).toBe(true);
