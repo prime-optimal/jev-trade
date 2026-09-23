@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { applyLiveMid, barsForView, fillMarks, M15_MS } from "../web/src/lib/ohlc";
-import type { PricePoint } from "../src/types";
+import type { PricePoint } from "../src/legacy-types";
 
 test("barsForView reads 1m ohlc and rolls them into 15m", () => {
   const tape: PricePoint[] = [

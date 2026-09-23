@@ -9,7 +9,8 @@ import type { Feed } from "./feed";
 import { cleanupOwnedOrders, createOwnedCloid, discoverOwnedOrders, isCleanupExchangeRequest, reconcileOwnedOrderStatuses, type OwnedOrder } from "./owned-orders";
 import { type SleeveConfig } from "./sleeves";
 import type { RunGuard } from "./run-lifecycle";
-import type { Book, Fill, Quote, Side } from "./types";
+import type { Book, Fill, Quote } from "./legacy-types";
+import type { Side } from "./types";
 
 type Ex = ExchangeClient;
 

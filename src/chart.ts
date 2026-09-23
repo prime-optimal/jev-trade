@@ -1,5 +1,6 @@
 import { infoPost } from "./hyperliquid";
-import type { PricePoint, Side } from "./types";
+import type { PricePoint } from "./legacy-types";
+import type { Side } from "./types";
 
 export const CHART_INTERVAL = "1m";
 export const CHART_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;

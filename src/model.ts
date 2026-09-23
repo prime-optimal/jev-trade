@@ -2,81 +2,8 @@ import { createGateway } from "@ai-sdk/gateway";
 import { experimental_evaluate as evaluate } from "ai";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
 import { assertJevCredentials, config, OPENROUTER_BASE_URL, runtimeEnv, type JevProvider } from "./config";
-import { leverageRungs, liveIntent, parseLeverage, quoteAction, type Bias, type Intent } from "./plan";
-import type { Action, Side } from "./types";
-
-/** What the model sees. Compact, relative, human-readable. */
-export interface TradeState {
-  coin: string;
-  market: string;
-  tick: number;
-  tickMs: number;
-  mid: number;
-  spreadBps: number;
-  bookImbalance: number;
-  /** Cumulative resting size within 10/25/50 bps of mid, per side. */
-  depth: { [band: string]: { bid: number; ask: number } };
-  /** Top 5 levels each side, best first, as "price x size". */
-  book: { bids: string[]; asks: string[] };
-  returnsBps: { last1: number; last5: number; last20: number; last100: number };
-  recentMids: string;
-  /** Taker prints in the lookback window. cvdSz = taker buy size minus taker sell size. */
-  trades: { count: number; buySz: number; sellSz: number; cvdSz: number; vwap: number | null; lastPrice: number | null; lastSide: Side | null };
-  recentTrades: string[];
-  position: {
-    coin: string;
-    side: "long" | "short" | "flat";
-    size: number;
-    notionalUsd: number;
-    entry: number | null;
-    leverage: number | null;
-    liquidationPx: number | null;
-    distanceBps: number | null;
-    unrealizedUsd: number;
-  };
-  indicators: {
-    sma20: number | null;
-    sma50: number | null;
-    ema20: number | null;
-    midVsSma20Bps: number | null;
-    midVsSma50Bps: number | null;
-    rsi14: number | null;
-    vol20Bps: number | null;
-    high20: number | null;
-    low20: number | null;
-    rangePos20: number | null;
-  };
-  asset: {
-    markPx: number | null;
-    oraclePx: number | null;
-    fundingBps: number | null;
-    premiumBps: number | null;
-    openInterest: number | null;
-    dayNtlVlmUsd: number | null;
-    dayChangeBps: number | null;
-    maxLeverage: number;
-  };
-  maxLeverage: number;
-}
-
-export interface ModelDecision {
-  action: Action;
-  intent: Intent;
-  bias: Bias;
-  leverage: number;
-  probabilities: {
-    buy: number;
-    sell: number;
-    hold: number;
-    long: number;
-    short: number;
-    open: number;
-    close: number;
-  };
-  upIn10: number;
-  latencyMs: number;
-  inputTokens: number;
-}
+import { leverageRungs, liveIntent, parseLeverage, quoteAction } from "./plan";
+import type { Bias, Intent, ModelDecision, TradeState } from "./types";
 
 export interface Model {
   readonly name: string;
@@ -322,18 +249,6 @@ function sdkClient(provider: Exclude<JevProvider, "gateway">): TypeSafeClient {
   }));
 }
 
-const JEV_DEADLINE_MS = 4000;
-
-function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`jev timeout ${ms}ms`)), ms);
-    p.then(
-      (v) => { clearTimeout(t); resolve(v); },
-      (e) => { clearTimeout(t); reject(e); },
-    );
-  });
-}
-
 async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputTokens: number }> {
   const seen = marketFacing(state);
   const qs = jevQuestions(state);
@@ -357,7 +272,8 @@ async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputT
     );
     return { answers: r.answers, inputTokens: r.usage.input_tokens ?? 0 };
   };
-  return withDeadline(run(), JEV_DEADLINE_MS);
+  // The server may time out its response, but owns the permit until this settles.
+  return run();
 }
 
 /** Real Jev. JEV_PROVIDER selects OpenRouter, official TypeSafe, or Vercel AI Gateway. */
@@ -419,7 +335,7 @@ export class MockModel implements Model {
 }
 
 export const createModel = (): Model => {
-  if (config.model !== "jev") return new MockModel();
+  if (config.model === "mock" && !config.production) return new MockModel();
   assertJevCredentials(config.model, config.jevProvider, runtimeEnv);
   return new JevModel();
 };

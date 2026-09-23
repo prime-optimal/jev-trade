@@ -8,7 +8,6 @@ import FlowChart from "@/components/FlowChart/FlowChart";
 import Header from "@/components/Header/Header";
 import SleeveStrip from "@/components/SleeveStrip/SleeveStrip";
 import { lastMeaningfulCall } from "@/lib/format";
-import { portfolioBalance, portfolioPnl } from "@/lib/pnl";
 import { useSettings } from "@/lib/trading/SettingsProvider";
 import type { BlockEvent, Meta, SleeveFeed } from "@/lib/types";
 import styles from "./page.module.css";
@@ -24,12 +23,11 @@ function viewMeta(meta: Meta | null, coin: string): Meta | null {
     coin,
     pair: sleeve?.pair ?? meta.pair,
     market: sleeve?.pair ?? meta.market,
-    wallet: sleeve?.wallet ?? meta.wallet,
   };
 }
 
 export default function Page() {
-  const { feed } = useSettings();
+  const { feed, wallet, account, settings } = useSettings();
   const [picked, setPicked] = useState<string | null>(null);
 
   const coins = useMemo(() => {
@@ -47,33 +45,31 @@ export default function Page() {
     return out;
   }, [coins, feed.byCoin]);
 
-  const tapeByCoin = useMemo(() => {
-    const out: Record<string, NonNullable<SleeveFeed["tape"]>> = {};
-    for (const c of coins) out[c] = feed.byCoin[c]?.tape ?? [];
-    return out;
-  }, [coins, feed.byCoin]);
 
   const lastCallByCoin = useMemo(() => {
     const out: Record<string, string> = {};
     for (const c of coins) {
       const s = feed.byCoin[c];
-      out[c] = lastMeaningfulCall(s?.events ?? [], s?.latest ?? null);
+      out[c] = s?.latest?.decision || s?.events.some((event) => event.decision)
+        ? lastMeaningfulCall(s?.events ?? [], s?.latest ?? null)
+        : "No decision";
     }
     return out;
   }, [coins, feed.byCoin]);
 
-  const pnl = useMemo(() => portfolioPnl(latestByCoin), [latestByCoin]);
-  const balance = useMemo(() => portfolioBalance(latestByCoin), [latestByCoin]);
-  const hasBooks = coins.some((c) => latestByCoin[c]);
+  const balance = wallet.connected ? account?.accountValue ?? null : null;
+  const unrealized = wallet.connected && account
+    ? Object.values(account.positions).reduce((sum, position) => sum + position.unrealizedUsd, 0)
+    : null;
   const waiting = !feed.meta;
 
   return (
     <div className="shell">
       <Header
         connection={feed.connection}
-        balance={hasBooks ? balance : null}
-        unrealized={hasBooks ? pnl.unrealized : null}
-        realized={hasBooks ? pnl.realized : null}
+        balance={balance}
+        unrealized={unrealized}
+        realized={null}
       />
       <SleeveStrip
         sleeves={feed.meta?.sleeves ?? []}
@@ -83,6 +79,7 @@ export default function Page() {
         onSelect={setPicked}
         waiting={waiting}
       />
+      <p>Enabled markets: {settings.enabledCoins.join(", ") || "None"}. Other markets remain available to view.</p>
       <div className={styles.main}>
         <div className={styles.left}>
           <div className={styles.chartWrap}>
@@ -91,25 +88,17 @@ export default function Page() {
               events={sleeve.events}
               latest={sleeve.latest}
               meta={meta}
-              onNeedMoreTape={feed.loadTape}
             />
           </div>
         </div>
         <div className={styles.right}>
-          <DecisionPanel latest={sleeve.latest} meta={meta} waiting={waiting} />
-          <Feed events={sleeve.events} meta={meta} waiting={waiting} />
+          {wallet.connected ? <>
+            {sleeve.latest?.decision ? <DecisionPanel latest={sleeve.latest} meta={meta} waiting={false} /> : <p>No session decision yet. Choose On to start a finite run.</p>}
+            <Feed events={sleeve.events} meta={meta} waiting={false} />
+          </> : <p>Connect Brave Wallet to prepare a session. Public prices remain available. No trading starts until you choose On.</p>}
         </div>
       </div>
-      <Book
-        sleeves={feed.meta?.sleeves ?? []}
-        latestByCoin={latestByCoin}
-        tapeByCoin={tapeByCoin}
-        selected={coin}
-        meta={meta}
-        onSelect={setPicked}
-        onNeedMoreTape={feed.loadTape}
-        waiting={waiting}
-      />
+      <Book selected={coin} onSelect={setPicked} />
     </div>
   );
 }

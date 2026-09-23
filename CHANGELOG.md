@@ -4,6 +4,10 @@ All notable changes to this project are documented here. This changelog starts f
 
 ## Unreleased
 
+### Fixed
+
+- Forward browser agent acceptance deadlines through Hyperliquid SDK execution options. Preserve exact-owned cleanup after wallet changes, bind reconciliation to the original account and transport, and bound long session timers.
+
 ### Added
 
 - Added OpenRouter as a Jev provider through its System One endpoint, with provider-specific model defaults and startup credential checks.
@@ -21,6 +25,12 @@ All notable changes to this project are documented here. This changelog starts f
 - Added isolated keyless visitor paper sessions for #8. Each remote visitor gets an Off Bun Worker with its own settings, feed, lifecycle, history, and simulated trades, while localhost keeps the private shared operator.
 - Added the same-origin Next session gateway with an HttpOnly, SameSite=Strict capability cookie, Secure in production, exact public Origin checks, expiry and reconnect handling, and `BOT_API_URL` runtime routing.
 - Added visitor limits for 8 concurrent sessions, 10-minute inactivity expiry, 2 SSE streams per session, 64 KiB request bodies, creation burst 8 with refill 16 per minute, a 30-second Start cooldown, and a 30000 ms minimum decision cadence.
+
+- Replaced the planned server-owned trading boundary with browser-local settings, display contracts, network signing identity, and address-free Jev inference ownership.
+- Added a bounded, address-free `/decide` inference API with strict request validation, origin policy, rate limits, and late-settlement concurrency protection.
+- Added direct Brave wallet connection and ephemeral Hyperliquid agent authorization that keeps signing keys in browser memory.
+- Added browser-local trading feeds, shared account state, paper ledger, direct order safety, exact-cloid journaling, and owner/network locking.
+- Added the personal browser dashboard integration for wallet states, account-wide metrics, finite runs, and local feed/session controls.
 
 ### Changed
 

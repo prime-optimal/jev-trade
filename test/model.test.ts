@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { decideFromJevAnswers, jevQuestions, marketFacing, type TradeState } from "../src/model";
+import { decideFromJevAnswers, jevQuestions, marketFacing } from "../src/model";
+import type { TradeState } from "../src/types";
 
 function fixture(side: TradeState["position"]["side"]): TradeState {
   return {

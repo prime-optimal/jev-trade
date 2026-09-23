@@ -10,7 +10,7 @@ import { createStartupAutostart, type StartupAutostart } from "./startup-autosta
 import { coinPair, type SleeveConfig } from "./sleeves";
 import type { TradingSettings } from "./settings";
 import { Trader } from "./trader";
-import type { BlockEvent, Fill, Meta, Quote, Timing } from "./types";
+import type { BlockEvent, Fill, Meta, Quote, Timing } from "./legacy-types";
 
 interface ExecutionSleeve {
   feed: Feed;

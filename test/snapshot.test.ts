@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { SNAPSHOT_HISTORY, SNAPSHOT_MIDS, clipHistory, clipSnapshotTape, clipTape } from "../src/snapshot";
-import type { BlockEvent, PricePoint } from "../src/types";
+import type { BlockEvent, PricePoint } from "../src/legacy-types";
 
 const mid = (ts: number, px: number): PricePoint => ({ ts, mid: px });
 const fill = (ts: number, px: number): PricePoint => ({

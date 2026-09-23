@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createSleeveLifecycle, RETRY_DELAY_MS } from "../src/sleeve-lifecycle";
-import type { Meta, SleeveMeta } from "../src/types";
+import type { Meta, SleeveMeta } from "../src/legacy-types";
 import type { SleeveConfig } from "../src/sleeves";
 
 const specs: SleeveConfig[] = [

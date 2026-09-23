@@ -1,4 +1,5 @@
-import type { Fill, Side } from "./types";
+import type { Fill } from "./legacy-types";
+import type { Side } from "./types";
 
 export interface TradePrint { block: number; price: number; size: number; side: Side }
 

@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import { fmtSignedUsd, fmtUsd } from "@/lib/format";
 import { useSettings } from "@/lib/trading/SettingsProvider";
 import Logo from "@/components/Logo/Logo";
-import { Bone } from "@/components/Skeleton/Skeleton";
 import styles from "./Header.module.css";
 
 export interface HeaderProps {
@@ -22,7 +21,7 @@ function Score({ label, value, signed = true }: { label: string; value: number |
     <span className={styles.score}>
       <span className={styles.scoreKey}>{label}</span>
       <span className={styles.scoreVal} style={color ? { color } : undefined}>
-        {value == null ? <Bone w={64} h={16} /> : signed ? fmtSignedUsd(value, 2) : fmtUsd(value, 2)}
+        {value == null ? <span aria-label="Not available">-</span> : signed ? fmtSignedUsd(value, 2) : fmtUsd(value, 2)}
       </span>
     </span>
   );
@@ -50,9 +49,10 @@ function clock(value: number): string {
 
 export default function Header({ connection, balance, unrealized, realized }: HeaderProps) {
   const pathname = usePathname();
-  const { settings, scope, sessionState, run, connection: venueConnection, start, stop, ready } = useSettings();
+  const { settings, run, connection: venueConnection, start, stop, ready, wallet, authorization, connect, disconnect, prepareNetwork, authorize, reconcile } = useSettings();
   const [now, setNow] = useState(() => Date.now());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const status = run.status;
   const active = status === "starting" || status === "running" || status === "paused" || status === "stopping";
 
@@ -77,11 +77,8 @@ export default function Header({ connection, balance, unrealized, realized }: He
   }, [clockOffset, now, run.deadlineAt, run.durationMs, run.startedAt, run.stoppedAt, settings.runDurationMinutes, status]);
 
   const statusText = (() => {
-    if (scope === "visitor" && !ready) {
-      if (sessionState === "expired") return "Session expired";
-      if (sessionState === "error") return "Session unavailable";
-      return "Session connecting";
-    }
+    if (!ready) return "Loading settings";
+    if (!wallet.connected) return "Disconnected";
     const progress = `${clock(timing.elapsed)} / ${clock(timing.duration)}`;
     if (status === "running") return `Running ${progress}`;
     if (status === "starting") return `Starting ${progress}`;
@@ -89,32 +86,40 @@ export default function Header({ connection, balance, unrealized, realized }: He
     if (status === "stopping") return `Stopping ${progress}`;
     if (status === "expired") return `Expired ${progress}`;
     if (status === "attention-required") return "Attention required";
-    return `Off ${clock(timing.duration)}`;
+    return `Connected, stopped ${clock(timing.duration)}`;
   })();
 
-  const connectionReady = venueConnection?.ok === true && (settings.mode !== "real" || venueConnection.realAllowed);
-  const canStart = ready && (scope === "visitor" || connectionReady) && settings.enabledCoins.length > 0 && (status === "off" || status === "expired");
-  const canStop = ready && active && status !== "stopping";
+  const connectionReady = venueConnection?.ok === true && (settings.mode !== "real" || Boolean(authorization));
+  const canStart = ready && !busy && wallet.connected && connectionReady && settings.enabledCoins.length > 0 && (status === "off" || status === "expired");
+  const canStop = ready && !busy && active && status !== "stopping";
   const switchDisabled = active ? !canStop : !canStart;
   const switchHint = !ready
-    ? scope === "visitor" && sessionState === "expired" ? "Reconnect your expired paper session in Settings." : "Trading control is connecting."
+    ? "Browser settings are loading."
     : settings.enabledCoins.length === 0
       ? "Enable at least one asset."
-      : scope === "operator" && !connectionReady
+      : !connectionReady
         ? "Validate a compatible connection before starting."
         : status === "attention-required"
           ? "Resolve the execution warning before starting another run."
-          : scope === "visitor" ? "Controls this visitor paper session only." : undefined;
+          : "Controls trading in this browser only.";
 
+  async function walletAction(action: () => Promise<unknown>) {
+    setBusy(true);
+    setActionError(null);
+    try { await action(); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "Wallet action failed."); }
+    finally { setBusy(false); }
+  }
   async function toggleRun() {
     setActionError(null);
+    setBusy(true);
     try {
       if (active) {
         await stop();
         return;
       }
       if (settings.mode === "real") {
-        const confirmed = window.confirm("Start real trading? Jev may place orders using the configured wallet.");
+        const confirmed = window.confirm("Start real trading? Jev will manage whole-account net positions for enabled markets, including existing exposure. Stop cancels app-owned orders only. It does not close positions or revoke approval.");
         if (!confirmed) return;
         await start(true);
       } else {
@@ -122,23 +127,29 @@ export default function Header({ connection, balance, unrealized, realized }: He
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The run control request failed.");
+    } finally {
+      setBusy(false);
     }
   }
 
-  const showScores = balance != null || unrealized != null || realized != null;
   return (
-    <header className={styles.header}>
+    <header className={styles.header} style={{ flexWrap: "wrap" }}>
       <div className={styles.brandLockup}>
         <Logo size={20} />
         <h1 className={styles.brand}>Jev Trade</h1>
         <span className={styles.tagline}>Live Jev trading bot</span>
-        <nav className={styles.links} aria-label="Primary navigation">
+        <nav className={styles.links} style={{ flexWrap: "wrap" }} aria-label="Primary navigation">
           <Link className={styles.navLink} aria-current={pathname === "/" ? "page" : undefined} href="/">Dashboard</Link>
           <Link className={styles.navLink} aria-current={pathname.startsWith("/settings") ? "page" : undefined} href="/settings">Settings</Link>
           <a className={styles.iconLink} href="https://github.com/aowang-ai/jev-trade" target="_blank" rel="noreferrer" aria-label="jev-trade on GitHub"><GitHubMark /></a>
+          {!wallet.connected ? <button type="button" className={styles.navLink} disabled={!ready || busy} onClick={() => void walletAction(connect)}>Connect Brave Wallet</button> : <>
+            <button type="button" className={styles.navLink} disabled={busy || active || status === "attention-required"} onClick={() => void walletAction(disconnect)}>Disconnect</button>
+            {settings.mode === "real" && !authorization && !active && status !== "attention-required" ? <button type="button" className={styles.navLink} disabled={busy} onClick={() => void walletAction(async () => { await prepareNetwork(); await authorize(); })}>Authorize trading</button> : null}
+          </>}
         </nav>
       </div>
-      <span className={styles.controls}>
+      <span className={styles.controls} style={{ flexWrap: "wrap" }}>
+        <span className={styles.runStatus}>{settings.network} / {settings.mode === "real" ? "real" : "paper"}</span>
         <span className={styles.priceStatus} data-connected={connection === "live"}>
           <span className={styles.dot} aria-hidden="true" />
           Prices {connection === "live" ? "connected" : connection === "reconnecting" ? "reconnecting" : "connecting"}
@@ -146,18 +157,20 @@ export default function Header({ connection, balance, unrealized, realized }: He
         <span className={styles.runControl} title={switchHint}>
           <button className={styles.switch} type="button" role="switch" aria-checked={active} aria-label={active ? "Turn trading off" : "Turn trading on"} disabled={switchDisabled} onClick={toggleRun}>
             <span className={styles.switchTrack} aria-hidden="true"><span className={styles.switchThumb} /></span>
-            <span>{active ? "On" : "Off"}</span>
+            <span>{active ? "Stop" : settings.mode === "paper" ? "On: paper" : "On: real"}</span>
           </button>
           <span className={styles.runStatus} data-running={status === "running"}>{statusText}</span>
           {status === "running" ? <span className={styles.remaining}>{clock(timing.remaining)} left</span> : null}
         </span>
       </span>
+      <span className={styles.runStatus}>Markets: {settings.enabledCoins.join(", ") || "None"}{active && timeMs(run.deadlineAt) !== null ? ` / Expires ${new Date(timeMs(run.deadlineAt)!).toLocaleTimeString()}` : ""}</span>
+      {status === "attention-required" ? <span className={styles.actionError} role="alert">Attention required. Resolve app-owned order cleanup before a new run. <button type="button" disabled={busy} onClick={() => void walletAction(reconcile)}>Retry cleanup</button></span> : null}
       {actionError ? <span className={styles.actionError} role="alert">{actionError}</span> : null}
-      {showScores ? <span className={styles.scores}>
-        <Score label="balance" value={balance} signed={false} />
+      <span className={styles.scores}>
+        <Score label="account equity" value={balance} signed={false} />
         <Score label="unrealized" value={unrealized} />
         <Score label="realized" value={realized} />
-      </span> : null}
+      </span>
     </header>
   );
 }

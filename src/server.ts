@@ -1,172 +1,130 @@
+import { networkInterfaces } from "node:os";
 import { config } from "./config";
-import { clipHistory, clipSnapshotTape, clipTape, TAPE_MIDS } from "./snapshot";
-import type { RunSnapshot } from "./settings";
-import type { BlockEvent, Fill, Meta, PricePoint, Quote, SleeveMeta } from "./types";
+import { JevRequestError, readJevRequest } from "./jev-request";
+import type { Model } from "./model";
+import type { JevResponse } from "./types";
 
-const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*" };
-const SNAP_MS = 400;
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { ...CORS, "content-type": "application/json" } });
-
-function jsonMaybeGzip(req: Request, body: unknown, status = 200) {
-  const raw = typeof body === "string" ? body : JSON.stringify(body);
-  const accept = req.headers.get("accept-encoding") ?? "";
-  if (accept.includes("gzip")) {
-    return new Response(Bun.gzipSync(raw), {
-      status,
-      headers: {
-        ...CORS,
-        "content-type": "application/json",
-        "content-encoding": "gzip",
-        vary: "accept-encoding",
-        "cache-control": "no-store",
-      },
-    });
-  }
-  return new Response(raw, {
-    status,
-    headers: { ...CORS, "content-type": "application/json", "cache-control": "no-store" },
-  });
-}
-
-export type SleeveView = { coin: string; history: () => BlockEvent[]; tape: () => PricePoint[] };
-
-export interface PublicServer {
-  readonly port: number;
-  broadcast(e: BlockEvent): void;
-  broadcastQuote(coin: string, block: number, quote: Quote): void;
-  broadcastFill(coin: string, block: number, fill: Fill, ts?: number): void;
-  broadcastRun(run: RunSnapshot): void;
-  broadcastSleeve(sleeve: SleeveMeta): void;
-  broadcastPrice(coin: string, print: { ts: number; mid: number; bestBid: number; bestAsk: number; spreadBps: number }): void;
-  close(): void;
-}
-
-export interface PublicServerOptions {
-  port?: number;
-  hostname?: string;
-  fetch?: (request: Request) => Response | undefined | Promise<Response | undefined>;
-}
-
-/** Public read-only market data and authoritative run status. */
-export function startServer(
-  meta: Meta,
-  sleeves: SleeveView[],
-  runSnapshot: () => RunSnapshot,
-  options: PublicServerOptions = {},
-): PublicServer {
-  const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
-  const enc = new TextEncoder();
-  const send = (c: ReadableStreamDefaultController<Uint8Array>, type: string, data: unknown) => {
-    try { c.enqueue(enc.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)); } catch { clients.delete(c); }
-  };
-  const ping = setInterval(() => clients.forEach((c) => send(c, "ping", Date.now())), 15_000);
-  const publicMeta = () => {
-    const { model: _operatorModel, ...visible } = meta;
-    return visible;
-  };
-
-  const historyByCoin = () => {
-    const out: Record<string, BlockEvent[]> = {};
-    for (const s of sleeves) out[s.coin] = s.history();
-    return out;
-  };
-  const tapeByCoin = () => {
-    const out: Record<string, PricePoint[]> = {};
-    for (const s of sleeves) out[s.coin] = clipTape(s.tape(), TAPE_MIDS);
-    return out;
-  };
-  const snapshotBody = () => {
-    const history: Record<string, BlockEvent[]> = {};
-    const tape: Record<string, PricePoint[]> = {};
-    for (const s of sleeves) {
-      history[s.coin] = clipHistory(s.history());
-      tape[s.coin] = clipSnapshotTape(s.tape());
+function approvedOrigins(): Set<string> {
+  const origins = new Set(config.webOrigins);
+  if (!config.production) {
+    origins.add("http://localhost:3001");
+    origins.add("http://127.0.0.1:3001");
+    for (const addresses of Object.values(networkInterfaces())) {
+      for (const address of addresses ?? []) {
+        if (address.family === "IPv4" && !address.internal) {
+          origins.add(`http://${address.address}:3001`);
+        }
+      }
     }
-    return { ...publicMeta(), historyByCoin: history, tapeByCoin: tape };
-  };
-  const latestByCoin = () => {
-    const out: Record<string, BlockEvent | null> = {};
-    for (const s of sleeves) out[s.coin] = s.history().at(-1) ?? null;
-    return out;
-  };
+  }
+  return origins;
+}
 
-  type SnapCache = { at: number; json: string; event: Uint8Array };
-  let snapCache: SnapCache | null = null;
-  const snap = (): SnapCache => {
-    const now = Date.now();
-    if (snapCache && now - snapCache.at < SNAP_MS) return snapCache;
-    const body = JSON.stringify(snapshotBody());
-    snapCache = { at: now, json: body, event: enc.encode(`event: snapshot\ndata: ${body}\n\n`) };
-    return snapCache;
-  };
+/** Address-free inference only. Provider permits survive HTTP response deadlines. */
+export function startServer(model: Model, options: { port?: number } = {}) {
+  const origins = approvedOrigins();
+  const buckets = new Map<string, { tokens: number; at: number }>();
+  const refillPerMs = config.inferenceRatePerMinute / 60_000;
+  let active = 0;
+  let nextSweep = 0;
 
-  const listener = Bun.serve({
-    port: options.port ?? config.port,
-    hostname: options.hostname,
-    idleTimeout: 0,
-    async fetch(req) {
-      const hooked = await options.fetch?.(req);
-      if (hooked) return hooked;
-      const url = new URL(req.url);
-      const { pathname } = url;
-      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
-      if (pathname === "/") return json({ ...publicMeta(), latestByCoin: latestByCoin() });
-      if (pathname === "/snapshot") return jsonMaybeGzip(req, snap().json);
-      if (pathname === "/history") return jsonMaybeGzip(req, historyByCoin());
-      if (pathname === "/tape") return jsonMaybeGzip(req, tapeByCoin());
-      if (pathname === "/run" && req.method === "GET") return json(runSnapshot());
-      if (pathname === "/events") {
-        const lite = url.searchParams.get("lite") === "1";
-        let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
-        const stream = new ReadableStream<Uint8Array>({
-          start(c) {
-            controller = c;
-            clients.add(c);
-            if (lite) send(c, "ready", meta.startedAt);
-            else {
-              try { c.enqueue(snap().event); } catch { clients.delete(c); }
-            }
-          },
-          cancel() {
-            if (controller) clients.delete(controller);
-            controller = null;
-          },
-        });
-        return new Response(stream, { headers: { ...CORS, "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
+  function admit(peer: string): boolean {
+    const now = performance.now();
+    if (now >= nextSweep) {
+      for (const [key, bucket] of buckets) {
+        if (bucket.tokens + (now - bucket.at) * refillPerMs >= config.inferenceBurst) buckets.delete(key);
       }
-      return json({ error: "not found" }, 404);
-    },
-  });
-  const port = listener.port;
-  if (typeof port !== "number") {
-    clearInterval(ping);
-    listener.stop(true);
-    throw new Error("Public server did not bind a TCP port");
+      nextSweep = now + 60_000;
+    }
+    const bucket = buckets.get(peer) ?? { tokens: config.inferenceBurst, at: now };
+    bucket.tokens = Math.min(config.inferenceBurst, bucket.tokens + (now - bucket.at) * refillPerMs);
+    bucket.at = now;
+    buckets.set(peer, bucket);
+    if (bucket.tokens < 1) return false;
+    bucket.tokens -= 1;
+    return true;
   }
 
-
-  const broadcast = (type: string, data: unknown) => clients.forEach((c) => send(c, type, data));
-  return {
-    port,
-    broadcast: (e: BlockEvent) => broadcast("block", e),
-    broadcastQuote: (coin: string, block: number, quote: Quote) => broadcast("quote", { coin, block, quote }),
-    broadcastFill: (coin: string, block: number, fill: Fill, ts?: number) => broadcast("fill", { coin, block, fill, ts }),
-    broadcastRun: (run: RunSnapshot) => broadcast("run", run),
-    broadcastSleeve: (sleeve: SleeveMeta) => {
-      snapCache = null;
-      broadcast("sleeve", { type: "sleeve", sleeve });
-    },
-    broadcastPrice: (coin: string, print: { ts: number; mid: number; bestBid: number; bestAsk: number; spreadBps: number }) =>
-      broadcast("price", { coin, ...print }),
-    close() {
-      clearInterval(ping);
-      for (const client of clients) {
-        try { client.close(); } catch {}
+  return Bun.serve({
+    port: options.port ?? config.port,
+    async fetch(request, server) {
+      const origin = request.headers.get("origin");
+      const allowed = origin !== null && origins.has(origin);
+      const headers = new Headers({
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+        vary: "Origin",
+      });
+      if (allowed) headers.set("access-control-allow-origin", origin);
+      const json = (body: unknown, status = 200) => {
+        headers.set("content-type", "application/json");
+        return new Response(JSON.stringify(body), { status, headers });
+      };
+      const error = (code: string, status: number) => json({ error: code }, status);
+      const path = new URL(request.url).pathname;
+      if (path !== "/health" && path !== "/decide") return error("not_found", 404);
+      if (path === "/health") {
+        if (request.method === "GET") return json({ ok: true });
+        headers.set("allow", "GET");
+        return error("method_not_allowed", 405);
       }
-      clients.clear();
-      listener.stop(true);
+      if (request.method !== "POST" && request.method !== "OPTIONS") {
+        headers.set("allow", "POST, OPTIONS");
+        return error("method_not_allowed", 405);
+      }
+      if (!allowed) return error("origin_forbidden", 403);
+      if (request.method === "OPTIONS") {
+        const method = request.headers.get("access-control-request-method");
+        const requested = request.headers.get("access-control-request-headers") ?? "";
+        if (method !== "POST" || requested.split(",").some((name) => name.trim() && name.trim().toLowerCase() !== "content-type")) {
+          return error("origin_forbidden", 403);
+        }
+        headers.set("vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+        headers.set("access-control-allow-methods", "POST");
+        headers.set("access-control-allow-headers", "Content-Type");
+        return new Response(null, { status: 204, headers });
+      }
+      if (request.headers.has("cookie") || request.headers.has("authorization")) return error("invalid_request", 400);
+      if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
+        return error("unsupported_media_type", 415);
+      }
+      // Only the socket peer counts. Forwarded headers are neither trusted nor retained.
+      if (!admit(server.requestIP(request)?.address ?? "unknown")) {
+        headers.set("retry-after", String(Math.ceil(60 / config.inferenceRatePerMinute)));
+        return error("rate_limited", 429);
+      }
+      if (active >= config.inferenceConcurrency) return error("busy", 503);
+      active += 1;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let expired = false;
+      const work = (async () => {
+        try {
+          const input = await readJevRequest(request);
+          if (expired) return error("deadline_exceeded", 504);
+          const decision = await model.decide(input.state);
+          const result: JevResponse = { tick: input.state.tick, decision };
+          return json(result);
+        } catch (cause) {
+          if (cause instanceof JevRequestError) return error(cause.code, cause.status);
+          return error("provider_error", 502);
+        } finally {
+          active -= 1;
+          clearTimeout(timer);
+        }
+      })();
+      const deadline = new Promise<Response>((resolve) => {
+        timer = setTimeout(() => {
+          expired = true;
+          resolve(error("deadline_exceeded", 504));
+        }, config.inferenceDeadlineMs);
+      });
+      return Promise.race([work, deadline]);
     },
-  };
+    error() {
+      return Response.json({ error: "internal_error" }, {
+        status: 500,
+        headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
+      });
+    },
+  });
 }
