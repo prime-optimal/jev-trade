@@ -24,6 +24,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 - Replaced the planned server-owned trading boundary with browser-local settings, display contracts, network signing identity, and address-free Jev inference ownership.
 - Added a bounded, address-free `/decide` inference API with strict request validation, origin policy, rate limits, and late-settlement concurrency protection.
+- Added direct Brave wallet connection and ephemeral Hyperliquid agent authorization that keeps signing keys in browser memory.
 
 ### Changed
 
