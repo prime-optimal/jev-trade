@@ -1,4 +1,4 @@
-import type { BlockEvent } from "./trading/types";
+import type { AccountSnapshot, BlockEvent } from "./trading/types";
 
 export type SleevePnl = {
   coin: string;
@@ -33,18 +33,10 @@ export function portfolioPnl(latestByCoin: Record<string, BlockEvent | null | un
   return { unrealized, realized };
 }
 
-/** Sum of Hyperliquid account equity across sleeve wallets. */
-export function portfolioBalance(latestByCoin: Record<string, BlockEvent | null | undefined>): number | null {
-  let sum = 0;
-  let any = false;
-  for (const latest of Object.values(latestByCoin)) {
-    const v = latest?.accountValue;
-    if (typeof v === "number" && Number.isFinite(v)) {
-      sum += v;
-      any = true;
-    }
-  }
-  return any ? sum : null;
+/** Account-wide equity, when a local session has supplied it. */
+export function portfolioBalance(account: AccountSnapshot | null | undefined): number | null {
+  const value = account?.accountValue;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /** Unrealized as a percent of initial margin, when size, entry, and leverage exist. */

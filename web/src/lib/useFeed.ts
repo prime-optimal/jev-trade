@@ -2,6 +2,7 @@
 
 import { useReducer } from "react";
 import { applyLiveMid } from "./ohlc";
+import type { AccountSnapshot } from "./trading/types";
 import type { BlockEvent, ConnectionState, FeedState, Fill, Meta, PricePoint, Quote, SleeveFeed, SleeveMeta } from "./types";
 import { useFeedTransport } from "./useFeedTransport";
 
@@ -336,7 +337,6 @@ function parseSleeve(raw: unknown, hasLatest: boolean): SleeveMeta | null {
     coin: s.coin,
     pair: s.pair,
     label: s.label,
-    wallet: typeof s.wallet === "string" ? s.wallet : null,
     status,
     error: typeof s.error === "string" ? s.error : null,
     retryAt: typeof s.retryAt === "number" && Number.isFinite(s.retryAt) ? s.retryAt : null,
@@ -360,7 +360,6 @@ function parseMeta(raw: Record<string, unknown> | null, liveCoins: ReadonlySet<s
   if (!raw) return null;
   return {
     model: typeof raw.model === "string" ? raw.model : "",
-    wallet: typeof raw.wallet === "string" ? raw.wallet : null,
     dryRun: Boolean(raw.dryRun),
     market: typeof raw.market === "string" ? raw.market : "BTC-USD",
     startedAt: typeof raw.startedAt === "number" ? raw.startedAt : Date.now(),
@@ -412,6 +411,8 @@ export function snapshotFrom(data: unknown): {
 }
 
 export interface FeedResult extends FeedState {
+  /** Session account equity is absent from the public market feed. */
+  account?: AccountSnapshot | null;
   loadTape: () => void;
 }
 
