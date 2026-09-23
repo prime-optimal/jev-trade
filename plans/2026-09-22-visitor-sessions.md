@@ -31,4 +31,14 @@ UI: `SettingsProvider`, operator helpers, feed transport, Header, and SettingsFo
 - A local mock-model smoke exercised two actual Bun Workers and two Chromium BrowserContexts. Each context independently saved settings and ran Start and Stop. Refresh resumed an applied value of 52 in the same session.
 - An authenticated session DELETE moved the UI to explicit Reconnect with no automatic replacement. Clicking Reconnect created a fresh Off session with the default value of 40, empty history, and all five supported coins.
 - The completed local check covered 150 tests, root and web TypeScript checks, and the production dashboard build.
-- Live deployment is not part of this proof. Deploy clean matching bot and web artifacts, then verify the actual Railway endpoints. Do not use an unrelated `www` Vercel host as deployment evidence.
+
+## Railway release proof
+
+- User approved production deployment. Both uploads used clean committed archives, excluding `.env`, `env.bak`, wallet files and unrelated local plans.
+- Bot commit `53d2b76`: deployment `2780b3d8-3875-4332-ab80-e752ffc4fde3`, SUCCESS. Startup confirmed `model=jev openrouter`, paper mode, five live keyless sleeves.
+- Web commit `203b410`: deployment `2c0eb1e9-75bc-41f6-870d-91e4f260d653`, SUCCESS. This includes the verified host-only Railway URL normalization fix.
+- On https://web-production-ae50f.up.railway.app/settings, the first browser saved BTC-only settings with a quote value of 41 and used the rendered Start and Stop switch. Jev returned hold in 190 ms and sell in 134 ms, neither late.
+- A second isolated Chromium context retained the default quote value of 40, all five coins, and Off state. Starting that context did not start the first. Both were stopped; refreshing the first resumed its saved settings.
+- The shared bot retained run ID `c61cde9e-892f-4661-a425-a27252d94a92` and Running status throughout visitor control verification.
+- The production capability cookie was HttpOnly, Secure, SameSite=Strict, and scoped to `/api/session`. The dashboard rendered the visitor's BTC history. Smoke sessions were removed afterward.
+- Final checks passed: 150 tests, 603 assertions, both TypeScript checks, and the production Next build. PR: https://github.com/prime-optimal/jev-trade/pull/13.
