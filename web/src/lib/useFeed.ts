@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { applyLiveMid } from "./ohlc";
-import type { BlockEvent, ConnectionState, FeedState, Fill, Meta, PricePoint, Quote, SleeveFeed } from "./types";
+import type { BlockEvent, ConnectionState, FeedState, Fill, Meta, PricePoint, Quote, SleeveFeed, SleeveMeta } from "./types";
 
 const CAP = 1000;
 const TAPE_CAP = 200_000;
@@ -39,6 +39,7 @@ type Action =
   | { type: "quote"; coin: string; block: number; quote: Quote }
   | { type: "connection"; connection: ConnectionState }
   | { type: "tapes"; tapeByCoin: Record<string, PricePoint[]> }
+  | { type: "sleeve"; sleeve: unknown }
   | { type: "price"; coin: string; mark: Mark };
 
 const emptySleeve = (): SleeveMem => ({
@@ -266,6 +267,19 @@ function reducer(state: State, action: Action): State {
       };
     }
 
+    case "sleeve": {
+      const raw = action.sleeve as Record<string, unknown> | null;
+      const coin = raw && typeof raw.coin === "string" ? raw.coin : "";
+      if (!coin || !state.meta) return state;
+      const sleeve = parseSleeve(raw, Boolean(state.sleeves[coin]?.latest));
+      if (!sleeve) return state;
+      const index = state.meta.sleeves.findIndex((item) => item.coin === coin);
+      const sleeves = state.meta.sleeves.slice();
+      if (index < 0) sleeves.push(sleeve);
+      else sleeves[index] = sleeve;
+      return { ...state, meta: { ...state.meta, sleeves } };
+    }
+
     case "block": {
       const ev = action.event;
       if (!ev || typeof ev.block !== "number") return state;
@@ -311,24 +325,38 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-function parseSleeves(raw: unknown): Meta["sleeves"] {
+function parseSleeve(raw: unknown, hasLatest: boolean): SleeveMeta | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.coin !== "string" || typeof s.pair !== "string" || typeof s.label !== "string") return null;
+  const status = s.status === "starting" || s.status === "live" || s.status === "retrying"
+    ? s.status
+    : hasLatest ? "live" : "starting";
+  return {
+    coin: s.coin,
+    pair: s.pair,
+    label: s.label,
+    wallet: typeof s.wallet === "string" ? s.wallet : null,
+    status,
+    error: typeof s.error === "string" ? s.error : null,
+    retryAt: typeof s.retryAt === "number" && Number.isFinite(s.retryAt) ? s.retryAt : null,
+  };
+}
+
+function parseSleeves(raw: unknown, liveCoins: ReadonlySet<string>): Meta["sleeves"] {
   if (!Array.isArray(raw)) return [];
   const out: Meta["sleeves"] = [];
   for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const s = item as Record<string, unknown>;
-    if (typeof s.coin !== "string" || typeof s.pair !== "string" || typeof s.label !== "string") continue;
-    out.push({
-      coin: s.coin,
-      pair: s.pair,
-      label: s.label,
-      wallet: typeof s.wallet === "string" ? s.wallet : null,
-    });
+    const coin = item && typeof item === "object" && typeof (item as Record<string, unknown>).coin === "string"
+      ? (item as Record<string, unknown>).coin as string
+      : "";
+    const sleeve = parseSleeve(item, liveCoins.has(coin));
+    if (sleeve) out.push(sleeve);
   }
   return out;
 }
 
-function parseMeta(raw: Record<string, unknown> | null): Meta | null {
+function parseMeta(raw: Record<string, unknown> | null, liveCoins: ReadonlySet<string>): Meta | null {
   if (!raw) return null;
   return {
     model: typeof raw.model === "string" ? raw.model : "",
@@ -340,8 +368,8 @@ function parseMeta(raw: Record<string, unknown> | null): Meta | null {
     coin: typeof raw.coin === "string" ? raw.coin : "BTC",
     pair: typeof raw.pair === "string" ? raw.pair : "BTC-USD",
     explorerTx: typeof raw.explorerTx === "string" ? raw.explorerTx : "",
-    tickMs: typeof raw.tickMs === "number" ? raw.tickMs : 2000,
-    sleeves: parseSleeves(raw.sleeves),
+    tickMs: typeof raw.tickMs === "number" ? raw.tickMs : 30000,
+    sleeves: parseSleeves(raw.sleeves, liveCoins),
   };
 }
 
@@ -379,7 +407,8 @@ function snapshotFrom(data: unknown): {
     historyByCoin[coin] = asEvents(d.history);
     tapeByCoin[coin] = asTape(d.tape);
   }
-  return { meta: parseMeta(d), historyByCoin, tapeByCoin };
+  const liveCoins = new Set(Object.entries(historyByCoin).filter(([, rows]) => rows.length > 0).map(([coin]) => coin));
+  return { meta: parseMeta(d, liveCoins), historyByCoin, tapeByCoin };
 }
 
 /**
@@ -519,6 +548,10 @@ export function useFeed(apiUrl: string): FeedState & { loadTape: () => void } {
       });
       handle("block", (data) => {
         dispatch({ type: "block", event: data as BlockEvent });
+      });
+      handle("sleeve", (data) => {
+        const d = (data ?? {}) as { sleeve?: unknown };
+        dispatch({ type: "sleeve", sleeve: d.sleeve });
       });
       handle("price", (data) => {
         const d = (data ?? {}) as { coin?: string; ts?: number; mid?: number; bestBid?: number; bestAsk?: number; spreadBps?: number };

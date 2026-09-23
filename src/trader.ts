@@ -11,8 +11,6 @@ const emptyTotals = (): Totals => ({
   jevUsd: 0, gasSz: 0, gasUsd: 0, realizedUsd: 0, pnlUsd: 0, pnlSz: 0, pnlPct: 0,
 });
 
-const JEV_PAUSE_MS = 30_000;
-
 export function jevUnavailable(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   return /402\b|no available TypeSafe API credits|insufficient credits/i.test(msg);
@@ -35,7 +33,6 @@ export class Trader {
   private exchangeTail: Promise<void> = Promise.resolve();
   private position = { sz: 0, costUsd: 0 };
   private totals: Totals = emptyTotals();
-  private jevPauseUntil = 0;
 
   constructor(
     private market: Market,
@@ -72,10 +69,6 @@ export class Trader {
 
       this.syncFromVenue();
       const timing = { readMs: Math.round(readMs), loopMs: 0 };
-      if (Date.now() < this.jevPauseUntil) {
-        this.markLate(block, book);
-        return;
-      }
       try {
         const decision = await this.model.decide(this.buildState(block, book));
         this.totals.decisions++;
@@ -93,8 +86,7 @@ export class Trader {
       } catch (e) {
         const msg = (e as Error).message;
         if (jevUnavailable(e)) {
-          this.jevPauseUntil = Date.now() + JEV_PAUSE_MS;
-          console.error(`jev paused ${JEV_PAUSE_MS / 1000}s: ${msg}`);
+          console.error(`tick ${block}: jev unavailable, retrying next tick: ${msg}`);
         } else {
           console.error(`tick ${block}:`, msg);
         }

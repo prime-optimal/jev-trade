@@ -1,0 +1,9 @@
+# Secrets resolve from 1Password at run time through `fnox exec`, used by `just dev` and `just start`.
+# Add wallet keys with `FNOX_SKIP_SYNC=1 mise run fnox-apikey -- PRIVATE_KEY` or `FNOX_SKIP_SYNC=1 mise run fnox-opref -- VAR ITEM_UUID FIELD`.
+
+[providers.onepass]
+type = "1password"
+
+# 1Password vault: Developer (id u3gfzsvm2c4uhigf252w5xprgq), item: openrouter jev API (id 3jrakpjic7ov2uq5haofe32zku).
+[secrets]
+OPENROUTER_API_KEY = { provider = "onepass", value = "op://u3gfzsvm2c4uhigf252w5xprgq/3jrakpjic7ov2uq5haofe32zku/credential" }

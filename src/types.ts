@@ -135,6 +135,9 @@ export interface SleeveMeta {
   pair: string;
   label: string;
   wallet: string | null;
+  status: "starting" | "live" | "retrying";
+  error: string | null;
+  retryAt: number | null;
 }
 
 export interface Meta {

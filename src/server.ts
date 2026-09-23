@@ -1,6 +1,6 @@
 import { config } from "./config";
 import { clipHistory, clipSnapshotTape, clipTape, TAPE_MIDS } from "./snapshot";
-import type { BlockEvent, Fill, Meta, PricePoint, Quote } from "./types";
+import type { BlockEvent, Fill, Meta, PricePoint, Quote, SleeveMeta } from "./types";
 
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*" };
 const SNAP_MS = 400;
@@ -108,6 +108,10 @@ export function startServer(meta: Meta, sleeves: SleeveView[]) {
     broadcast: (e: BlockEvent) => broadcast("block", e),
     broadcastQuote: (coin: string, block: number, quote: Quote) => broadcast("quote", { coin, block, quote }),
     broadcastFill: (coin: string, block: number, fill: Fill, ts?: number) => broadcast("fill", { coin, block, fill, ts }),
+    broadcastSleeve: (sleeve: SleeveMeta) => {
+      snapCache = null;
+      broadcast("sleeve", { type: "sleeve", sleeve });
+    },
     broadcastPrice: (coin: string, print: { ts: number; mid: number; bestBid: number; bestAsk: number; spreadBps: number }) =>
       broadcast("price", { coin, ...print }),
   };

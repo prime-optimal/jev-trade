@@ -166,3 +166,17 @@ test("a failed Jev call emits late instead of going silent", async () => {
   await trader.onBlock(1);
   expect(events.some((e) => e.decision?.late === true)).toBe(true);
 });
+
+test("Jev is asked again on the tick after a credit error", async () => {
+  let calls = 0;
+  const model = new ScriptModel();
+  model.next = new Error("402 Your organization has no available TypeSafe API credits");
+  const decide = model.decide.bind(model);
+  model.decide = () => { calls++; return decide(); };
+  const { events, trader } = desk(model);
+  await trader.onBlock(1);
+  model.next = packed({ intent: "hold", bias: "long", action: "hold" });
+  await trader.onBlock(2);
+  expect(calls).toBe(2);
+  expect(events.find((e) => e.block === 2)?.decision?.late).toBe(false);
+});

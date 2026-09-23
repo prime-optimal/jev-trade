@@ -1,8 +1,5 @@
-import { config } from "./config";
+import { infoPost } from "./hyperliquid";
 import type { PricePoint, Side } from "./types";
-
-const INFO_URL = (testnet: boolean) =>
-  testnet ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
 
 export const CHART_INTERVAL = "1m";
 export const CHART_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -97,11 +94,7 @@ export class VenueChart {
   }
 
   private async pullCandles(coin: string, interval: string, startTime: number, endTime: number) {
-    const res = await fetch(INFO_URL(config.hlTestnet), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "candleSnapshot", req: { coin, interval, startTime, endTime } }),
-    });
+    const res = await infoPost({ type: "candleSnapshot", req: { coin, interval, startTime, endTime } });
     if (!res.ok) throw new Error(`hl candleSnapshot HTTP ${res.status}`);
     const rows = (await res.json()) as unknown;
     if (!Array.isArray(rows)) return;
