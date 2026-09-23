@@ -6,7 +6,7 @@ import {
   validateApiKey,
   validateSettings,
   type TradingSettings,
-} from "../src/settings";
+} from "../web/src/lib/trading/settings";
 
 const settings = (changes: Partial<TradingSettings> = {}): TradingSettings => ({
   ...DEFAULT_SETTINGS,
@@ -118,9 +118,4 @@ test("persistence removes RPC URLs and every custom path or query that could hid
   expect(persistableSettings(settings({
     hyperliquidApiUrl: "https://provider.example?opaque=secret",
   })).hyperliquidApiUrl).toBeNull();
-});
-
-test("dashboard settings contracts stay exact copies", async () => {
-  expect(await Bun.file("web/src/lib/trading/settings.ts").text()).toBe(await Bun.file("src/settings.ts").text());
-  expect(await Bun.file("web/src/lib/trading/networks.ts").text()).toBe(await Bun.file("src/networks.ts").text());
 });

@@ -1,11 +1,6 @@
 export type Env = Record<string, string | undefined>;
 
-declare global {
-  var __JEV_RUNTIME_ENV__: Env | undefined;
-}
-
-/** Process environment by default; isolated workers inject an allowlisted object before this module loads. */
-export const runtimeEnv: Env = globalThis.__JEV_RUNTIME_ENV__ ?? process.env;
+export const runtimeEnv: Env = process.env;
 const env = (key: string, fallback?: string) => runtimeEnv[key] ?? fallback;
 
 export type JevProvider = "openrouter" | "typesafe" | "gateway";

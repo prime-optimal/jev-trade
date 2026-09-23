@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { decideFromJevAnswers, jevQuestions, marketFacing } from "../src/model";
 import type { TradeState } from "../src/types";
+import { leverageRungs, liveIntent, parseLeverage, quoteAction } from "../src/plan";
 
 function fixture(side: TradeState["position"]["side"]): TradeState {
   return {
@@ -142,4 +143,31 @@ test("an unrecognised bias stands down instead of opening long", () => {
   expect(d.action).toBe("hold");
   expect(d.probabilities.long).toBe(d.probabilities.short);
   expect(d.probabilities.long).toBeLessThan(1);
+});
+
+test("open long buys and open short sells", () => {
+  expect(quoteAction("open", "long")).toBe("buy");
+  expect(quoteAction("open", "short")).toBe("sell");
+});
+
+test("hold sends nothing, whatever the bias", () => {
+  expect(quoteAction("hold", "long")).toBe("hold");
+  expect(quoteAction("hold", "short")).toBe("hold");
+});
+
+test("liveIntent cannot close a flat book and stands down instead", () => {
+  expect(liveIntent("flat", "close")).toBe("hold");
+  expect(liveIntent("flat", "hold")).toBe("hold");
+  expect(liveIntent("flat", "open")).toBe("open");
+  expect(liveIntent("long", "close")).toBe("close");
+  expect(liveIntent("long", "hold")).toBe("hold");
+  expect(liveIntent("short", "open")).toBe("open");
+});
+
+test("leverage rungs follow the coin max", () => {
+  expect(leverageRungs(10)).toEqual([1, 2, 3, 5, 10]);
+  expect(leverageRungs(50)).toEqual([1, 2, 3, 5, 10, 20, 40, 50]);
+  expect(leverageRungs(15)).toEqual([1, 2, 3, 5, 10, 15]);
+  expect(parseLeverage("7", 10, 1)).toBe(5);
+  expect(parseLeverage("50", 10, 1)).toBe(10);
 });
