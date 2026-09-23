@@ -37,9 +37,11 @@ Tests live under [`test/`](../test/), not beside source. Use Bun's runner. A moc
 
 ## Continuous integration
 
-[`.github/workflows/test.yml`](../.github/workflows/test.yml) runs on pull requests and pushes to `main`, using Bun 1.3.14. The `test` job installs root and web with their frozen lockfiles, runs `bun run test`, and typechecks both runtimes. The independent `build` job installs only web dependencies and runs its Next production build.
+[`.github/workflows/test.yml`](../.github/workflows/test.yml) runs on pull requests and pushes to `main`, using Bun 1.3.14. The `test` job installs root and web with their frozen lockfiles, runs `bun run test`, and typechecks both runtimes. The independent `build` job installs the latest Railpack and starts BuildKit, then runs `railpack build .` for Bun and `railpack build ./web` for Next against the checked-out commit. It then installs web dependencies with its frozen lockfile and runs the Next production build.
 
-The workflow does not build Railpack images, run wallet approvals, deploy, or apply IaC. `just deploy` is not another check command; it uploads to production. See [Deployment](deployment.md).
+Both `test` and `build` are required status checks on `main`; admins can bypass them. Railpack builds run before the host dependency install and Next build so those generated files cannot enter the service build contexts. Local `railpack build` is diagnostic only: Railway does not pin its builder version, and a dirty local checkout can include untracked files absent from GitHub.
+
+The workflow does not run wallet approvals, deploy, or apply IaC. `just deploy` is not another check command; it uploads to production. See [Deployment](deployment.md).
 
 ## Inference and browser types
 

@@ -28,14 +28,29 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    env:
+      BUILDKIT_HOST: docker-container://buildkit
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      - name: Install Railpack
+        uses: jdx/mise-action@v2
+        with:
+          tools: github:railwayapp/railpack@latest
+      - name: Start BuildKit
+        run: docker run --rm --privileged -d --name buildkit moby/buildkit
+      - name: Railpack build inference service
+        run: railpack build .
+      - name: Railpack build dashboard
+        run: railpack build ./web
       - name: Install dashboard dependencies
         run: bun install --frozen-lockfile
         working-directory: web
       - name: Build dashboard
         run: bun run build
         working-directory: web
+      - name: Stop BuildKit
+        if: always()
+        run: docker stop buildkit

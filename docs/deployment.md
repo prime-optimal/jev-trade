@@ -14,7 +14,7 @@ Merging to `main` is the normal application deploy. Both services track GitHub `
 
 `just deploy` is the optional pre-merge path. It runs tests and both typechecks, uploads the current checkout to both services with `railway up --ci`, then prints status. It has production side effects and is not a validation command. The next matching push to `main` replaces the upload. Do not deploy as part of a cleanup or review unless explicitly authorized.
 
-The GitHub workflow has separate `test` and `build` jobs. It installs root and web dependencies, runs the root Bun suite and both TypeScript checks, and builds Next from its independent web context. It does not run Railpack or apply infrastructure. A green Next build does not prove Railway configuration or a wallet trade works.
+The GitHub workflow's `test` and `build` jobs are required status checks on `main`; admins can bypass them. It installs root and web dependencies separately, runs the root Bun suite and both TypeScript checks, builds both checked-out service contexts with Railpack, and builds Next from its independent web context. It does not deploy or apply infrastructure. Green builds do not prove live Railway configuration or a wallet trade works.
 
 ## Infrastructure review boundary
 

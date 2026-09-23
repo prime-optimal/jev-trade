@@ -34,7 +34,7 @@ Entries below record the implementation sequence, including superseded server-ow
 
 - Completed #24's inference-only Bun and browser-local trading cutover. Kept `/health`, `/decide`, the exact address-free `JevRequest`, direct browser wallet and Hyperliquid ownership, explicit finite runs, and the #21 through #23 safety fixes.
 - Updated #24 Railway declarations to healthcheck `/health`, set explicit production `WEB_ORIGINS`, and pass an absolute inference URL to the standalone Next build. No live infrastructure was applied.
-- Updated #24 CI to install root and web dependencies separately, run the root suite and both typechecks, and build Next in an independent job. Rewrote current API, configuration, deployment, and public documentation to match browser ownership and distinguish implemented real trading from unverified wallet exercises.
+- Updated #24 CI to install root and web dependencies separately, run the root suite and both typechecks, and build Next in an independent job. Restored the required Railpack gate for both checked-out service contexts in the `build` job. Rewrote current API, configuration, deployment, and public documentation to match browser ownership and distinguish implemented real trading from unverified wallet exercises.
 
 - Made OpenRouter the default Jev provider when no provider credential selects another provider. TypeSafe and Vercel AI Gateway remain available.
 - Shared the TypeSafe SDK client path between OpenRouter and the official TypeSafe API.
