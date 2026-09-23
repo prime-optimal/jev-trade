@@ -8,4 +8,4 @@ Approved: start one timed paper run on bot startup and deploy only the bot.
 
 Local verification: 131 tests pass; bot and dashboard TypeScript checks pass; startup recovery/stop smoke passes.
 
-Issue workflow blocked: prime-optimal/jev-trade has issues disabled. Do not change repository settings to enable them.
+Tracking: https://github.com/prime-optimal/jev-trade/issues/3. Repository issues were re-enabled by the owner before deployment.
