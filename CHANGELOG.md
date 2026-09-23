@@ -26,6 +26,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added a bounded, address-free `/decide` inference API with strict request validation, origin policy, rate limits, and late-settlement concurrency protection.
 - Added direct Brave wallet connection and ephemeral Hyperliquid agent authorization that keeps signing keys in browser memory.
 - Added browser-local trading feeds, shared account state, paper ledger, direct order safety, exact-cloid journaling, and owner/network locking.
+- Added the personal browser dashboard integration for wallet states, account-wide metrics, finite runs, and local feed/session controls.
 
 ### Changed
 
