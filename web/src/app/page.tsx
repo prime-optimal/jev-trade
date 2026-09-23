@@ -24,7 +24,6 @@ function viewMeta(meta: Meta | null, coin: string): Meta | null {
     coin,
     pair: sleeve?.pair ?? meta.pair,
     market: sleeve?.pair ?? meta.market,
-    wallet: sleeve?.wallet ?? meta.wallet,
   };
 }
 
@@ -63,7 +62,7 @@ export default function Page() {
   }, [coins, feed.byCoin]);
 
   const pnl = useMemo(() => portfolioPnl(latestByCoin), [latestByCoin]);
-  const balance = useMemo(() => portfolioBalance(latestByCoin), [latestByCoin]);
+  const balance = portfolioBalance(feed.account);
   const hasBooks = coins.some((c) => latestByCoin[c]);
   const waiting = !feed.meta;
 
@@ -71,7 +70,7 @@ export default function Page() {
     <div className="shell">
       <Header
         connection={feed.connection}
-        balance={hasBooks ? balance : null}
+        balance={balance}
         unrealized={hasBooks ? pnl.unrealized : null}
         realized={hasBooks ? pnl.realized : null}
       />
