@@ -53,3 +53,20 @@ Jev chooses leverage on every decision. The trader writes cross leverage before 
 While Running, Jev makes the trading decision from the price feed on every scheduled Hyperliquid decision tick. Hold is a real Jev answer. It is not a skipped tick. Failed calls are recorded as failures, not presented as hold, and stale overlapping results cannot place orders.
 
 The market stream and dashboard remain available while Off. Their availability never means orders or Jev decisions are running.
+
+## Bounded follow-on roadmap
+
+Provisional release scope, pending final review against integrated #22 and #23: Brave Wallet plus finite browser-session trading is the only current release scope. This statement is a release boundary, not a claim that the browser migration has been verified. The earlier implementation descriptions remain unchanged here; #22/#23 final review must align them with the integrated behavior before closing #25.
+
+Browser closure ends browser-owned execution and may leave resting orders or open positions. Closing the browser is not a confirmed cancellation or liquidation. A wallet connection does not make execution unattended.
+
+None of the following six milestones is implemented by this roadmap:
+
+1. Coinbase injected EVM extension. Require explicit EIP-6963 wallet selection and real Hyperliquid testnet checks for account access, chain selection, and typed-sign agent approval. Smart accounts and passkeys require separate qualification.
+2. OKX extension. Use EIP-6963 when available, otherwise the official `window.okxwallet` provider. Test coexistence with other injected wallets. Do not invent an RDNS identifier or claim typed-sign support without testing it. Enable only after real Hyperliquid testnet agent approval. Mobile OKX Connect is distinct from WalletConnect.
+3. WalletConnect mobile. Require a maintained EIP-1193 provider, a public project ID, explicit Arbitrum namespaces, and only the necessary methods. Qualify QR and deep-link flows, rejection, expiry, disconnect, and session restoration. Never restore Running or persist an agent key. Document metadata disclosed to third parties. Closing the desktop browser still ends execution, even if the mobile wallet remains connected.
+4. Longer or unbounded runs. Longer finite runs already fit the current duration validation; this roadmap does not add a new run mode. Any unbounded mode must preserve independent agent expiry, freshness guards, Stop, sleep and visibility handling, and owned-order cleanup. Define what happens when authorization expires. Removing the run timer does not provide 24/7 execution.
+5. Unattended execution. Design a separate hosted or desktop worker before implementation. Specify signer custody, restart and upgrade behavior, funding and loss policy, user control, and recovery from ambiguous order outcomes. Never silently restore Railway wallet execution.
+6. Inference-key BYOK. User-supplied credentials are inference keys only, never wallet or agent keys. Before implementation, define privacy, transport, retention, logging, browser exposure, provider handling, and the address-free inference boundary. This roadmap prescribes no credential storage.
+
+Keep wallet adapters, run policy, execution ownership, and inference credential selection separate. Every future wallet must pass direct-browser Hyperliquid testnet agent approval, order placement, cancellation, and privacy checks before release. Do not add backend accounts or send wallet addresses, account data, orders, wallet keys, or agent keys through Bun or Next. Inference must remain address-free.
