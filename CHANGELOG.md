@@ -23,6 +23,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added visitor limits for 8 concurrent sessions, 10-minute inactivity expiry, 2 SSE streams per session, 64 KiB request bodies, creation burst 8 with refill 16 per minute, a 30-second Start cooldown, and a 30000 ms minimum decision cadence.
 
 - Replaced the planned server-owned trading boundary with browser-local settings, display contracts, network signing identity, and address-free Jev inference ownership.
+- Added direct Brave wallet connection and ephemeral Hyperliquid agent authorization that keeps signing keys in browser memory.
 
 ### Changed
 
