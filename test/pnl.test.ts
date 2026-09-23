@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { portfolioBalance, portfolioPnl, roePct, sleevePnl } from "../web/src/lib/pnl";
-import type { BlockEvent } from "../web/src/lib/trading/types";
+import type { AccountSnapshot, BlockEvent } from "../web/src/lib/trading/types";
 
 function event(partial: Partial<BlockEvent> & Pick<BlockEvent, "coin" | "position" | "totals">): BlockEvent {
   return {
@@ -38,8 +38,13 @@ test("sleevePnl splits open mark pnl from closed fills", () => {
   });
   expect(sleevePnl(flat)).toEqual({ coin: "ETH", unrealized: 0, realized: 3, open: false });
   expect(portfolioPnl({ BTC: open, ETH: flat })).toEqual({ unrealized: 2.5, realized: -1 });
-  expect(portfolioBalance({ BTC: { ...open, accountValue: 120.4 }, ETH: { ...flat, accountValue: 80 } })).toBeCloseTo(200.4);
-  expect(portfolioBalance({ BTC: open, ETH: flat })).toBeNull();
+});
+
+test("portfolioBalance uses account-wide equity and returns null without an account", () => {
+  const account: AccountSnapshot = { accountValue: 200.4, withdrawable: 150 };
+  expect(portfolioBalance(account)).toBeCloseTo(200.4);
+  expect(portfolioBalance(null)).toBeNull();
+  expect(portfolioBalance(undefined)).toBeNull();
 });
 
 test("roePct is unrealized over initial margin", () => {
