@@ -1,5 +1,5 @@
-# Secrets resolve from 1Password at run time through `fnox exec`, used by `just dev` and `just start`.
-# Add wallet keys with `FNOX_SKIP_SYNC=1 mise run fnox-apikey -- PRIVATE_KEY` or `FNOX_SKIP_SYNC=1 mise run fnox-opref -- VAR ITEM_UUID FIELD`.
+# Provider credentials resolve from 1Password at run time through `fnox exec`, used by `just dev` and `just start`.
+# Keep only inference-provider secrets here; browser requests never receive these credentials.
 
 [providers.onepass]
 type = "1password"
