@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { portfolioBalance, portfolioPnl, roePct, sleevePnl } from "../web/src/lib/pnl";
-import type { BlockEvent } from "../src/types";
+import type { BlockEvent } from "../src/legacy-types";
 
 function event(partial: Partial<BlockEvent> & Pick<BlockEvent, "coin" | "position" | "totals">): BlockEvent {
   return {
