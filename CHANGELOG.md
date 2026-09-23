@@ -14,10 +14,13 @@ All notable changes to this project are documented here. This changelog starts f
 - Added Railway TypeScript infrastructure in `.railway/railway.ts` for the bot, dashboard, bot data volume, service variables, watch paths, health checks, and deployment settings.
 - Added maintainer documentation for architecture, trading, the API, dashboard, configuration, Jev providers, development, and deployment.
 - Added configurable Hyperliquid HTTP, WebSocket, and RPC endpoints with optional HTTP API-key authentication.
-- Added a standalone Settings route with validated guest and operator scopes, browser-wide light and dark themes, network and owner-isolated persistence, and memory-only handling for transport credentials.
+- Added a standalone Settings route with isolated visitor and private operator scopes, browser-wide light and dark themes, and memory-only handling for transport credentials.
 - Added a private loopback operator listener for settings, transport validation, Start, Stop, and owned-order reconciliation. The public API exposes read-only authoritative run state.
 - Added execution-owned timed runs that start Off, default to 30 minutes, enforce wall-clock and monotonic deadlines, and block restart when bounded owned-order cleanup needs attention.
 - Added Hyperliquid HTTP, WebSocket, and SDK RPC preflight. Real trading requires matching official endpoints and explicit confirmation. Custom endpoint identity cannot enable real mode.
+- Added isolated keyless visitor paper sessions for #8. Each remote visitor gets an Off Bun Worker with its own settings, feed, lifecycle, history, and simulated trades, while localhost keeps the private shared operator.
+- Added the same-origin Next session gateway with an HttpOnly, SameSite=Strict capability cookie, Secure in production, exact public Origin checks, expiry and reconnect handling, and `BOT_API_URL` runtime routing.
+- Added visitor limits for 8 concurrent sessions, 10-minute inactivity expiry, 2 SSE streams per session, 64 KiB request bodies, creation burst 8 with refill 16 per minute, a 30-second Start cooldown, and a 30000 ms minimum decision cadence.
 
 ### Changed
 
@@ -26,7 +29,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Pinned Bun 1.3.14 in both package manifests and `railpack.json`.
 - Railpack builds both services: frozen `bun install`, bot starts with `bun run start`, dashboard builds with `bun run build` and starts with `bun run start`.
 - Changed the dashboard production start script to `next start`, which honors Railway's `PORT`.
-- Changed the dashboard API URL handling to add `https://` when `NEXT_PUBLIC_API_URL` is a bare Railway host.
+- Changed the dashboard and visitor gateway API URL handling to add `https://` when `NEXT_PUBLIC_API_URL` is a bare Railway host.
 - Updated `web/public/llms.txt` to name OpenRouter as the default Jev API.
 - The dashboard dev server now allows this machine's LAN IPv4 addresses in `allowedDevOrigins`, and with `NEXT_PUBLIC_API_URL` unset the dashboard reads the bot at the page's own host on port 3000. Opening it by LAN IP no longer needs a manual `next.config.ts` edit.
 - Added `railway` just recipes: `deploy-plan`, `deploy-infra`, `deploy-setup`, `deploy` and `deploy-status`.
@@ -43,6 +46,8 @@ All notable changes to this project are documented here. This changelog starts f
 - Changed sleeve initialization and retry so recovery cannot start decision loops after manual Stop or expiry. During the single armed paper startup, the first ready sleeve starts the run; recovered sleeves join only while that run remains active.
 - Kept the Off control plane available when initial sleeve resources fail, with visible retryable errors. Operator Start runs the available sleeves when at least one is ready. Later settings replacements remain atomic and preserve the prior executor on failure.
 - Paper-mode process startup now arms one configured-duration run that starts when the first sleeve is ready. Failures stay Off and retry, expiry and manual Stop do not loop, process restart creates a new paper run, and real mode still requires a private confirmed Start.
+- Remote settings now apply paper settings to the visitor's Worker instead of changing browser preferences only. Visitors can Save, Start, Stop, and reset cleanup without controlling the shared executor. Refresh resumes the same Worker; an expired or deleted session requires explicit Reconnect to a fresh Off session.
+- Visitor Workers receive an explicit allowlisted runtime environment before importing bot modules. This prevents Bun's parent dotenv values from being compiled into `process.env.NAME` reads inside the Worker.
 
 ### Removed
 
@@ -57,7 +62,3 @@ All notable changes to this project are documented here. This changelog starts f
 - `DRY_RUN=false` with no wallet key no longer fails every sleeve at startup with "real trading requires a wallet private key". Keyless sleeves run in paper mode again, as they did before the settings page, while keyed sleeves keep real execution.
 - Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
 
-## Known issues
-
-- A sleeve emits a synthetic late hold without calling Jev when its previous Jev call is still running at the next tick. Provider calls have a 4,000 ms deadline, so this cannot happen at the 30,000 ms default tick. It can only happen if `TICK_MS` is set below that deadline, and that conflicts with the product claim that Jev decides on every tick.
-- A sleeve that recovers after startup keeps trading but is missing from public history, tape, and snapshot data, and the public wallet is not refreshed when the first sleeve recovers. The recovered view is added to the executor's candidate list instead of the list the server reads.

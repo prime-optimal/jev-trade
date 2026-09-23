@@ -5,6 +5,15 @@ export const OFF_RUN: RunSnapshot = {
   durationMs: 30 * 60_000, stopReason: null, serverNow: 0,
 };
 
+export class OperatorRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "OperatorRequestError";
+  }
+}
+
+export const SESSION_API = "/api/session";
+
 export function resolvePublicApiUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL;
   if (configured) return /^https?:\/\//.test(configured) ? configured.replace(/\/+$/, "") : `https://${configured.replace(/\/+$/, "")}`;
@@ -30,8 +39,12 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
     cache: "no-store",
   });
   const body = await response.json().catch(() => null) as { error?: string; message?: string } | null;
-  if (!response.ok) throw new Error(body?.message || body?.error || `Request failed with status ${response.status}`);
+  if (!response.ok) throw new OperatorRequestError(body?.message || body?.error || `Request failed with status ${response.status}`, response.status);
   return body as T;
+}
+
+export function createVisitorSession(signal?: AbortSignal): Promise<OperatorSnapshot> {
+  return request("", SESSION_API, { method: "POST", credentials: "same-origin", signal });
 }
 
 export function getRun(base: string, signal?: AbortSignal): Promise<RunSnapshot> {
@@ -43,6 +56,9 @@ export function getOperator(base: string, signal?: AbortSignal): Promise<Operato
 }
 export function applyOperatorSettings(base: string, settings: TradingSettings, apiKey?: string, clearedEndpoints: (keyof TradingSettings)[] = []): Promise<OperatorSnapshot> {
   return request(base, "/settings", { method: "POST", credentials: "same-origin", body: JSON.stringify({ settings, apiKey, clearedEndpoints }) });
+}
+export function applyVisitorSettings(base: string, settings: TradingSettings): Promise<OperatorSnapshot> {
+  return request(base, "/settings", { method: "POST", credentials: "same-origin", body: JSON.stringify({ settings }) });
 }
 
 export function validateOperatorConnection(base: string, settings: TradingSettings, apiKey?: string): Promise<ConnectionValidation> {

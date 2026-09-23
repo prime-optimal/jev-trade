@@ -1,10 +1,17 @@
 import { effectiveEndpoints, type TradingSettings } from "./settings";
 
-const env = (key: string, fallback?: string) => process.env[key] ?? fallback;
+export type Env = Record<string, string | undefined>;
+
+declare global {
+  var __JEV_RUNTIME_ENV__: Env | undefined;
+}
+
+/** Process environment by default; isolated workers inject an allowlisted object before this module loads. */
+export const runtimeEnv: Env = globalThis.__JEV_RUNTIME_ENV__ ?? process.env;
+const env = (key: string, fallback?: string) => runtimeEnv[key] ?? fallback;
 
 export type JevProvider = "openrouter" | "typesafe" | "gateway";
 
-export type Env = Record<string, string | undefined>;
 
 export type HyperliquidEnv = {
   isTestnet: boolean;
@@ -97,9 +104,9 @@ export function assertJevCredentials(
 }
 
 const hlTestnet = env("HL_TESTNET", "true") !== "false";
-const jevProvider = resolveJevProvider(process.env);
-const hyperliquid = resolveHyperliquidEnv(process.env, hlTestnet);
-const jevModelId = resolveJevModelId(process.env, jevProvider);
+const jevProvider = resolveJevProvider(runtimeEnv);
+const hyperliquid = resolveHyperliquidEnv(runtimeEnv, hlTestnet);
+const jevModelId = resolveJevModelId(runtimeEnv, jevProvider);
 
 export const config = {
   hlTestnet,

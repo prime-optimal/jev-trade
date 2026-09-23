@@ -33,22 +33,35 @@ function jsonMaybeGzip(req: Request, body: unknown, status = 200) {
 export type SleeveView = { coin: string; history: () => BlockEvent[]; tape: () => PricePoint[] };
 
 export interface PublicServer {
+  readonly port: number;
   broadcast(e: BlockEvent): void;
   broadcastQuote(coin: string, block: number, quote: Quote): void;
   broadcastFill(coin: string, block: number, fill: Fill, ts?: number): void;
   broadcastRun(run: RunSnapshot): void;
   broadcastSleeve(sleeve: SleeveMeta): void;
   broadcastPrice(coin: string, print: { ts: number; mid: number; bestBid: number; bestAsk: number; spreadBps: number }): void;
+  close(): void;
+}
+
+export interface PublicServerOptions {
+  port?: number;
+  hostname?: string;
+  fetch?: (request: Request) => Response | undefined | Promise<Response | undefined>;
 }
 
 /** Public read-only market data and authoritative run status. */
-export function startServer(meta: Meta, sleeves: SleeveView[], runSnapshot: () => RunSnapshot): PublicServer {
+export function startServer(
+  meta: Meta,
+  sleeves: SleeveView[],
+  runSnapshot: () => RunSnapshot,
+  options: PublicServerOptions = {},
+): PublicServer {
   const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const enc = new TextEncoder();
   const send = (c: ReadableStreamDefaultController<Uint8Array>, type: string, data: unknown) => {
     try { c.enqueue(enc.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)); } catch { clients.delete(c); }
   };
-  setInterval(() => clients.forEach((c) => send(c, "ping", Date.now())), 15_000);
+  const ping = setInterval(() => clients.forEach((c) => send(c, "ping", Date.now())), 15_000);
   const publicMeta = () => {
     const { model: _operatorModel, ...visible } = meta;
     return visible;
@@ -89,10 +102,13 @@ export function startServer(meta: Meta, sleeves: SleeveView[], runSnapshot: () =
     return snapCache;
   };
 
-  Bun.serve({
-    port: config.port,
+  const listener = Bun.serve({
+    port: options.port ?? config.port,
+    hostname: options.hostname,
     idleTimeout: 0,
-    fetch(req) {
+    async fetch(req) {
+      const hooked = await options.fetch?.(req);
+      if (hooked) return hooked;
       const url = new URL(req.url);
       const { pathname } = url;
       if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -103,24 +119,37 @@ export function startServer(meta: Meta, sleeves: SleeveView[], runSnapshot: () =
       if (pathname === "/run" && req.method === "GET") return json(runSnapshot());
       if (pathname === "/events") {
         const lite = url.searchParams.get("lite") === "1";
+        let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
         const stream = new ReadableStream<Uint8Array>({
           start(c) {
+            controller = c;
             clients.add(c);
             if (lite) send(c, "ready", meta.startedAt);
             else {
               try { c.enqueue(snap().event); } catch { clients.delete(c); }
             }
           },
-          cancel(c) { clients.delete(c); },
+          cancel() {
+            if (controller) clients.delete(controller);
+            controller = null;
+          },
         });
         return new Response(stream, { headers: { ...CORS, "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
       }
       return json({ error: "not found" }, 404);
     },
   });
+  const port = listener.port;
+  if (typeof port !== "number") {
+    clearInterval(ping);
+    listener.stop(true);
+    throw new Error("Public server did not bind a TCP port");
+  }
+
 
   const broadcast = (type: string, data: unknown) => clients.forEach((c) => send(c, type, data));
   return {
+    port,
     broadcast: (e: BlockEvent) => broadcast("block", e),
     broadcastQuote: (coin: string, block: number, quote: Quote) => broadcast("quote", { coin, block, quote }),
     broadcastFill: (coin: string, block: number, fill: Fill, ts?: number) => broadcast("fill", { coin, block, fill, ts }),
@@ -131,5 +160,13 @@ export function startServer(meta: Meta, sleeves: SleeveView[], runSnapshot: () =
     },
     broadcastPrice: (coin: string, print: { ts: number; mid: number; bestBid: number; bestAsk: number; spreadBps: number }) =>
       broadcast("price", { coin, ...print }),
+    close() {
+      clearInterval(ping);
+      for (const client of clients) {
+        try { client.close(); } catch {}
+      }
+      clients.clear();
+      listener.stop(true);
+    },
   };
 }

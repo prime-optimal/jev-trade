@@ -1,16 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useReducer } from "react";
 import { applyLiveMid } from "./ohlc";
 import type { BlockEvent, ConnectionState, FeedState, Fill, Meta, PricePoint, Quote, SleeveFeed, SleeveMeta } from "./types";
+import { useFeedTransport } from "./useFeedTransport";
 
 const CAP = 1000;
 const TAPE_CAP = 200_000;
-const BACKOFF_MIN = 1000;
-const BACKOFF_MAX = 10_000;
-const STALE_MS = 45_000;
-/** First snapshot used to be multi-MB. Wait longer before calling the socket dead. */
-const FIRST_EVENT_MS = 90_000;
 
 interface Mark {
   ts: number;
@@ -32,7 +28,8 @@ interface State {
   sleeves: Record<string, SleeveMem>;
 }
 
-type Action =
+export type FeedAction =
+  | { type: "reset" }
   | { type: "snapshot"; meta: Meta | null; historyByCoin: Record<string, BlockEvent[]>; tapeByCoin: Record<string, PricePoint[]> }
   | { type: "block"; event: BlockEvent }
   | { type: "fill"; coin: string; block: number; fill: Fill; ts?: number }
@@ -225,7 +222,10 @@ function applyBlock(s: SleeveMem, ev: BlockEvent): SleeveMem {
   };
 }
 
-function reducer(state: State, action: Action): State {
+function reducer(state: State, action: FeedAction): State {
+  if (action.type === "reset") {
+    return { meta: null, connection: "connecting", sleeves: {} };
+  }
   switch (action.type) {
     case "price": {
       const s = state.sleeves[action.coin] ?? emptySleeve();
@@ -377,11 +377,11 @@ function asEvents(v: unknown): BlockEvent[] {
   return Array.isArray(v) ? (v as BlockEvent[]) : [];
 }
 
-function asTape(v: unknown): PricePoint[] {
+export function asTape(v: unknown): PricePoint[] {
   return Array.isArray(v) ? (v as PricePoint[]) : [];
 }
 
-function mapByCoin(raw: unknown): Record<string, unknown[]> {
+export function mapByCoin(raw: unknown): Record<string, unknown[]> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out: Record<string, unknown[]> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
@@ -390,7 +390,7 @@ function mapByCoin(raw: unknown): Record<string, unknown[]> {
   return out;
 }
 
-function snapshotFrom(data: unknown): {
+export function snapshotFrom(data: unknown): {
   meta: Meta | null;
   historyByCoin: Record<string, BlockEvent[]>;
   tapeByCoin: Record<string, PricePoint[]>;
@@ -411,194 +411,21 @@ function snapshotFrom(data: unknown): {
   return { meta: parseMeta(d, liveCoins), historyByCoin, tapeByCoin };
 }
 
+export interface FeedResult extends FeedState {
+  loadTape: () => void;
+}
+
 /**
  * Live sleeve feed. First paint comes from gzipped GET /snapshot.
  * SSE is lite after that. The full candle tape hydrates right after the snapshot.
  */
-export function useFeed(apiUrl: string): FeedState & { loadTape: () => void } {
+export function useFeed(apiUrl: string, enabled = true): FeedResult {
   const [state, dispatch] = useReducer(reducer, {
     meta: null,
     connection: "connecting" as ConnectionState,
     sleeves: {},
   });
-  const loadTapeRef = useRef(() => {});
-  const loadTape = useCallback(() => loadTapeRef.current(), []);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof EventSource === "undefined") return;
-    const base = (apiUrl || "").replace(/\/+$/, "");
-
-    let closed = false;
-    let attempt = 0;
-    let haveSnapshot = false;
-    let tapeStatus: "idle" | "loading" | "done" = "idle";
-    let es: EventSource | null = null;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    let staleTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const armStaleTimer = (ms = STALE_MS) => {
-      if (staleTimer) clearTimeout(staleTimer);
-      staleTimer = setTimeout(() => {
-        if (!closed) scheduleReconnect();
-      }, ms);
-    };
-
-    const teardown = () => {
-      if (es) {
-        es.onopen = null;
-        es.onerror = null;
-        es.close();
-        es = null;
-      }
-      if (staleTimer) clearTimeout(staleTimer);
-    };
-
-    const scheduleReconnect = () => {
-      if (closed) return;
-      teardown();
-      dispatch({ type: "connection", connection: "reconnecting" });
-      const delay = Math.min(BACKOFF_MAX, BACKOFF_MIN * 2 ** attempt);
-      attempt++;
-      if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = setTimeout(connect, delay);
-    };
-
-    const handle = (type: string, fn: (data: unknown) => void) => {
-      es?.addEventListener(type, (raw: Event) => {
-        armStaleTimer();
-        const payload = (raw as MessageEvent).data;
-        if (typeof payload !== "string" || !payload) return;
-        let data: unknown;
-        try {
-          data = JSON.parse(payload);
-        } catch {
-          return;
-        }
-        fn(data);
-      });
-    };
-
-    const hydrateTape = async () => {
-      if (tapeStatus !== "idle") return;
-      tapeStatus = "loading";
-      try {
-        const r = await fetch(`${base}/tape`);
-        if (!r.ok) {
-          tapeStatus = "idle";
-          return;
-        }
-        const raw = await r.json();
-        const tapeByCoin: Record<string, PricePoint[]> = {};
-        for (const [coin, rows] of Object.entries(mapByCoin(raw))) tapeByCoin[coin] = asTape(rows);
-        if (Object.keys(tapeByCoin).length) dispatch({ type: "tapes", tapeByCoin });
-        tapeStatus = "done";
-      } catch {
-        tapeStatus = "idle";
-      }
-    };
-    loadTapeRef.current = hydrateTape;
-
-    const applySnapshot = (data: unknown) => {
-      const next = snapshotFrom(data);
-      if (!Object.keys(next.historyByCoin).length && !Object.keys(next.tapeByCoin).length && !next.meta) return;
-      haveSnapshot = true;
-      dispatch({ type: "snapshot", ...next });
-      if (!closed) void hydrateTape();
-    };
-
-    let snapInflight: Promise<boolean> | null = null;
-    const pullSnapshot = (): Promise<boolean> => {
-      if (snapInflight) return snapInflight;
-      snapInflight = (async () => {
-        try {
-          const r = await fetch(`${base}/snapshot`);
-          if (!r.ok) return false;
-          applySnapshot(await r.json());
-          return true;
-        } catch {
-          return false;
-        } finally {
-          snapInflight = null;
-        }
-      })();
-      return snapInflight;
-    };
-
-    function connect() {
-      if (closed) return;
-      dispatch({ type: "connection", connection: attempt === 0 ? "connecting" : "reconnecting" });
-      void pullSnapshot();
-      es = new EventSource(`${base}/events?lite=1`);
-
-      es.onopen = () => {
-        attempt = 0;
-        dispatch({ type: "connection", connection: "live" });
-        armStaleTimer(haveSnapshot ? STALE_MS : FIRST_EVENT_MS);
-        if (!haveSnapshot) void pullSnapshot();
-      };
-      es.onerror = () => {
-        if (!closed) scheduleReconnect();
-      };
-
-      handle("snapshot", (data) => {
-        applySnapshot(data);
-      });
-      handle("ready", () => {
-        if (!haveSnapshot) void pullSnapshot();
-      });
-      handle("block", (data) => {
-        dispatch({ type: "block", event: data as BlockEvent });
-      });
-      handle("sleeve", (data) => {
-        const d = (data ?? {}) as { sleeve?: unknown };
-        dispatch({ type: "sleeve", sleeve: d.sleeve });
-      });
-      handle("price", (data) => {
-        const d = (data ?? {}) as { coin?: string; ts?: number; mid?: number; bestBid?: number; bestAsk?: number; spreadBps?: number };
-        if (typeof d.coin !== "string" || typeof d.mid !== "number" || typeof d.ts !== "number") return;
-        dispatch({
-          type: "price",
-          coin: d.coin,
-          mark: {
-            ts: d.ts,
-            mid: d.mid,
-            bestBid: typeof d.bestBid === "number" ? d.bestBid : d.mid,
-            bestAsk: typeof d.bestAsk === "number" ? d.bestAsk : d.mid,
-            spreadBps: typeof d.spreadBps === "number" ? d.spreadBps : 0,
-          },
-        });
-      });
-      handle("fill", (data) => {
-        const d = (data ?? {}) as { coin?: string; block?: number; fill?: Fill; ts?: number };
-        if (typeof d.coin !== "string" || !d.fill) return;
-        dispatch({
-          type: "fill",
-          coin: d.coin,
-          block: typeof d.block === "number" ? d.block : 0,
-          fill: d.fill,
-          ts: typeof d.ts === "number" ? d.ts : undefined,
-        });
-      });
-      handle("quote", (data) => {
-        const d = (data ?? {}) as { coin?: string; block?: number; quote?: Quote };
-        if (typeof d.coin !== "string" || typeof d.block !== "number" || !d.quote) return;
-        dispatch({ type: "quote", coin: d.coin, block: d.block, quote: d.quote });
-      });
-      handle("ping", () => {
-        dispatch({ type: "connection", connection: "live" });
-      });
-    }
-
-    connect();
-
-    return () => {
-      closed = true;
-      loadTapeRef.current = () => {};
-      if (retryTimer) clearTimeout(retryTimer);
-      teardown();
-    };
-  }, [apiUrl]);
-
+  const loadTape = useFeedTransport(apiUrl, enabled, dispatch, snapshotFrom, mapByCoin, asTape);
   const byCoin: Record<string, SleeveFeed> = {};
   for (const [coin, s] of Object.entries(state.sleeves)) {
     byCoin[coin] = {
