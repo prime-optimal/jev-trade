@@ -3,11 +3,11 @@ import { safeTransportMessage } from "./hyperliquid";
 import { bpsBetween, snapshotIndicators, venueFeatures } from "./indicators";
 import type { Market } from "./market";
 import type { Model } from "./model";
-import type { ModelDecision, TradeState } from "./types";
+import type { ModelDecision, Side, TradeState } from "./types";
 import { planQuote, type QuotePlan } from "./plan";
 import { aggregateFills, emptySummary, takeLiveFills, takeSimFills, type Resting, type TradeFeed } from "./trades";
 import type { RunGuard } from "./run-lifecycle";
-import type { BlockEvent, Book, Fill, PricePoint, Quote, Side, Timing, Totals } from "./types";
+import type { BlockEvent, Book, Fill, PricePoint, Quote, Timing, Totals } from "./legacy-types";
 
 const emptyTotals = (): Totals => ({
   blocks: 0, decisions: 0, quotes: 0, fills: 0, reverted: 0, lateBlocks: 0,
