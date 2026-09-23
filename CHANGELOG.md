@@ -8,6 +8,7 @@ Entries below record the implementation sequence, including superseded server-ow
 
 ### Added
 
+- Documented the bounded #25 follow-on roadmap, separating six unimplemented milestones from integrated browser-session trading and retaining explicit Brave Wallet testnet proof and cleanup limits.
 - Added OpenRouter as a Jev provider through its System One endpoint, with provider-specific model defaults and startup credential checks.
 - Added provider resolution in this order: OpenRouter, TypeSafe, then Vercel AI Gateway when matching credentials are available.
 - Added OpenRouter provider coverage in `test/jev-provider.test.ts` and documented `OPENROUTER_API_KEY` in `.env.example`.
