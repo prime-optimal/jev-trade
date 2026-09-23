@@ -13,7 +13,7 @@ This boundary is intentional. Trading and secrets stay in the Bun process, while
 
 [`src/index.ts`](../src/index.ts) registers every configured sleeve before initialization, then prepares them serially to avoid a burst of Hyperliquid HTTP requests. Immutable symbol and leverage metadata is fetched once and shared across every sleeve. A successful sleeve becomes live immediately. A failed sleeve remains registered as retrying, exposes its error and next retry time through the API, and retries independently after 30 minutes without restarting healthy sleeves.
 
-The HTTP and SSE server starts before sleeve initialization so the dashboard can show starting and retrying states. Startup remains Off. An operator may start when at least one sleeve is ready; healthy sleeves run independently, while recovered sleeves join only if that same run is still active. One process contains every sleeve.
+The HTTP and SSE server starts before sleeve initialization so the dashboard can show starting and retrying states. In paper mode, startup arms one timed run after settings are applied and starts it when the first sleeve is ready. Failures remain Off and retry until then. In real mode, startup remains Off and a private operator may start when at least one sleeve is ready. Healthy sleeves run independently, while recovered sleeves join only if that same run is still active. Expiry or manual Stop never starts another run; restarting the process arms a new paper run. One process contains every sleeve.
 
 ## Bot modules
 

@@ -49,7 +49,7 @@ The operator listener binds only to `127.0.0.1`. It checks the peer address, exa
 
 The operator response includes non-secret model and provider configuration, whether provider and wallet secrets exist, the environment baseline, and session override names. It never returns wallet keys, provider keys, or the transport key. Credential-bearing endpoint paths and query strings are redacted from operator responses.
 
-Save applies one validated operator snapshot while stopped and rebuilds execution resources as an all-or-nothing replacement. A failed replacement leaves the prior settings and executor in place. Initial startup is different: a transient resource failure remains published on the affected sleeve and retries while Off, so the control plane stays available without starting decisions or orders. Cancel changes only the draft. Guest Save writes browser preferences and never changes Bun. Startup is always Off, including process restart. No stored preference starts trading.
+Save applies one validated operator snapshot while stopped and rebuilds execution resources as an all-or-nothing replacement. A failed replacement leaves the prior settings and executor in place. On process startup, paper mode applies the configured settings and duration, then arms one run that starts when the first sleeve is ready; transient resource failures remain published and retry while Off until then. Expiry and manual Stop do not arm another run, while restarting the process creates a new paper run. Real mode always starts Off and requires a private, explicitly confirmed Start. Cancel changes only the draft. Guest Save writes browser preferences and never changes Bun, and the public server remains read-only.
 
 ## Transport validation
 
