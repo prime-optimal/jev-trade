@@ -1,77 +1,59 @@
 # Dashboard
 
-The dashboard is a separate Next.js App Router application in [`web/`](../web/). It reads the bot's public API and does not access wallets, Jev credentials, or Hyperliquid clients.
+The dashboard is a separate Next.js App Router application in [`web/`](../web/). The public view reads market data and run status from Bun. It does not receive wallet keys, Jev credentials, or transport API keys.
 
-## Structure
+## Routes and shared state
 
-### `web/src/app`
+[`web/src/app/page.tsx`](../web/src/app/page.tsx) renders the market dashboard. [`web/src/app/settings/page.tsx`](../web/src/app/settings/page.tsx) renders the non-indexed settings page. [`SettingsProvider`](../web/src/lib/trading/SettingsProvider.tsx) sits above both routes, so navigation does not create another market feed or reset a run display.
 
-| Path | Responsibility |
-| --- | --- |
-| [`page.tsx`](../web/src/app/page.tsx) | Client page composition, sleeve selection, portfolio summaries, and API URL selection. |
-| [`layout.tsx`](../web/src/app/layout.tsx) | Root HTML, font, metadata, icons, and structured data. |
-| [`globals.css`](../web/src/app/globals.css) | Global tokens and page-level styles. |
-| [`page.module.css`](../web/src/app/page.module.css) | Main two-column layout. |
-| [`robots.ts`](../web/src/app/robots.ts) | Robots metadata route. |
-| [`sitemap.ts`](../web/src/app/sitemap.ts) | Sitemap metadata route. |
+The Header separates two facts:
 
-### `web/src/components`
+- `Prices connected`, `connecting`, or `reconnecting` reports the public SSE connection.
+- `Off`, `Starting`, `Running`, `Stopping`, `Expired`, or `Attention required` reports the authoritative Bun run.
 
-| Component | Responsibility |
-| --- | --- |
-| `Header` | Connection state and portfolio balance and PnL. |
-| `SleeveStrip` | Coin selection and per-sleeve status. |
-| `FlowChart` and `CandlePane` | Price candles, live mids, and fill markers. |
-| `DecisionPanel` | Current Jev decision, probabilities, position, and order state. |
-| `Feed` | Recent decision and trade activity. |
-| `Book` | Sleeve summary cards and expanded market detail. |
-| `Logo`, `TokenIcon`, `Skeleton` | Shared visual elements and loading placeholders. |
+A connected price stream does not mean trading is running. The old green Live meaning no longer controls trading. Green run styling appears only while the lifecycle reports `running`.
 
-Each component keeps its styles in the same directory as a CSS module.
+The run display derives elapsed and remaining time from Bun's `startedAt`, `deadlineAt`, `stoppedAt`, `durationMs`, and `serverNow`. React's interval only refreshes the display. It does not enforce or extend the deadline. A refresh reconnects to the existing Bun run and never sends Start.
 
-### `web/src/lib`
+## Operator and guest views
 
-| File | Responsibility |
-| --- | --- |
-| [`useFeed.ts`](../web/src/lib/useFeed.ts) | Snapshot loading, SSE lifecycle, reconnects, reducer state, and tape hydration. |
-| [`bot-types.ts`](../web/src/lib/bot-types.ts) | Exact dashboard copy of the bot wire types. |
-| [`types.ts`](../web/src/lib/types.ts) | Re-exports wire types and adds dashboard-only feed state. |
-| [`ohlc.ts`](../web/src/lib/ohlc.ts) | Candle and live-mid transformations. |
-| [`fills.ts`](../web/src/lib/fills.ts) | Fill marker helpers. |
-| [`format.ts`](../web/src/lib/format.ts) | Display formatting and decision labels. |
-| [`pnl.ts`](../web/src/lib/pnl.ts) | Portfolio balance and PnL aggregation. |
+The public dashboard is not a global trading control. The operator switch works only when the browser can reach the private loopback control API and the operator connection preflight is valid. Remote public visitors can see run state but cannot start, stop, validate, reconcile, or apply settings.
+
+On a localhost page, the browser defaults the operator API to `http://127.0.0.1:3002`. A non-local page has no operator API unless `NEXT_PUBLIC_OPERATOR_API_URL` was explicitly built in. That variable is only routing. It adds no authentication, so it must point to a deliberately protected local channel, never a public reverse proxy.
+
+Startup and process restart are Off. Start requires at least one enabled asset and a successful transport validation. Real mode also opens an explicit confirmation prompt and the Bun API requires `confirmReal: true`. No Brave Wallet connection is required for the current server-wallet operator path.
+
+The switch shows the configured limit while Off, 30 minutes by default. A running display shows elapsed time and remaining time. Manual Off and expiry use the same owned-order cleanup path. `Attention required` blocks another start and locks execution settings. The private operator view shows Retry cleanup, which calls reconcile and unlocks the form only after cleanup succeeds. Stop does not liquidate positions.
+
+## Settings page
+
+The form separates drafts from applied settings.
+
+- Save validates one complete snapshot. In operator scope it rebuilds the stopped Bun executor. In guest scope it saves browser preferences only.
+- Cancel restores the applied values without making a request.
+- Reset changes the draft. Save is still required.
+- Trading and connection fields are disabled during Starting, Running, Paused, Stopping, and Attention required. Theme remains editable.
+
+The page covers appearance, network and paper or real mode, enabled assets, entry notional, transport endpoints, optional custom API authentication, run duration, and advanced cadence and order values. Operator configuration shows non-secret values and configured or missing secret status. It never displays secret values.
+
+Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. An explicit light or dark choice updates the whole app and the browser theme color. Guest and future owner settings use separate network-scoped storage keys. API keys, RPC URLs, and credential-bearing endpoint paths or queries stay in memory.
 
 ## Feed lifecycle
 
-[`useFeed()`](../web/src/lib/useFeed.ts) first fetches `GET /snapshot` and opens `/events?lite=1`. The lite stream sends a `ready` event instead of duplicating the snapshot. After the first snapshot, the hook fetches `/tape` for deeper chart history.
+[`useFeed()`](../web/src/lib/useFeed.ts) first fetches `GET /snapshot` and opens `/events?lite=1`. The lite stream sends `ready` instead of another snapshot. The hook later fetches `/tape` for deeper chart history.
 
-The reducer keeps state by coin. `block` appends or replaces a decision event. Later `quote` and `fill` events update the matching block. `price` updates the current mark and live candle without creating a decision. `sleeve` updates starting, retrying, and live metadata without a reload. The browser keeps at most 1,000 block events and 200,000 tape points per sleeve.
+A 45-second event gap reconnects the stream. Before the first snapshot, the timeout is 90 seconds. Retry delay starts at one second and caps at ten seconds. `ping` events keep the connection active. Run state is also polled from public `GET /run` every two seconds, and operator state is polled every five seconds when the local channel exists.
 
-A 45-second event gap triggers reconnection. Before the first snapshot, the timeout is 90 seconds. Reconnect delay starts at one second and caps at ten seconds. `ping` events keep the connection live.
-
-Every configured sleeve keeps a card even if initialization fails. A retrying card shows that the market is unavailable, the public error summary, and the scheduled retry time. Healthy sleeves continue updating normally while the failed sleeve retries in the background.
+Every configured sleeve remains visible if initialization fails. Healthy sleeves continue independently. A failed sleeve can retry only while the authoritative run is Running. It cannot restart an expired or manually stopped run.
 
 ## Shared wire types
 
-[`src/types.ts`](../src/types.ts) is canonical. [`web/src/lib/bot-types.ts`](../web/src/lib/bot-types.ts) must remain byte-for-byte identical because the dashboard build does not depend on files outside `web/`. [`test/types.test.ts`](../test/types.test.ts) enforces the copy.
+[`src/types.ts`](../src/types.ts) is canonical for the market feed. [`web/src/lib/bot-types.ts`](../web/src/lib/bot-types.ts) is its byte-for-byte dashboard copy. Settings and lifecycle contracts likewise have Bun and web copies because the dashboard build does not import root source files.
 
-When a wire type changes, update both files in the same change. Dashboard-only types belong in [`web/src/lib/types.ts`](../web/src/lib/types.ts), not in the shared copy.
+## API URLs and local development
 
-## API URL and local development
+`NEXT_PUBLIC_API_URL` selects the public Bun API. When unset, the browser uses its page hostname on port 3000. `NEXT_PUBLIC_OPERATOR_API_URL` selects the private control API only when explicitly set; localhost pages otherwise use `127.0.0.1:3002`.
 
-[`page.tsx`](../web/src/app/page.tsx) reads `NEXT_PUBLIC_API_URL` and adds `https://` to a bare host. When it is unset, the browser uses the page's own hostname on port 3000, so `http://localhost:3001` and the LAN Network URL both reach the local bot. Next embeds `NEXT_PUBLIC_*` values into the client bundle at build time, so set the production bot URL before building the dashboard.
+Run Bun on port 3000 and the dashboard on port 3001. The private operator listener starts with Bun on loopback port 3002. Its default accepted origin is `http://localhost:3001`, so use that exact dashboard URL unless the control origin is configured to another explicit loopback origin.
 
-In development, [`next.config.ts`](../web/next.config.ts) adds every non-internal IPv4 address of the machine to `allowedDevOrigins`, so opening the dashboard by LAN IP is not blocked by Next's cross-origin dev check. The list is read when `just web` starts; restart it after the machine's address changes. The bot already sends `access-control-allow-origin: *` ([`src/server.ts`](../src/server.ts)).
-
-Run the bot on port 3000 and the dashboard with Bun:
-
-```sh
-bun run start
-bun run --cwd web dev
-```
-
-The dashboard dev script runs `next dev -p 3001`, so open `http://localhost:3001`.
-
-## Rendered-text rules
-
-Rendered text must not contain middle dots, em dashes, or en dashes. Use commas, colons, parentheses, or separate sentences. Do not add blinking or pulsing indicators. Static state changes and plain connection labels are acceptable.
+Rendered text must not contain middle dots, em dashes, or en dashes. Do not add blinking or pulsing indicators.

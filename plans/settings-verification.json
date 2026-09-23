@@ -1,0 +1,214 @@
+{
+  "defaultOff": {
+    "runId": null,
+    "status": "off",
+    "startedAt": null,
+    "deadlineAt": null,
+    "stoppedAt": null,
+    "durationMs": 1800000,
+    "stopReason": null,
+    "serverNow": 1790129540641
+  },
+  "started": {
+    "runId": "364f62a9-8228-4f25-90c4-6355c1fb3cd3",
+    "status": "running",
+    "startedAt": 1790129542480,
+    "deadlineAt": 1790129602480,
+    "stoppedAt": null,
+    "durationMs": 60000,
+    "stopReason": null,
+    "serverNow": 1790129542482
+  },
+  "browserClosed": true,
+  "expired": {
+    "runId": "364f62a9-8228-4f25-90c4-6355c1fb3cd3",
+    "status": "expired",
+    "startedAt": 1790129542480,
+    "deadlineAt": 1790129602480,
+    "stoppedAt": 1790129602480,
+    "durationMs": 60000,
+    "stopReason": "expired",
+    "serverNow": 1790129624231
+  },
+  "verification": {
+    "tests": {
+      "passed": 121,
+      "failed": 0,
+      "assertions": 480,
+      "files": 23
+    },
+    "backendTypecheck": "passed",
+    "nextProductionBuild": "passed"
+  },
+  "additionalSmoke": {
+    "configuredStartupDurationMs": 60000,
+    "publicMutationStatuses": [
+      {
+        "path": "/settings",
+        "status": 404
+      },
+      {
+        "path": "/start",
+        "status": 404
+      },
+      {
+        "path": "/stop",
+        "status": 404
+      },
+      {
+        "path": "/operator",
+        "status": 404
+      }
+    ],
+    "hostileOriginStatus": 403,
+    "deniedStorageNotice": true,
+    "corruptStorageResetNotice": true,
+    "invalidNotionalRejected": true,
+    "resetRequiresSave": true,
+    "guestSavePersistsWithoutOperatorMutation": true,
+    "navigationFeeds": {
+      "before": {
+        "created": 2,
+        "active": 1
+      },
+      "after": {
+        "created": 2,
+        "active": 1
+      }
+    },
+    "sse": {
+      "durationMs": 12512,
+      "closedBeforeAbort": false
+    },
+    "runningSettingsMutationStatus": 409,
+    "candidateFailureStatus": 400,
+    "candidateRollbackPreservedSettings": true,
+    "postRollbackDecisionTimestamp": 1790131238091,
+    "postRollbackRunStartedAt": 1790131238008,
+    "autonomousExpiry": {
+      "runId": "19a7e96c-8cf9-46e4-83d4-f2e6c17ab230",
+      "status": "expired",
+      "startedAt": 1790131238008,
+      "deadlineAt": 1790131298008,
+      "stoppedAt": 1790131298008,
+      "durationMs": 60000,
+      "stopReason": "expired",
+      "serverNow": 1790131403402
+    },
+    "positionRetained": {
+      "side": "short",
+      "size": 0.00045,
+      "entryPrice": 87317,
+      "leverage": 5,
+      "unrealizedUsd": 0.000225,
+      "unrealizedSz": 0
+    }
+  },
+  "safety": "Initial smoke used MODEL=mock. Final smoke used actual Jev through OpenRouter with fnox-injected credentials. All orders remained paper/testnet with no wallet keys. No deployments or live orders.",
+  "openRouterSmoke": {
+    "credentialSource": "fnox 1Password provider; never printed or persisted",
+    "model": "jev",
+    "provider": "openrouter",
+    "mode": "paper",
+    "walletCredentialsInjected": false,
+    "run": {
+      "runId": "6de5a7a5-4e41-4648-8fd3-2dbcb1df25fc",
+      "status": "expired",
+      "startedAt": 1790132224916,
+      "deadlineAt": 1790132284916,
+      "stoppedAt": 1790132284916,
+      "durationMs": 60000,
+      "stopReason": "expired",
+      "serverNow": 1790132327479
+    },
+    "events": [
+      {
+        "block": 1,
+        "action": "buy",
+        "latencyMs": 598,
+        "quoteStatus": "sim",
+        "fill": null
+      },
+      {
+        "block": 2,
+        "action": "buy",
+        "latencyMs": 219,
+        "quoteStatus": "sim",
+        "fill": null
+      },
+      {
+        "block": 3,
+        "action": "buy",
+        "latencyMs": 155,
+        "quoteStatus": "sim",
+        "fill": null
+      },
+      {
+        "block": 4,
+        "action": "buy",
+        "latencyMs": 159,
+        "quoteStatus": "sim",
+        "fill": null
+      },
+      {
+        "block": 5,
+        "action": "buy",
+        "latencyMs": 244,
+        "quoteStatus": "sim",
+        "fill": null
+      },
+      {
+        "block": 6,
+        "action": "buy",
+        "latencyMs": 194,
+        "quoteStatus": "sim",
+        "fill": null
+      },
+      {
+        "block": 7,
+        "action": "buy",
+        "latencyMs": 174,
+        "quoteStatus": "sim",
+        "fill": {
+          "size": 0.00024,
+          "simulated": true
+        }
+      },
+      {
+        "block": 8,
+        "action": "sell",
+        "latencyMs": 200,
+        "quoteStatus": "sim",
+        "fill": {
+          "size": 0.00024,
+          "simulated": true
+        }
+      },
+      {
+        "block": 9,
+        "action": "hold",
+        "latencyMs": 233,
+        "fill": null
+      },
+      {
+        "block": 10,
+        "action": "hold",
+        "latencyMs": 217,
+        "fill": null
+      },
+      {
+        "block": 11,
+        "action": "hold",
+        "latencyMs": 237,
+        "fill": null
+      },
+      {
+        "block": 12,
+        "action": "buy",
+        "latencyMs": 188,
+        "quoteStatus": "sim",
+        "fill": null
+      }
+    ]
+  }
+}

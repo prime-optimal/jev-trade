@@ -62,15 +62,15 @@
 .legDown::before {
   width: 8px;
   height: 8px;
-  border: 1px solid #000;
+  border: 1px solid var(--chart-up);
 }
 
 .legUp::before {
-  background: #000;
+  background: var(--chart-up);
 }
 
 .legDown::before {
-  background: #fff;
+  background: var(--chart-down);
 }
 
 .legBuy::before,
@@ -115,7 +115,7 @@
 .tagText {
   font: 500 11px var(--font-mono), monospace;
   font-variant-numeric: tabular-nums;
-  fill: #ffffff;
+  fill: var(--badge-jev-fg);
 }
 
 .cross {
@@ -125,7 +125,7 @@
 }
 
 .crossDot {
-  fill: var(--bg);
+  fill: var(--panel);
   stroke: var(--ink);
   stroke-width: 1.6;
 }

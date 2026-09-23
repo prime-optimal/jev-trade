@@ -1,163 +1,81 @@
 # Bot HTTP and SSE API
 
-[`src/server.ts`](../src/server.ts) starts a Bun HTTP server on `PORT`, default 3000. All routes allow any origin and request headers. `OPTIONS` returns an empty CORS response. Unknown paths return `404` with `{"error":"not found"}`.
+The implementation runs two Bun listeners. The public listener on `PORT`, default 3000, is read-only and allows browser origins. The private operator listener binds `127.0.0.1` on `CONTROL_PORT`, default 3002. Never expose or reverse proxy the operator listener as a public control API.
 
-## HTTP routes
+## Public routes
 
 | Route | Response |
 | --- | --- |
-| `GET /` | Process [`Meta`](../src/types.ts) plus `latestByCoin`, a map of coin to the latest `BlockEvent` or `null`. |
-| `GET /snapshot` | `Meta` plus clipped `historyByCoin` and `tapeByCoin` maps. This is the dashboard's first-paint payload. |
-| `GET /history` | A map of coin to the full in-memory `BlockEvent[]`, up to 1,000 events per sleeve. |
-| `GET /tape` | A map of coin to clipped `PricePoint[]`. |
-| `GET /events` | SSE stream. Sends a `snapshot` immediately, then live events. |
-| `GET /events?lite=1` | SSE stream. Sends `ready` instead of the initial snapshot, then live events. |
+| `GET /` | Public process metadata plus the latest event by coin. Operator model configuration is omitted. |
+| `GET /snapshot` | Public metadata plus clipped history and tape by coin. |
+| `GET /history` | Full in-memory block history by coin, up to 1,000 events per sleeve. |
+| `GET /tape` | Clipped price history by coin. |
+| `GET /run` | Current authoritative `RunSnapshot`. |
+| `GET /events` | SSE snapshot followed by live events. |
+| `GET /events?lite=1` | SSE `ready` event followed by live events. |
 
-`/snapshot`, `/history`, and `/tape` use gzip when `Accept-Encoding` contains `gzip`, and then also set `Vary: Accept-Encoding`. Both the gzip and plain responses set `Cache-Control: no-store`. The root JSON response is not gzip-compressed. SSE uses `text/event-stream`, `Cache-Control: no-cache`, and a keep-alive connection.
+`/snapshot`, `/history`, and `/tape` support gzip and set `Cache-Control: no-store`. SSE sends `text/event-stream`, `Cache-Control: no-cache`, and a keep-alive connection.
 
-The server serializes each SSE message as an `event` line followed by one JSON `data` line.
+The public API has no settings, validation, Start, Stop, or reconcile mutation. Public CORS is for read-only dashboard data, not operator authorization.
 
-Status transitions use the `sleeve` event with `{ type: "sleeve", sleeve: SleeveMeta }`. The dashboard receives starting, retrying, and live transitions without reloading.
-
-## Common payloads
-
-The canonical interfaces are in [`src/types.ts`](../src/types.ts).
-
-### `Meta`
+## Run payload
 
 ```ts
-{
-  model: string;
-  wallet: string | null;
-  dryRun: boolean;
-  market: string;
-  startedAt: number;
-  venue: string;
-  coin: string;
-  pair: string;
-  explorerTx: string;
-  tickMs: number;
-  sleeves: Array<{
-    coin: string;
-    pair: string;
-    label: string;
-    wallet: string | null;
-    status: "starting" | "live" | "retrying";
-    error: string | null;
-    retryAt: number | null;
-  }>;
+interface RunSnapshot {
+  runId: string | null;
+  status: "off" | "starting" | "running" | "paused" | "stopping" | "expired" | "attention-required";
+  startedAt: number | null;
+  deadlineAt: number | null;
+  stoppedAt: number | null;
+  durationMs: number;
+  stopReason: string | null;
+  serverNow: number;
 }
 ```
 
-Every configured sleeve is present in `sleeves`, including one that could not initialize. A retrying sleeve includes a public error summary and the Unix millisecond time of its next initialization attempt.
+Timestamps are Unix milliseconds from the execution owner. `serverNow` lets the browser display time against the Bun clock. Clients must not treat a local display timer as the authority.
 
-### `BlockEvent`
+SSE also emits `run` with the same snapshot when lifecycle state changes. Other events are `snapshot`, `ready`, `ping`, `block`, `quote`, `fill`, `price`, and `sleeve`.
+
+## Private operator listener
+
+The listener accepts only loopback peers. Every request must have the exact `CONTROL_HOST`. Browser mutations must also have an Origin exactly equal to `CONTROL_ORIGIN`. The default pair is `127.0.0.1:3002` and `http://localhost:3001`.
+
+Mutation bodies must be JSON objects with `Content-Type: application/json` and are limited to 64 KiB. Unknown fields are rejected. Responses use `Cache-Control: no-store`. Error messages redact the active transport key and credential-bearing URL details.
+
+| Route | Body | Result |
+| --- | --- | --- |
+| `GET /operator` | None | Redacted operator snapshot with applied settings, environment baseline, override names, `redactedEndpoints`, configured or missing secret flags, last connection result, and run state. |
+| `POST /settings` | `{ settings, apiKey?, clearedEndpoints? }` | Validates and applies a complete snapshot while Off or Expired. Empty `apiKey` clears it. `clearedEndpoints` may contain `hyperliquidApiUrl`, `hyperliquidWsUrl`, or `rpcUrl` when that field is explicitly cleared. Rebuilds execution resources before commit. |
+| `POST /validate` | `{ settings?, apiKey? }` | Validates the candidate or applied HTTP, WebSocket, and SDK RPC transports while stopped. Returns `200` when compatible and `422` for a completed incompatible check. |
+| `POST /start` | `{ confirmReal? }` | Runs preflight and starts one authoritative run. Real mode requires `confirmReal: true`. Repeated Start while Starting or Running is idempotent. |
+| `POST /stop` | `{}` | Cancels a pending Start or validation, invalidates execution, and waits for bounded owned-order cleanup. Repeated Stop is idempotent. |
+| `POST /reconcile` | `{}` | Retries owned-order cleanup from `attention-required`. Other states return the current snapshot. |
+
+Settings changes and validation are rejected while active. Start requires at least one asset. Start also requires successful HTTP metadata, market WebSocket, and SDK RPC preflight. Real Start accepts only a matching official endpoint set because custom endpoint identity cannot be established.
+
+Operator snapshots never contain wallet keys, provider credentials, or the transport API key. They report only whether those secrets are configured. `redactedEndpoints` names URL fields hidden because they contain a query, embedded credential, or credential-like path. The corresponding value in `settings` is `null`. Sending that hidden field back as `null` retains its current runtime value unless the request also names it in `clearedEndpoints`. An explicitly cleared field must be `null`. The server never silently replaces a hidden custom URL with a network default.
+
+## Connection validation payload
+
+A validation response contains:
 
 ```ts
-{
-  coin: string;
-  block: number;
-  ts: number;
-  mid: number;
-  bestBid: number;
-  bestAsk: number;
-  spreadBps: number;
-  decision: Decision | null;
-  quote: Quote | null;
-  fill: Fill | null;
-  resting: { bidSz: number; askSz: number };
-  position: Position;
-  totals: Totals;
-  accountValue?: number | null;
-  withdrawable?: number | null;
+interface ConnectionValidation {
+  ok: boolean;
+  realAllowed: boolean;
+  message: string;
+  apiUrl: string;
+  wsUrl: string;
+  rpcUrl: string;
+  checkedAt: number;
 }
 ```
 
-`Decision` contains `action`, optional `intent`, `bias`, and `leverage`, buy, sell, hold, and optional bias and intent probabilities, `upIn10`, `latencyMs`, and `late`. `Position` contains side, size, entry price, leverage, and unrealized PnL in USD and base size. `Totals` contains block, decision, quote, fill, revert, and late counts, Jev cost, fees, and realized and total PnL.
+HTTP validation sends `{ type: "meta" }` to `/info`. WebSocket validation subscribes to `allMids`. RPC validation uses the Hyperliquid SDK explorer protocol with `{ type: "userDetails", user: "0x0000000000000000000000000000000000000000" }` and requires a `userDetails` response containing `txs`. The custom HTTP key is applied to info and exchange requests only. It is not attached to SDK RPC or WebSocket traffic.
 
-### `Quote`
+## Public market payloads
 
-```ts
-{
-  side: "buy" | "sell";
-  price: number;
-  size: number;
-  txHash: string | null;
-  cancel: number[];
-  status: "placed" | "reverted" | "sim";
-  orderId: number | null;
-  capped: boolean;
-  reduceOnly?: boolean;
-  unchanged?: boolean;
-  taker?: boolean;
-}
-```
+The canonical public interfaces remain in [`src/types.ts`](../src/types.ts). `Meta` describes sleeves and process metadata. `BlockEvent` carries each decision and account snapshot. `Quote`, `Fill`, and `PricePoint` update order, fill, and chart state. A sleeve status is `starting`, `live`, or `retrying`.
 
-### `Fill`
-
-```ts
-{
-  side: "buy" | "sell";
-  size: number;
-  price: number;
-  txHash: string | null;
-  orderId: number;
-  simulated: boolean;
-  feeUsd?: number;
-  closedPnl?: number;
-  dir?: "open" | "close" | "flip";
-}
-```
-
-### `PricePoint`
-
-```ts
-{
-  ts: number;
-  mid: number;
-  open?: number;
-  high?: number;
-  low?: number;
-  close?: number;
-  bar?: "1s" | "1m" | "15m";
-  block?: number;
-  fill?: {
-    side: "buy" | "sell";
-    price: number;
-    size: number;
-    dir?: "open" | "close" | "flip";
-    hash?: string;
-    closedPnl?: number;
-    feeUsd?: number;
-  };
-}
-```
-
-## SSE events
-
-| Event | JSON payload |
-| --- | --- |
-| `snapshot` | `Meta` plus `historyByCoin: Record<string, BlockEvent[]>` and `tapeByCoin: Record<string, PricePoint[]>`. Sent only on a non-lite connection. |
-| `ready` | `startedAt` as a number. Sent only when `lite=1`. |
-| `ping` | Current Unix time in milliseconds. Sent every 15 seconds. |
-| `block` | One `BlockEvent`. It is emitted after the decision and before asynchronous order placement completes. |
-| `quote` | `{ coin: string, block: number, quote: Quote }`. This updates the earlier block event. |
-| `fill` | `{ coin: string, block: number, fill: Fill, ts?: number }`. Venue fill broadcasts use block `0` and include the venue timestamp. |
-| `price` | `{ coin: string, ts: number, mid: number, bestBid: number, bestAsk: number, spreadBps: number }`. |
-
-## Snapshot cache and clipping
-
-The serialized snapshot and its SSE encoding are cached for 400 ms. Requests inside that window receive the same snapshot body.
-
-[`src/snapshot.ts`](../src/snapshot.ts) applies these limits:
-
-| Payload | Limit |
-| --- | ---: |
-| Snapshot block history | Latest 12 events per sleeve |
-| Snapshot one-second points | Latest 900 |
-| Snapshot one-minute points | Latest 400 |
-| Snapshot fills | Latest 12 |
-| `/tape` one-second points | Latest 900 |
-| `/tape` one-minute points | Latest 5,000 |
-
-`/tape` retains all available 15-minute candles and fills. Snapshot tape omits 15-minute candles. The chart store itself caps source history, so "all available" still means the current process memory.
+The serialized snapshot and SSE encoding are cached for 400 ms. Snapshot block history keeps the latest 12 events per sleeve. Snapshot tape keeps 900 one-second points, 400 one-minute points, and 12 fills. `/tape` keeps 900 one-second points, 5,000 one-minute points, all available 15-minute candles, and all available fills within the process memory caps.

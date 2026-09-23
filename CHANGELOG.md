@@ -14,6 +14,10 @@ All notable changes to this project are documented here. This changelog starts f
 - Added Railway TypeScript infrastructure in `.railway/railway.ts` for the bot, dashboard, bot data volume, service variables, watch paths, health checks, and deployment settings.
 - Added maintainer documentation for architecture, trading, the API, dashboard, configuration, Jev providers, development, and deployment.
 - Added configurable Hyperliquid HTTP, WebSocket, and RPC endpoints with optional HTTP API-key authentication.
+- Added a standalone Settings route with validated guest and operator scopes, browser-wide light and dark themes, network and owner-isolated persistence, and memory-only handling for transport credentials.
+- Added a private loopback operator listener for settings, transport validation, Start, Stop, and owned-order reconciliation. The public API exposes read-only authoritative run state.
+- Added execution-owned timed runs that start Off, default to 30 minutes, enforce wall-clock and monotonic deadlines, and block restart when bounded owned-order cleanup needs attention.
+- Added Hyperliquid HTTP, WebSocket, and SDK RPC preflight. Real trading requires matching official endpoints and explicit confirmation. Custom endpoint identity cannot enable real mode.
 
 ### Changed
 
@@ -34,6 +38,9 @@ All notable changes to this project are documented here. This changelog starts f
 - Changed bot startup log separators to plain punctuation.
 - Fixed pre-existing root TypeScript errors with type-only changes in `src/config.ts`, `src/model.ts`, and `src/market.ts`. Root and dashboard typechecks now pass.
 - Updated `.gitignore` so maintainer docs are tracked and local `fnox.local.toml` overrides remain ignored.
+- Changed paper trading to the default unless `DRY_RUN=false` is set explicitly.
+- Separated price-stream connectivity from trading state in the dashboard Header. Public visitors can see run status but cannot control the shared executor.
+- Changed sleeve initialization and retry so neither starts decision loops while Off, Expired, or after process restart.
 
 ### Removed
 

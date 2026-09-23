@@ -1,7 +1,16 @@
 import { expect, test } from "bun:test";
 import { resolveHyperliquidEnv } from "../src/config";
 import { shouldRunHttpFallback } from "../src/feed";
-import { createHttpTransport, HyperliquidMetadataCache, httpTransportOptions, infoPost, infoRequestInit } from "../src/hyperliquid";
+import {
+  createHttpTransport,
+  HyperliquidMetadataCache,
+  httpTransportOptions,
+  infoPost,
+  infoRequestInit,
+  runtimeTransport,
+  safeTransportMessage,
+} from "../src/hyperliquid";
+import { DEFAULT_SETTINGS, type TradingSettings } from "../src/settings";
 
 test("Hyperliquid endpoints default by network and WebSocket derives from API base", () => {
   expect(resolveHyperliquidEnv({}, false)).toMatchObject({
@@ -55,14 +64,47 @@ test("raw info and SDK transports share endpoint and authentication settings", (
     isTestnet: false,
     apiUrl: "https://api.local/base",
     rpcUrl: "https://rpc.local/base",
-    fetchOptions: { headers: { Authorization: "Bearer key" } },
+    fetchOptions: { headers: { Authorization: "Bearer key" }, redirect: "error" },
   });
+});
+
+test("transport credentials reject official API host aliases instead of being silently ignored", () => {
+  const official = resolveHyperliquidEnv({
+    HL_API_URL: "https://API.HYPERLIQUID.XYZ:443",
+    HL_API_KEY: "must-not-leak",
+  }, false);
+  expect(() => infoRequestInit({ type: "meta" }, official))
+    .toThrow("API keys are not supported for official Hyperliquid API hosts");
+  expect(() => httpTransportOptions(official))
+    .toThrow("API keys are not supported for official Hyperliquid API hosts");
+});
+
+test("transport errors redact credentials and URL paths without hiding venue rejection codes", () => {
+  const transport = resolveHyperliquidEnv({
+    HL_API_URL: "https://provider.example/private/base",
+    HL_RPC_URL: "https://rpc.example/private/base",
+    HL_API_KEY: "fake-credential",
+  }, false);
+  const message = safeTransportMessage(
+    new Error(
+      "429 venue rejected Bearer fake-credential fake-credential "
+      + "https://provider.example/private/base/exchange?token=fake-credential "
+      + "wss://stream.example/private/ws?key=fake-credential\r\ninjected",
+    ),
+    transport,
+  );
+  expect(message).toContain("429 venue rejected");
+  expect(message).toContain("https://provider.example/[redacted]");
+  expect(message).toContain("wss://stream.example/[redacted]");
+  expect(message).not.toContain("fake-credential");
+  expect(message).not.toContain("/private/");
+  expect(message).not.toContain("\n");
 });
 
 test("SDK API authentication is not sent to a distinct RPC endpoint", async () => {
   const originalFetch = globalThis.fetch;
   const requests: { url: string; authorization: string | null }[] = [];
-  globalThis.fetch = async (input, init) => {
+  globalThis.fetch = (async (input, init) => {
     requests.push({
       url: String(input),
       authorization: new Headers(init?.headers).get("authorization"),
@@ -71,7 +113,7 @@ test("SDK API authentication is not sent to a distinct RPC endpoint", async () =
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  };
+  }) as typeof fetch;
   try {
     const settings = resolveHyperliquidEnv({
       HL_API_URL: "https://api.local/base",
@@ -80,7 +122,10 @@ test("SDK API authentication is not sent to a distinct RPC endpoint", async () =
     }, false);
     const transport = createHttpTransport(settings);
     await transport.request("info", { type: "allMids" });
-    await transport.request("explorer", { method: "eth_blockNumber" });
+    await transport.request("explorer", {
+      type: "userDetails",
+      user: "0x0000000000000000000000000000000000000000",
+    });
     expect(requests).toEqual([
       { url: "https://api.local/base/info", authorization: "Bearer key" },
       { url: "https://rpc.other/base/explorer", authorization: null },
@@ -90,25 +135,74 @@ test("SDK API authentication is not sent to a distinct RPC endpoint", async () =
   }
 });
 
+test("runtime resolver scopes API credentials to an explicit custom API destination", () => {
+  const custom: TradingSettings = {
+    ...DEFAULT_SETTINGS,
+    enabledCoins: [...DEFAULT_SETTINGS.enabledCoins],
+    hyperliquidApiUrl: "https://provider.example/hyperliquid",
+    hyperliquidWsUrl: "wss://stream.example/ws",
+    rpcUrl: "https://rpc.example/hyperliquid",
+    hyperliquidApiKeyHeader: "X-Api-Key",
+    hyperliquidApiKeyScheme: "",
+  };
+  expect(runtimeTransport(custom, " secret ")).toMatchObject({
+    apiUrl: "https://provider.example/hyperliquid",
+    wsUrl: "wss://stream.example/ws",
+    rpcUrl: "https://rpc.example/hyperliquid",
+    headers: { "X-Api-Key": "secret" },
+  });
+  expect(() => runtimeTransport({
+    ...custom,
+    hyperliquidApiUrl: null,
+  }, "secret")).toThrow("requires a custom Hyperliquid API URL");
+  expect(() => runtimeTransport({
+    ...custom,
+    hyperliquidApiUrl: "https://API.HYPERLIQUID.XYZ:443",
+  }, "secret")).toThrow("API keys are not supported for official Hyperliquid API hosts");
+});
+
+test("exchange guard runs immediately before SDK submission and does not guard reads", async () => {
+  const originalFetch = globalThis.fetch;
+  const events: string[] = [];
+  globalThis.fetch = (async (_input, init) => {
+    events.push(`fetch:${String(init?.body)}`);
+    return new Response("{\"ok\":true}", { headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const transport = createHttpTransport(resolveHyperliquidEnv({}, true), async (payload) => {
+      events.push(`guard:${JSON.stringify(payload)}`);
+    });
+    await transport.request("info", { type: "meta" });
+    await transport.request("exchange", { action: { type: "order" } });
+    expect(events).toEqual([
+      "fetch:{\"type\":\"meta\"}",
+      "guard:{\"action\":{\"type\":\"order\"}}",
+      "fetch:{\"action\":{\"type\":\"order\"}}",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("info requests use the configured API URL and authentication", async () => {
   const originalFetch = globalThis.fetch;
-  let request: { input: string | URL | Request; init?: RequestInit } | null = null;
-  globalThis.fetch = async (input, init) => {
-    request = { input, init };
+  const requests: { input: string | URL | Request; init?: RequestInit }[] = [];
+  globalThis.fetch = (async (input, init) => {
+    requests.push({ input, init });
     return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
-  };
+  }) as typeof fetch;
   try {
     const settings = resolveHyperliquidEnv({
       HL_API_URL: "https://api.local/base",
       HL_API_KEY: "key",
     }, false);
     await infoPost({ type: "allMids" }, settings);
-    expect(request?.input).toBe("https://api.local/base/info");
-    expect(request?.init?.headers).toEqual({
+    expect(requests[0]?.input).toBe("https://api.local/base/info");
+    expect(requests[0]?.init?.headers).toEqual({
       "content-type": "application/json",
       Authorization: "Bearer key",
     });
-    expect(request?.init?.body).toBe(JSON.stringify({ type: "allMids" }));
+    expect(requests[0]?.init?.body).toBe(JSON.stringify({ type: "allMids" }));
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -147,6 +241,27 @@ test("five sleeves share immutable Hyperliquid startup metadata", async () => {
   expect(metaRequests).toBe(1);
   expect(results.map((result) => result.converter)).toEqual(Array(5).fill(converter));
   expect(results.map((result) => result.maxLeverage)).toEqual(Array(5).fill(20));
+});
+
+test("metadata cache reset reloads converter and venue metadata", async () => {
+  let converterRequests = 0;
+  let metaRequests = 0;
+  const cache = new HyperliquidMetadataCache(
+    async () => {
+      converterRequests++;
+      return { getAssetId: () => 0, getSzDecimals: () => 2 };
+    },
+    async () => {
+      metaRequests++;
+      return { universe: [{ name: "BTC", maxLeverage: 10 }] };
+    },
+  );
+  await cache.symbolConverter();
+  await cache.maxLeverage("BTC");
+  cache.reset();
+  await cache.symbolConverter();
+  await cache.maxLeverage("BTC");
+  expect({ converterRequests, metaRequests }).toEqual({ converterRequests: 2, metaRequests: 2 });
 });
 
 test("HTTP fallback runs only while the WebSocket is not open", () => {

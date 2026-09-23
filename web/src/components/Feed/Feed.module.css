@@ -64,7 +64,7 @@
   right: 0;
   bottom: 0;
   height: 14px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--panel));
+  background: linear-gradient(to bottom, transparent, var(--panel));
   pointer-events: none;
 }
 
@@ -171,11 +171,11 @@
 }
 
 .kindBuy {
-  background: rgba(0, 170, 0, 0.06);
+  background: color-mix(in srgb, var(--buy) 7%, var(--panel));
 }
 
 .kindSell {
-  background: rgba(204, 0, 0, 0.06);
+  background: color-mix(in srgb, var(--sell) 7%, var(--panel));
 }
 
 .kindLate {
@@ -187,11 +187,11 @@
 }
 
 .newest.kindBuy {
-  background: rgba(0, 170, 0, 0.12);
+  background: color-mix(in srgb, var(--buy) 14%, var(--panel));
 }
 
 .newest.kindSell {
-  background: rgba(204, 0, 0, 0.12);
+  background: color-mix(in srgb, var(--sell) 14%, var(--panel));
 }
 
 .newest.kindLate {

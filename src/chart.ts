@@ -85,19 +85,19 @@ export class VenueChart {
     return this.cached;
   }
 
-  async loadCandles(coin: string, now = Date.now()) {
+  async loadCandles(coin: string, now = Date.now(), isCurrent: () => boolean = () => true) {
     const minuteSpan = MAX_CANDLES * MINUTE_MS;
     await Promise.all([
-      this.pullCandles(coin, "15m", now - CHART_LOOKBACK_MS, now),
-      this.pullCandles(coin, "1m", now - minuteSpan, now),
+      this.pullCandles(coin, "15m", now - CHART_LOOKBACK_MS, now, isCurrent),
+      this.pullCandles(coin, "1m", now - minuteSpan, now, isCurrent),
     ]);
   }
 
-  private async pullCandles(coin: string, interval: string, startTime: number, endTime: number) {
+  private async pullCandles(coin: string, interval: string, startTime: number, endTime: number, isCurrent: () => boolean) {
     const res = await infoPost({ type: "candleSnapshot", req: { coin, interval, startTime, endTime } });
     if (!res.ok) throw new Error(`hl candleSnapshot HTTP ${res.status}`);
     const rows = (await res.json()) as unknown;
-    if (!Array.isArray(rows)) return;
+    if (!isCurrent() || !Array.isArray(rows)) return;
     for (const row of rows) {
       if (row && typeof row === "object") this.upsertCandle(row as { t?: unknown; o?: unknown; h?: unknown; l?: unknown; c?: unknown; i?: unknown });
     }

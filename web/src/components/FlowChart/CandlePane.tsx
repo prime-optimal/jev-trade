@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CandlestickSeries,
   ColorType,
@@ -34,10 +34,31 @@ type Props = {
   formatPrice: (n: number) => string;
 };
 
-const UP = "#000000";
-const DOWN = "#ffffff";
-const BUY = "#00aa00";
-const SELL = "#cc0000";
+type ChartColors = {
+  background: string;
+  text: string;
+  grid: string;
+  border: string;
+  up: string;
+  down: string;
+  buy: string;
+  sell: string;
+};
+
+function chartColors(el: HTMLElement): ChartColors {
+  const css = getComputedStyle(el);
+  const value = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+  return {
+    background: value("--panel", "#ffffff"),
+    text: value("--chart-text", "#666666"),
+    grid: value("--grid", "#e5e5e5"),
+    border: value("--border", "#000000"),
+    up: value("--chart-up", "#000000"),
+    down: value("--chart-down", "#ffffff"),
+    buy: value("--buy", "#087d20"),
+    sell: value("--sell", "#b42318"),
+  };
+}
 
 function asTime(sec: number): UTCTimestamp {
   return sec as UTCTimestamp;
@@ -53,12 +74,12 @@ function toBars(rows: Candle[]): CandlestickData<Time>[] {
   }));
 }
 
-function toMarkers(rows: FillMark[]): SeriesMarker<Time>[] {
+function toMarkers(rows: FillMark[], colors: ChartColors): SeriesMarker<Time>[] {
   return rows.map((m) => ({
     time: asTime(m.time),
     position: m.side === "buy" ? "belowBar" : "aboveBar",
     shape: m.side === "buy" ? "arrowUp" : "arrowDown",
-    color: m.side === "buy" ? BUY : SELL,
+    color: m.side === "buy" ? colors.buy : colors.sell,
     size: 0.8,
   }));
 }
@@ -91,28 +112,36 @@ export default function CandlePane({
   const entryLineRef = useRef<IPriceLine | null>(null);
   const stemRef = useRef("");
   const rangeRef = useRef("");
+  const [themeRevision, setThemeRevision] = useState(0);
   const formatRef = useRef(formatPrice);
   formatRef.current = formatPrice;
 
   useEffect(() => {
+    const observer = new MutationObserver(() => setThemeRevision((value) => value + 1));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const el = hostRef.current;
     if (!el) return;
+    const colors = chartColors(el);
     const chart = createChart(el, {
       width: Math.max(1, el.clientWidth),
       height: Math.max(1, el.clientHeight),
       layout: {
-        background: { type: ColorType.Solid, color: "#ffffff" },
-        textColor: "#666666",
+        background: { type: ColorType.Solid, color: colors.background },
+        textColor: colors.text,
         fontFamily: "IBM Plex Mono, ui-monospace, monospace",
       },
       grid: {
-        vertLines: { color: "#e5e5e5" },
-        horzLines: { color: "#e5e5e5" },
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
       },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "#000000", scaleMargins: { top: 0.08, bottom: 0.08 } },
+      rightPriceScale: { borderColor: colors.border, scaleMargins: { top: 0.08, bottom: 0.08 } },
       timeScale: {
-        borderColor: "#000000",
+        borderColor: colors.border,
         timeVisible: true,
         secondsVisible,
         shiftVisibleRangeOnNewBar: true,
@@ -120,12 +149,12 @@ export default function CandlePane({
       localization: { priceFormatter: (p: number) => formatRef.current(p) },
     });
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: UP,
-      downColor: DOWN,
-      borderUpColor: UP,
-      borderDownColor: UP,
-      wickUpColor: UP,
-      wickDownColor: UP,
+      upColor: colors.up,
+      downColor: colors.down,
+      borderUpColor: colors.up,
+      borderDownColor: colors.up,
+      wickUpColor: colors.up,
+      wickDownColor: colors.up,
     });
     const markers = createSeriesMarkers(series, []);
     const ro = new ResizeObserver((entries) => {
@@ -149,6 +178,28 @@ export default function CandlePane({
       rangeRef.current = "";
     };
   }, []);
+
+  useEffect(() => {
+    const el = hostRef.current;
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!el || !chart || !series) return;
+    const colors = chartColors(el);
+    chart.applyOptions({
+      layout: { background: { type: ColorType.Solid, color: colors.background }, textColor: colors.text },
+      grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
+      rightPriceScale: { borderColor: colors.border },
+      timeScale: { borderColor: colors.border },
+    });
+    series.applyOptions({
+      upColor: colors.up,
+      downColor: colors.down,
+      borderUpColor: colors.up,
+      borderDownColor: colors.up,
+      wickUpColor: colors.up,
+      wickDownColor: colors.up,
+    });
+  }, [themeRevision]);
 
   useEffect(() => {
     chartRef.current?.applyOptions({ timeScale: { secondsVisible, timeVisible: true } });
@@ -178,8 +229,9 @@ export default function CandlePane({
   }, [candles, rangeKey, visibleBars]);
 
   useEffect(() => {
-    markersRef.current?.setMarkers(toMarkers(marks));
-  }, [marks]);
+    const el = hostRef.current;
+    if (el) markersRef.current?.setMarkers(toMarkers(marks, chartColors(el)));
+  }, [marks, themeRevision]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -191,10 +243,10 @@ export default function CandlePane({
       }
       return;
     }
+    const colors = chartColors(hostRef.current ?? document.documentElement);
     const next = {
       price: entry.price,
-      color: entry.side === "long" ? BUY : SELL,
-      lineWidth: 1 as const,
+      color: entry.side === "long" ? colors.buy : colors.sell,
       lineStyle: LineStyle.Solid,
       axisLabelVisible: true,
       title: "entry",
@@ -204,7 +256,7 @@ export default function CandlePane({
       return;
     }
     entryLineRef.current = series.createPriceLine(next);
-  }, [entry]);
+  }, [entry, themeRevision]);
 
   return <div ref={hostRef} className="lwc-host" style={{ position: "absolute", inset: 0 }} />;
 }

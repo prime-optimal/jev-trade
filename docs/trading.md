@@ -1,61 +1,51 @@
 # Trading behavior
 
+## Runs own execution
+
+The Bun process starts its HTTP services and prepares stopped execution resources, but it starts Off. It does not trade on startup. Only the private operator API can start the shared executor.
+
+Each Start creates a new `runId` and a full configured duration, 30 minutes by default. The lifecycle records authoritative `startedAt`, `deadlineAt`, `stoppedAt`, `durationMs`, and `stopReason` timestamps. An absolute wall-clock deadline and a monotonic deadline guard prevent a clock rollback from extending a run. The scheduled timer is only a wake-up. Guards also reject work after awaited inference and before order submission.
+
+Expiry invalidates execution immediately, stops scheduling, and runs the same cleanup as manual Off. The cleanup cancels only bot-owned resting orders for the affected coin. It is bounded to ten seconds for the lifecycle response, but a timed-out cleanup keeps running and remains tracked. `attention-required` blocks Start. Reconcile reports that cleanup is still pending until the in-flight work settles, then either completes the transition or retries a failed cleanup.
+
+Stop does not liquidate an accepted position and does not revoke wallet authorization. Already submitted work may need reconciliation. Expired and manually stopped runs never restart automatically. Sleeve retry is disabled unless a run is currently Running. Process restart starts Off rather than restoring an old run.
+
+Live orders carry a stable Jev client-order-ID namespace with the Hyperliquid asset ID. On startup, each coin discovers matching namespaced orders left by an earlier process, reconciles pending order status through the venue, and cleans up only those orders. Orders for another coin and orders without the Jev namespace, including legacy orders, are never canceled by this recovery. The process warns that unidentified orders need manual review.
+
+## Settings and mode
+
+Operator Save applies one validated settings snapshot only while Off or Expired. It rebuilds the executor and its feeds before the new values become applied. Guest browser settings do not affect Bun execution.
+
+Paper mode is the default. `DRY_RUN` must be the exact string `false` to select real mode from environment configuration. Real Start additionally requires a configured wallet for the relevant sleeve, matching official network endpoints, a successful preflight, and explicit confirmation. A missing wallet cannot place real orders. Brave Wallet is not part of this implementation.
+
+A custom transport may pass metadata, WebSocket, and SDK RPC connectivity checks. Real mode remains disabled because the implementation cannot prove a custom endpoint's network identity. Selecting an official endpoint from the other network is rejected.
+
 ## Sleeves and wallets
 
-[`src/sleeves.ts`](../src/sleeves.ts) creates one sleeve per coin in `HL_COINS`. The default list is BTC, ETH, SOL, DOGE, and BNB. Each sleeve has its own `Market`, `Feed`, `Trader`, position, order state, and optional wallet.
-
-Wallet resolution follows these rules:
+One sleeve is created for each enabled coin. Supported coins are BTC, ETH, SOL, DOGE, and BNB. Wallet resolution follows this order:
 
 1. Read coin keys from `.wallets.json`, if present.
 2. Overlay keys from `WALLETS_JSON`.
-3. Use `PRIVATE_KEY` for the first listed coin only when that coin has no key from the wallet map.
+3. Use `PRIVATE_KEY` for the first configured coin if that coin has no mapped key.
 
-A sleeve without a key runs in dry-run mode. `DRY_RUN=true` disables live trading for every sleeve even when keys exist. Dry-run entries rest in the local order map and match against observed trade prints. Dry-run exits fill immediately at the calculated crossing price.
+Each sleeve has its own `Market`, `Feed`, `Trader`, position, order state, and optional wallet. Paper entries rest in the local order map and match observed trade prints. Paper exits fill immediately at the calculated crossing price.
 
 ## What Jev answers
 
-On every available decision tick, [`Trader.onBlock()`](../src/trader.ts) builds a [`TradeState`](../src/model.ts) from the latest book, recent mids and trades, position, indicators, venue context, and the coin's maximum leverage. [`jevQuestions()`](../src/model.ts) asks three independent choice questions:
+On every scheduled decision tick while Running, [`Trader.onBlock()`](../src/trader.ts) builds a trade state from the latest book, recent mids and trades, position, indicators, venue context, and maximum leverage. It asks Jev for bias, intent, and cross leverage even when an earlier Jev request is still pending. Intent is `open` or `hold` while flat, and `open`, `close`, or `hold` with a position.
 
-- Bias: `long` or `short`.
-- Intent: `open` or `hold` while flat. With a position, the choices are `open`, `close`, or `hold`.
-- Cross leverage: one of the valid integer rungs up to the venue maximum.
-
-The standard leverage rungs are 1, 2, 3, 5, 10, 20, 40, and 50. The exact venue maximum is appended when it is not already present.
-
-[`decideFromJevAnswers()`](../src/model.ts) normalizes the choices and probabilities. An unreadable bias forces `hold`. While flat, a `close` answer also becomes `hold`. The chosen leverage is rounded to the nearest valid rung. [`planQuote()`](../src/plan.ts) then maps the result:
-
-| Intent | Position | Result |
-| --- | --- | --- |
-| `hold` | Any | No order. Cancel the resting entry. |
-| `open` plus `long` | Any | Buy the configured quote size. |
-| `open` plus `short` | Any | Sell the configured quote size. |
-| `close` | Long | Sell the full live position, reduce-only. |
-| `close` | Short | Buy the full live position, reduce-only. |
+Only the newest still-live result may execute. A result that returns after a newer tick or after Stop or expiry is stale, so its exchange work is suppressed. The Jev call still occurred and is not rewritten as a hold.
 
 ## Order mechanics
 
-Entries are post-only Hyperliquid `Alo` limit orders. [`quotePrice()`](../src/book.ts) places them `QUOTE_INSIDE_TICKS` inside the touch, with a default of one tick. If that would cross the spread, it joins the touch. A same-side order with changed price or size is modified in place. An identical order remains unchanged.
+Entries are post-only Hyperliquid `Alo` limits. The quote moves `QUOTE_INSIDE_TICKS` inside the touch, one tick by default, without crossing the spread. A changed same-side order is modified. An identical order remains unchanged.
 
-Exits are reduce-only `Ioc` limits for the full position. [`takerPrice()`](../src/book.ts) crosses beyond the far touch by `CLOSE_SLIPPAGE_BPS`, five basis points by default, and rounds away from the spread. Before sending an exit, the market cancels its resting entry. An unfilled `Ioc` leaves no resting order.
+Exits are reduce-only `Ioc` limits. They cross the far touch by `CLOSE_SLIPPAGE_BPS`, five basis points by default. The market cancels its owned resting entry before an exit. An unfilled IOC leaves no resting order.
 
-`hold` calls `cancelResting()`. This matters because an old entry could otherwise fill after Jev withdrew the intent.
-
-## Leverage
-
-Jev chooses leverage on every decision. The trader writes cross leverage before maker entries, unless the venue account already has that value. It skips the leverage write for exits because the close does not depend on a new margin setting. Dry-run mode accepts the normalized value without a venue request.
-
-## Mock model
-
-`MODEL=mock` selects [`MockModel`](../src/model.ts). It is a deterministic stand-in based on 20-tick return, book imbalance, trade-flow imbalance, and tick-derived noise. It produces the same bias, intent, leverage, probability, and timing shape as Jev. Weak signals hold, and signals opposing an open position close it. It is for local behavior without an API call, not a substitute for the Jev product path.
-
-## Testnet and mainnet safety
-
-`HL_TESTNET` defaults to testnet. Only the exact string `false` selects mainnet. Live signing also requires a sleeve key and `DRY_RUN` not equal to `true`. The process clears its own open orders for a coin when a live sleeve initializes.
-
-Before mainnet, verify `HL_TESTNET=false`, wallet assignment by coin, quote notional, and the active model. A missing key does not fail startup. It silently makes that sleeve a dry run, with the mode printed at startup and exposed in process metadata only as the aggregate `dryRun` flag.
+Jev chooses leverage on every decision. The trader writes cross leverage before maker entries unless the venue account already has that value. It skips leverage writes for exits. Paper mode records the normalized leverage without a venue request.
 
 ## Product rules
 
-Jev makes the buy or sell decision from the price feed on every Hyperliquid decision tick. Code may normalize malformed answers and translate Jev's intent into an order, but indicators never gate the call. Known exception: a tick that arrives while the previous Jev call is still running is emitted as late without a Jev call. See [jev-provider.md](jev-provider.md) and the Known issues section of [CHANGELOG.md](../CHANGELOG.md).
+While Running, Jev makes the trading decision from the price feed on every scheduled Hyperliquid decision tick. Hold is a real Jev answer. It is not a skipped tick. Failed calls are recorded as failures, not presented as hold, and stale overlapping results cannot place orders.
 
-`hold` is a Jev answer. It is not a skipped tick. Never force a buy or sell to keep an order active. A late tick means the prior Jev call is still running, or the Jev call on that tick failed. It is recorded as late and must not be presented as a Jev hold decision.
+The market stream and dashboard remain available while Off. Their availability never means orders or Jev decisions are running.

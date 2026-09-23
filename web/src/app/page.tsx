@@ -9,14 +9,10 @@ import Header from "@/components/Header/Header";
 import SleeveStrip from "@/components/SleeveStrip/SleeveStrip";
 import { lastMeaningfulCall } from "@/lib/format";
 import { portfolioBalance, portfolioPnl } from "@/lib/pnl";
-import { useFeed } from "@/lib/useFeed";
+import { useSettings } from "@/lib/trading/SettingsProvider";
 import type { BlockEvent, Meta, SleeveFeed } from "@/lib/types";
 import styles from "./page.module.css";
 
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL;
-const API_URL = RAW_API_URL
-  ? /^https?:\/\//.test(RAW_API_URL) ? RAW_API_URL : `https://${RAW_API_URL}`
-  : typeof window === "undefined" ? "http://localhost:3000" : `${window.location.protocol}//${window.location.hostname}:3000`;
 
 const EMPTY: SleeveFeed = { events: [], tape: [], latest: null, avgLatencyMs: 0 };
 
@@ -33,7 +29,7 @@ function viewMeta(meta: Meta | null, coin: string): Meta | null {
 }
 
 export default function Page() {
-  const feed = useFeed(API_URL);
+  const { feed } = useSettings();
   const [picked, setPicked] = useState<string | null>(null);
 
   const coins = useMemo(() => {
