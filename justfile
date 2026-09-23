@@ -1,19 +1,21 @@
 # jev-trade local development and verification recipes
 
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
 # List available project recipes
 default:
     @just --list
 
-# Install bot and dashboard dependencies
+# Install inference and dashboard dependencies separately
 install:
     bun install
     bun install --cwd web
 
-# Run the bot in watch mode with secrets injected by fnox
+# Run inference in watch mode with provider secrets injected by fnox
 dev:
     fnox exec -- bun run dev
 
-# Run the bot with secrets injected by fnox
+# Run inference with provider secrets injected by fnox
 start:
     fnox exec -- bun run start
 
@@ -21,11 +23,11 @@ start:
 web:
     bun run dev:web
 
-# Run the bot test suite
+# Run inference and browser contract tests
 test:
-    bun test
+    bun run test
 
-# Typecheck the bot and dashboard
+# Typecheck inference and dashboard runtimes separately
 typecheck:
     bunx tsc --noEmit
     cd web && bunx tsc --noEmit

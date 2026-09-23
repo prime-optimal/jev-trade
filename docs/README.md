@@ -1,14 +1,16 @@
 # Maintainer documentation
 
-- [Architecture](architecture.md) explains the Bun and Next runtime split, startup flow, modules, and in-memory state.
-- [Trading behavior](trading.md) documents sleeves, Jev decisions, order mechanics, leverage, and trading safety.
-- [Bot HTTP and SSE API](api.md) defines routes, payloads, event types, retention, and compression.
-- [Dashboard](dashboard.md) maps the Next app, feed lifecycle, shared types, and UI rules.
-- [Configuration](configuration.md) lists environment variables, defaults, secrets, and wallet sources.
-- [Jev provider](jev-provider.md) covers provider selection, request handling, late ticks, and cost accounting.
-- [Development](development.md) covers setup, local recipes, verification, shared types, and repository rules.
-- [Deployment](deployment.md) documents the Railway service graph, Railpack builds, variables, rollout safety, and first deployment.
+- [Architecture](architecture.md) maps inference-only Bun, separate Next, and browser module ownership.
+- [Trading behavior](trading.md) covers direct wallet execution, Jev decisions, finite runs, and exact-owned cleanup.
+- [Jev inference API](api.md) defines `/health`, `/decide`, the address-free contract, origins, and request bounds.
+- [Dashboard](dashboard.md) maps persistent browser state, public feeds, wallet controls, and UI rules.
+- [Configuration](configuration.md) separates provider secrets and inference limits from browser trading preferences.
+- [Jev provider](jev-provider.md) covers model selection and provider request handling.
+- [Development](development.md) covers separate installs, local recipes, CI checks, and inference type copies.
+- [Deployment](deployment.md) documents main-merge deploys, optional manual uploads, Railway declarations, and the no-apply boundary.
+
+The browser wallet flow supports real trading, but documentation is not evidence of a completed approval or live order. Record explicit wallet verification before making that claim.
 
 ## Keeping docs current
 
-Every behavior, configuration, or deployment change must update the matching document and add an entry under `Unreleased` in [`CHANGELOG.md`](../CHANGELOG.md).
+Every behavior, configuration, or deployment change must update the matching document and add an entry under `Unreleased` in [`CHANGELOG.md`](../CHANGELOG.md). Historical server-owned changelog entries are not current operating instructions.

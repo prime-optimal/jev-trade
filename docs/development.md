@@ -1,75 +1,62 @@
 # Development
 
-## Prerequisites
+## Setup
 
-- [mise](https://mise.jdx.dev/) for repository tool versions and helper tasks. [`mise.toml`](../mise.toml) declares Bun, fnox, hk, and communique.
-- Bun. The root [`package.json`](../package.json), dashboard [`web/package.json`](../web/package.json), and [`railpack.json`](../railpack.json) pin production and package-manager use to Bun 1.3.14. The local mise configuration tracks the latest Bun.
-- [fnox](https://fnox.jdx.dev/) with the 1Password CLI signed in. [`fnox.toml`](../fnox.toml) resolves secrets when the bot starts.
-- [just](https://just.systems/) for the project recipes in [`justfile`](../justfile).
-
-Do not use Node, npm, pnpm, Vite, Express, or dotenv for this repository. The bot is a Bun process. The dashboard is a separate Next.js application in [`web/`](../web/).
-
-## First-time setup
-
-Install both dependency trees and create the local bot configuration:
+Use Bun and the [`justfile`](../justfile) recipes. Root Bun and `web/` Next are separate dependency trees with separate lockfiles. Do not flatten them or import root runtime code into the standalone web build. fnox and the 1Password CLI supply the configured Jev provider credential for `just dev` and `just start`.
 
 ```sh
 just install
 cp .env.example .env
 ```
 
-Edit `.env` for the intended model and safety mode. See [Configuration](configuration.md) for every variable and secret source. Copy `web/.env.example` to `web/.env.local` only when the dashboard needs a bot URL other than its localhost default.
+The template uses local mock inference. Select `MODEL=jev` and configure the chosen provider credential to exercise Jev. Production requires Jev. Trading settings belong to the browser, not the root environment. See [Configuration](configuration.md).
 
-## Run locally
+## Local processes
 
-Start the bot in watch mode with fnox secrets injected:
+Start each process in its own terminal:
 
 ```sh
 just dev
-```
-
-The bot serves HTTP and SSE on port 3000 by default. In another terminal, start the dashboard:
-
-```sh
 just web
 ```
 
-The dashboard development server listens on port 3001. Open `http://localhost:3001`.
+Bun serves `/health` and `/decide` on port 3000. Next serves the dashboard on port 3001. Open http://localhost:3001. Copy `web/.env.example` to `web/.env.local` only when an absolute inference URL override is needed. Its value must be browser-reachable; it is compiled into the web build.
 
-`HL_TESTNET` defaults to `true`. A sleeve without a wallet key is dry-run automatically, and `DRY_RUN=true` forces every sleeve to simulate orders even when keys are available. Keep testnet and dry-run enabled until live wallet assignment and quote sizing have been reviewed. See [Trading behavior](trading.md).
+The dashboard starts stopped. Public feeds work without a wallet. Begin with an explicit finite paper run. Connecting a wallet or saving preferences must not start trading, and a reload must not resume it. Do not add wallet private keys to either runtime's environment.
 
-## Verification commands
+## Checks
 
 | Command | Work performed |
 | --- | --- |
-| `just test` | Runs the root Bun test suite. |
-| `just typecheck` | Runs TypeScript checks for the bot and dashboard. |
-| `just check` | Runs tests and both typechecks. |
-| `just build-web` | Creates a production Next dashboard build. |
+| `just test` | Root Bun suite, including browser module contracts under `test/`. |
+| `just typecheck` | Separate root and web TypeScript checks. |
+| `just check` | Tests and both typechecks. |
+| `just build-web` | Production Next build from the web dependency tree. |
 
-The recipes are defined in [`justfile`](../justfile). Tests belong in [`test/`](../test/), not beside source files, and use Bun's test runner.
+Tests live under [`test/`](../test/), not beside source. Use Bun's runner. A mock or paper check does not prove real Brave Wallet approval, live orders, cleanup, or browser-interruption behavior. Record the actual wallet exercise before claiming those paths are verified.
 
 ## Continuous integration
 
-[`.github/workflows/test.yml`](../.github/workflows/test.yml) runs for pull requests and pushes to `main`. Its Ubuntu job checks out the repository, installs the latest Bun through `oven-sh/setup-bun`, runs `bun install --frozen-lockfile`, then runs `bun test`. It does not typecheck or build the dashboard, so run `just check` and `just build-web` locally when a change affects those surfaces.
+[`.github/workflows/test.yml`](../.github/workflows/test.yml) runs on pull requests and pushes to `main`, using Bun 1.3.14. The `test` job installs root and web with their frozen lockfiles, runs `bun run test`, and typechecks both runtimes. The independent `build` job installs the latest Railpack and starts BuildKit, then runs `railpack build .` for Bun and `railpack build ./web` for Next against the checked-out commit. It then installs web dependencies with its frozen lockfile and runs the Next production build.
 
-## Shared wire types
+Both `test` and `build` are required status checks on `main`; admins can bypass them. Railpack builds run before the host dependency install and Next build so those generated files cannot enter the service build contexts. Local `railpack build` is diagnostic only: Railway does not pin its builder version, and a dirty local checkout can include untracked files absent from GitHub.
 
-[`src/types.ts`](../src/types.ts) is the canonical bot HTTP and SSE type file. [`web/src/lib/bot-types.ts`](../web/src/lib/bot-types.ts) is an exact copy because the standalone dashboard build cannot depend on files outside `web/`. Update both files in the same change. [`test/types.test.ts`](../test/types.test.ts) verifies that they are byte-for-byte identical.
+The workflow does not run wallet approvals, deploy, or apply IaC. `just deploy` is not another check command; it uploads to production. See [Deployment](deployment.md).
 
-Dashboard-only types belong in [`web/src/lib/types.ts`](../web/src/lib/types.ts). More detail is in [Dashboard](dashboard.md).
+## Inference and browser types
 
-## Project rules
+[`src/types.ts`](../src/types.ts) is the canonical address-free inference contract. [`web/src/lib/bot-types.ts`](../web/src/lib/bot-types.ts) is byte-identical so web can build without the repository root. Update both together; [`test/types.test.ts`](../test/types.test.ts) checks equality.
 
-The repository rules are recorded in [`CLAUDE.md`](../CLAUDE.md):
+Display, account, wallet, and lifecycle types belong to [`web/src/lib/trading/types.ts`](../web/src/lib/trading/types.ts) and their browser modules. Do not put them back into the inference contract or add compatibility exports for deleted server executors.
 
-- Use Bun commands and APIs for the bot. Use `Bun.serve()` for HTTP and SSE, built-in WebSocket support, and `Bun.file` for new file I/O.
-- Keep the Bun bot and Next dashboard as separate runtimes. Credentials, Jev evaluation, and orders stay in the bot.
-- Put tests under `test/` and run them with `bun test`.
-- Keep Jev as the decision maker on every Hyperliquid decision tick. `hold` is a valid Jev answer. A tick that arrives while the previous Jev call is still running currently skips the Jev call; see Known issues in [`CHANGELOG.md`](../CHANGELOG.md).
-- Rendered text must not contain middle dots, em dashes, or en dashes.
-- Do not add blinking or pulsing indicators.
+## Browser safety boundaries
 
-## Documenting changes
+- Keep Jev as the decision maker on every trading tick. Hold is an answer; inference failure is an error, not hold.
+- Keep exchange work serialized independently of inference. Late responses must pass browser run and tick guards before acting.
+- Keep provider credentials on Bun and wallet signing material in browser memory. Wallet and Hyperliquid transports are direct.
+- Preserve explicit finite runs and exact-owned cleanup. No automatic resume, server takeover, or liquidation claim on Stop.
+- Keep rendered text free of middle dots, em dashes, and en dashes. Do not add blinking or pulsing indicators.
 
-For every behavior, configuration, or deployment change, update the matching file under [`docs/`](./) and add an entry under `Unreleased` in [`CHANGELOG.md`](../CHANGELOG.md). Keep API payload changes synchronized with the shared wire types and [API documentation](api.md).
+## Documentation
+
+Update the matching document for behavior, configuration, or deployment changes and add an `Unreleased` entry to [`CHANGELOG.md`](../CHANGELOG.md). Keep [API documentation](api.md) aligned with the inference types and [Trading behavior](trading.md) aligned with the browser session implementation.

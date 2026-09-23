@@ -2,7 +2,7 @@
 
 ## Browser sessions own execution
 
-The dashboard uses one browser-local session and the #22 feed and trading APIs. Bun handles Jev inference only. Neither Bun nor Next receives wallet, account, or order data or executes orders for dashboard visitors. There is no server-side visitor Worker, server wallet executor, or backend control address in this flow.
+The dashboard uses one browser-local [`session.ts`](../web/src/lib/trading/session.ts), with [`feed.ts`](../web/src/lib/trading/feed.ts) and [`trader.ts`](../web/src/lib/trading/trader.ts) providing the #22 feed and decision loop. [`SettingsProvider.tsx`](../web/src/lib/trading/SettingsProvider.tsx) integrates them for #23. Bun handles address-free Jev inference only. Neither Bun nor Next receives wallet identities, raw account snapshots, or order records, or executes orders for visitors. There is no server-side visitor Worker, server wallet executor, or backend control address.
 
 The browser sends wallet approval requests directly to Brave Wallet and account and exchange requests directly to Hyperliquid. Only `JevRequest` crosses the application boundary through [`web/src/lib/jev.ts`](../web/src/lib/jev.ts), with credentials omitted and no referrer. Wallet identity, account snapshots, and order records must not enter that request.
 

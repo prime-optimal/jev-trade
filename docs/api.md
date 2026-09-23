@@ -1,81 +1,43 @@
-# Bot HTTP and SSE API
+# Jev inference API
 
-The implementation runs two Bun listeners. The public listener on `PORT`, default 3000, is read-only and allows browser origins. The private operator listener binds `127.0.0.1` on `CONTROL_PORT`, default 3002. Never expose or reverse proxy the operator listener as a public control API.
+Bun exposes one listener on `PORT`, default 3000. It returns Jev decisions, not market feeds, account state, orders, or trading sessions. The implementation is [`src/server.ts`](../src/server.ts).
 
-## Public routes
-
-| Route | Response |
+| Route | Result |
 | --- | --- |
-| `GET /` | Public process metadata plus the latest event by coin. Operator model configuration is omitted. |
-| `GET /snapshot` | Public metadata plus clipped history and tape by coin. |
-| `GET /history` | Full in-memory block history by coin, up to 1,000 events per sleeve. |
-| `GET /tape` | Clipped price history by coin. |
-| `GET /run` | Current authoritative `RunSnapshot`. |
-| `GET /events` | SSE snapshot followed by live events. |
-| `GET /events?lite=1` | SSE `ready` event followed by live events. |
+| `GET /health` | `200` with `{ "ok": true }`. Process health, not proof of provider or wallet readiness. |
+| `POST /decide` | One validated `JevRequest`, returning a `JevResponse`. |
+| `OPTIONS /decide` | `204` for an allowed origin requesting POST with only Content-Type. |
 
-`/snapshot`, `/history`, and `/tape` support gzip and set `Cache-Control: no-store`. SSE sends `text/event-stream`, `Cache-Control: no-cache`, and a keep-alive connection.
+All other paths return `404`, including `/`, `/snapshot`, `/events`, `/sessions`, and the former operator routes. There is no SSE, Next session gateway, or compatibility execution API. Unsupported methods on known paths return `405`.
 
-The public API has no settings, validation, Start, Stop, or reconcile mutation. Public CORS is for read-only dashboard data, not operator authorization.
+## Contract
 
-## Run payload
+[`src/types.ts`](../src/types.ts) and [`web/src/lib/bot-types.ts`](../web/src/lib/bot-types.ts) are byte-identical inference contracts:
 
 ```ts
-interface RunSnapshot {
-  runId: string | null;
-  status: "off" | "starting" | "running" | "paused" | "stopping" | "expired" | "attention-required";
-  startedAt: number | null;
-  deadlineAt: number | null;
-  stoppedAt: number | null;
-  durationMs: number;
-  stopReason: string | null;
-  serverNow: number;
+interface JevRequest {
+  network: "testnet" | "mainnet";
+  state: TradeState;
+}
+
+interface JevResponse {
+  tick: number;
+  decision: ModelDecision;
 }
 ```
 
-Timestamps are Unix milliseconds from the execution owner. `serverNow` lets the browser display time against the Bun clock. Clients must not treat a local display timer as the authority.
+`TradeState` contains public market features and non-identifying position context. See the canonical type for the exact nested fields. `ModelDecision` includes action, intent, bias, leverage, probabilities, and inference metrics. The response echoes `state.tick`; the browser still checks its own run and tick before acting.
 
-SSE also emits `run` with the same snapshot when lifecycle state changes. Other events are `snapshot`, `ready`, `ping`, `block`, `quote`, `fill`, `price`, and `sleeve`.
+Wallet addresses, private keys, signatures, provider objects, account snapshots, order records, and session capabilities are not part of this contract. Do not add them to the payload. The browser uses [`requestJev`](../web/src/lib/jev.ts) to serialize an allowlisted request with `credentials: "omit"` and `referrerPolicy: "no-referrer"`. Non-identifying position fields are permitted; raw account transport objects are not.
 
-## Private operator listener
+## Validation and origins
 
-The listener accepts only loopback peers. Every request must have the exact `CONTROL_HOST`. Browser mutations must also have an Origin exactly equal to `CONTROL_ORIGIN`. The default pair is `127.0.0.1:3002` and `http://localhost:3001`.
+POST requires `Content-Type: application/json` and an exact allowed `Origin`. `WEB_ORIGINS` is a comma-separated list of HTTP or HTTPS origins without paths or trailing slashes. Production has no implicit allowed origins. Development adds localhost, loopback, and detected IPv4 LAN dashboard origins on port 3001.
 
-Mutation bodies must be JSON objects with `Content-Type: application/json` and are limited to 64 KiB. Unknown fields are rejected. Responses use `Cache-Control: no-store`. Error messages redact the active transport key and credential-bearing URL details.
+Requests carrying cookies or authorization headers are rejected. Origin checks are not wallet authentication and do not grant execution authority. The service validates the full request with [`src/jev-request.ts`](../src/jev-request.ts), rejecting extra fields, invalid numbers, invalid shapes, and oversized bodies. Responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`; allowed origins receive an exact CORS origin, never a wildcard.
 
-| Route | Body | Result |
-| --- | --- | --- |
-| `GET /operator` | None | Redacted operator snapshot with applied settings, environment baseline, override names, `redactedEndpoints`, configured or missing secret flags, last connection result, and run state. |
-| `POST /settings` | `{ settings, apiKey?, clearedEndpoints? }` | Validates and applies a complete snapshot while Off or Expired. Empty `apiKey` clears it. `clearedEndpoints` may contain `hyperliquidApiUrl`, `hyperliquidWsUrl`, or `rpcUrl` when that field is explicitly cleared. Rebuilds execution resources before commit. |
-| `POST /validate` | `{ settings?, apiKey? }` | Validates the candidate or applied HTTP, WebSocket, and SDK RPC transports while stopped. Returns `200` when compatible and `422` for a completed incompatible check. |
-| `POST /start` | `{ confirmReal? }` | Runs preflight and starts one authoritative run. Real mode requires `confirmReal: true`. Repeated Start while Starting or Running is idempotent. |
-| `POST /stop` | `{}` | Cancels a pending Start or validation, invalidates execution, and waits for bounded owned-order cleanup. Repeated Stop is idempotent. |
-| `POST /reconcile` | `{}` | Retries owned-order cleanup from `attention-required`. Other states return the current snapshot. |
+## Bounds and failures
 
-Settings changes and validation are rejected while active. Start requires at least one asset. Start also requires successful HTTP metadata, market WebSocket, and SDK RPC preflight. Real Start accepts only a matching official endpoint set because custom endpoint identity cannot be established.
+Inference admission uses a per-socket-peer token bucket, default burst 20 and refill 300 requests per minute. Forwarded IP headers are not trusted, so a shared proxy can share one limit. A global concurrency limit defaults to 32. The HTTP deadline defaults to 4000 ms; a timed-out provider call retains its permit until it settles so late work cannot bypass the bound.
 
-Operator snapshots never contain wallet keys, provider credentials, or the transport API key. They report only whether those secrets are configured. `redactedEndpoints` names URL fields hidden because they contain a query, embedded credential, or credential-like path. The corresponding value in `settings` is `null`. Sending that hidden field back as `null` retains its current runtime value unless the request also names it in `clearedEndpoints`. An explicitly cleared field must be `null`. The server never silently replaces a hidden custom URL with a network default.
-
-## Connection validation payload
-
-A validation response contains:
-
-```ts
-interface ConnectionValidation {
-  ok: boolean;
-  realAllowed: boolean;
-  message: string;
-  apiUrl: string;
-  wsUrl: string;
-  rpcUrl: string;
-  checkedAt: number;
-}
-```
-
-HTTP validation sends `{ type: "meta" }` to `/info`. WebSocket validation subscribes to `allMids`. RPC validation uses the Hyperliquid SDK explorer protocol with `{ type: "userDetails", user: "0x0000000000000000000000000000000000000000" }` and requires a `userDetails` response containing `txs`. The custom HTTP key is applied to info and exchange requests only. It is not attached to SDK RPC or WebSocket traffic.
-
-## Public market payloads
-
-The canonical public interfaces remain in [`src/types.ts`](../src/types.ts). `Meta` describes sleeves and process metadata. `BlockEvent` carries each decision and account snapshot. `Quote`, `Fill`, and `PricePoint` update order, fill, and chart state. A sleeve status is `starting`, `live`, or `retrying`.
-
-The serialized snapshot and SSE encoding are cached for 400 ms. Snapshot block history keeps the latest 12 events per sleeve. Snapshot tape keeps 900 one-second points, 400 one-minute points, and 12 fills. `/tape` keeps 900 one-second points, 5,000 one-minute points, all available 15-minute candles, and all available fills within the process memory caps.
+Failures return `{ "error": "code" }`, not a synthetic hold decision. Origin failures return `403`, invalid requests `400`, unsupported media `415`, rate limits `429`, busy admission `503`, provider failures `502`, and deadlines `504`. Request size and validation limits are defined in the validator. No error starts a run or submits an order. See [Configuration](configuration.md) for inference settings and [Trading behavior](trading.md) for browser guards.
