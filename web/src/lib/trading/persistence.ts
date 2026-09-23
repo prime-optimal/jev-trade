@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, persistableSettings, validateSettings, type TradingSettings } from "./settings";
+import { DEFAULT_SETTINGS, persistableSettings, type TradingSettings } from "./settings";
 import type { TradingNetwork } from "./networks";
 
 export const NETWORK_STORAGE_KEY = "jev-trade:network:v1";
@@ -77,9 +77,11 @@ export function loadSettings(storage: Storage | null, network: TradingNetwork, o
   }
   if (raw === null) return { settings: { ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins], network }, notice: storageFallbackNotice(), copiedGuest };
   try {
-    const settings = validateSettings(JSON.parse(raw));
+    // Storage is untrusted, including values written by older versions.
+    const settings = persistableSettings(JSON.parse(raw));
     if (settings.network !== network) throw new Error("Stored network does not match its scope");
-    if (copiedGuest) writeValue(storage, key, JSON.stringify(persistableSettings(settings)));
+    const safe = JSON.stringify(settings);
+    if (copiedGuest || safe !== raw) writeValue(storage, key, safe);
     return { settings, notice: storageFallbackNotice(), copiedGuest };
   } catch {
     const reset = { ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins], network };

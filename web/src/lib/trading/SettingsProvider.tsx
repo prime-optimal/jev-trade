@@ -1,37 +1,42 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useFeed, type FeedResult } from "@/lib/useFeed";
+import type { FeedResult } from "@/lib/useFeed";
+import { loadSelectedNetwork, loadSettings, loadTheme, saveSettings, saveTheme, type SettingsOwner, type Theme } from "./persistence";
 import {
-  applyOperatorSettings, applyVisitorSettings, createVisitorSession, getOperator, getRun, OFF_RUN, OperatorRequestError,
-  reconcileOperator, resolveOperatorApiUrl, resolvePublicApiUrl, SESSION_API, startOperator, stopOperator,
-  validateOperatorConnection,
-} from "./operator";
-import { loadSelectedNetwork, loadSettings, loadTheme, saveTheme, type SettingsOwner, type Theme } from "./persistence";
-import {
-  DEFAULT_SETTINGS, effectiveEndpoints, validateApiKey, validateSettings,
-  type ConnectionValidation, type OperatorSnapshot, type RunSnapshot, type TradingSettings,
+  authorizationChanged, DEFAULT_SETTINGS, effectiveEndpoints, validateApiKey, validateSettings,
+  type ConnectionValidation, type RunSnapshot, type TradingSettings,
 } from "./settings";
 
-type Scope = "visitor" | "operator";
-type SessionState = "local" | "connecting" | "ready" | "error" | "expired";
-type SessionOperatorSnapshot = OperatorSnapshot & { paperOnly?: boolean };
+export interface BrowserTradingSnapshot {
+  run: RunSnapshot;
+  feed: FeedResult;
+}
+
+/** Browser-owned runtime. Applying settings or validating never starts a run. */
+export interface BrowserTradingAdapter {
+  getSnapshot: () => BrowserTradingSnapshot;
+  subscribe: (listener: () => void) => () => void;
+  invalidateAuthorization: () => void;
+  applySettings: (settings: TradingSettings, apiKey?: string) => Promise<void>;
+  validateConnection: (settings: TradingSettings, apiKey?: string) => Promise<ConnectionValidation>;
+  start: (settings: TradingSettings, confirmReal: boolean) => Promise<void>;
+  stop: () => Promise<void>;
+  reconcile: () => Promise<void>;
+}
 
 interface SettingsContextValue {
   settings: TradingSettings;
   baseline: TradingSettings;
-  scope: Scope;
-  sessionState: SessionState;
-  reconnect: () => Promise<void>;
   theme: Theme;
   setTheme: (theme: Theme) => void;
   save: (settings: TradingSettings, key?: string, clearedEndpoints?: (keyof TradingSettings)[]) => Promise<void>;
   loadNetworkDraft: (network: TradingSettings["network"]) => TradingSettings;
   run: RunSnapshot;
   connection: ConnectionValidation | null;
-  operator: OperatorSnapshot | null;
   notice: string | null;
   feed: FeedResult;
+  apiKeyConfigured: boolean;
   validateConnection: (settings: TradingSettings, key?: string) => Promise<ConnectionValidation>;
   start: (confirmReal?: boolean) => Promise<void>;
   stop: () => Promise<void>;
@@ -40,18 +45,16 @@ interface SettingsContextValue {
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
-type EndpointMemory = Partial<Pick<TradingSettings, "hyperliquidApiUrl" | "hyperliquidWsUrl" | "rpcUrl">>;
+const IDLE_SNAPSHOT: BrowserTradingSnapshot = {
+  run: { runId: null, status: "off", startedAt: null, deadlineAt: null, stoppedAt: null, durationMs: 0, stopReason: null, serverNow: 0 },
+  feed: {
+    meta: null, connection: "connecting", byCoin: {},
+    loadTape: () => { throw new Error("The browser trading runtime is unavailable."); },
+  },
+};
 
-function endpointHost(settings: TradingSettings): string {
-  return new URL(effectiveEndpoints(settings).apiUrl).host.toLowerCase();
-}
-
-function withMemoryEndpoints(settings: TradingSettings, redacted: (keyof TradingSettings)[], memory: EndpointMemory): TradingSettings {
-  const next = { ...settings };
-  for (const field of ["hyperliquidApiUrl", "hyperliquidWsUrl", "rpcUrl"] as const) {
-    if (redacted.includes(field) && memory[field]) next[field] = memory[field] ?? null;
-  }
-  return next;
+function browserStorage(): Storage | null {
+  try { return window.localStorage; } catch { return null; }
 }
 
 function applyTheme(theme: Theme): void {
@@ -66,211 +69,141 @@ function applyTheme(theme: Theme): void {
   meta.content = theme === "dark" ? "#0b0d10" : "#ffffff";
 }
 
-export function SettingsProvider({ children, owner = null }: { children: ReactNode; owner?: SettingsOwner }) {
-  const publicApi = useMemo(resolvePublicApiUrl, []);
-  const localOperatorApi = useMemo(resolveOperatorApiUrl, []);
-  const isVisitor = !localOperatorApi;
-  const controlApi = isVisitor ? SESSION_API : localOperatorApi;
+export function SettingsProvider({ children, owner = null, adapter }: {
+  children: ReactNode;
+  owner?: SettingsOwner;
+  adapter?: BrowserTradingAdapter;
+}) {
   const [settings, setSettings] = useState<TradingSettings>({ ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins] });
-  const [baseline, setBaseline] = useState<TradingSettings>({ ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins] });
   const [theme, setThemeState] = useState<Theme>("light");
-  const [run, setRun] = useState<RunSnapshot>(OFF_RUN);
+  const [snapshot, setSnapshot] = useState<BrowserTradingSnapshot>(IDLE_SNAPSHOT);
   const [connection, setConnection] = useState<ConnectionValidation | null>(null);
-  const [operator, setOperator] = useState<OperatorSnapshot | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [sessionState, setSessionState] = useState<SessionState>(isVisitor ? "connecting" : "local");
+  const [ready, setReady] = useState(false);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const keyRef = useRef<string | undefined>(undefined);
-  const keyHostRef = useRef<string | null>(null);
-  const bootstrapStartedRef = useRef(false);
-  const mutationRef = useRef(0);
-  const endpointMemoryRef = useRef<EndpointMemory>({});
-  const feedApi = isVisitor ? SESSION_API : publicApi;
-  const feed = useFeed(feedApi, !isVisitor || sessionState === "ready");
-  const ready = isVisitor ? sessionState === "ready" : operator !== null;
-
-  const applySnapshot = useCallback((snapshot: SessionOperatorSnapshot) => {
-    const visible = isVisitor ? snapshot.settings : withMemoryEndpoints(snapshot.settings, snapshot.redactedEndpoints, endpointMemoryRef.current);
-    setOperator(snapshot);
-    setSettings((current) => JSON.stringify(current) === JSON.stringify(visible) ? current : visible);
-    setBaseline((current) => JSON.stringify(current) === JSON.stringify(snapshot.baseline) ? current : snapshot.baseline);
-    setConnection(snapshot.connection);
-    setRun(snapshot.run);
-    if (isVisitor) setSessionState("ready");
-  }, [isVisitor]);
-
-  const expireSession = useCallback((error: unknown): boolean => {
-    if (!isVisitor || !(error instanceof OperatorRequestError) || error.status !== 401 && error.status !== 410) return false;
-    setSessionState("expired");
-    setNotice("Your paper session expired. Reconnect to create a new session.");
-    setOperator(null);
-    return true;
-  }, [isVisitor]);
-
-  const reconnect = useCallback(async () => {
-    if (!isVisitor) return;
-    setSessionState("connecting");
-    setNotice(null);
-    try {
-      applySnapshot(await createVisitorSession());
-    } catch (error) {
-      setSessionState("error");
-      setNotice(error instanceof Error ? error.message : "The paper session could not connect.");
-      throw error;
-    }
-  }, [applySnapshot, isVisitor]);
+  const settingsRef = useRef(settings);
+  const mutationRef = useRef(false);
+  const revisionRef = useRef(0);
+  const validationRef = useRef<{ settings: string; key: string | undefined } | null>(null);
+  const baseline = useMemo(() => ({ ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins], network: settings.network }), [settings.network]);
 
   useEffect(() => {
-    const storage = (() => { try { return window.localStorage; } catch { return null; } })();
+    const storage = browserStorage();
     const selected = loadSelectedNetwork(storage);
     const loaded = loadSettings(storage, selected.network, owner);
     const appearance = loadTheme(storage, window.matchMedia("(prefers-color-scheme: dark)").matches);
+    revisionRef.current++;
+    adapter?.invalidateAuthorization();
+    keyRef.current = undefined;
+    validationRef.current = null;
+    setApiKeyConfigured(false);
+    setConnection(null);
+    settingsRef.current = loaded.settings;
+    setSettings(loaded.settings);
     setThemeState(appearance.theme);
     applyTheme(appearance.theme);
-    if (!isVisitor) {
-      setSettings(loaded.settings);
-      setBaseline(loaded.settings);
-      setNotice(loaded.notice?.message ?? selected.notice?.message ?? appearance.notice?.message ?? null);
-    } else if (!bootstrapStartedRef.current) {
-      bootstrapStartedRef.current = true;
-      setNotice(appearance.notice?.message ?? null);
-      void reconnect().catch(() => {});
-    }
-  }, [isVisitor, owner, reconnect]);
+    setNotice(loaded.notice?.message ?? selected.notice?.message ?? appearance.notice?.message ?? null);
+    setReady(true);
+    // Loading browser preferences never connects a wallet or starts trading.
+  }, [adapter, owner]);
 
   useEffect(() => {
-    if (!controlApi || (isVisitor && sessionState !== "ready")) return;
-    let stopped = false;
-    let controller: AbortController | null = null;
-    const poll = async () => {
-      controller?.abort();
-      controller = new AbortController();
-      const revision = mutationRef.current;
-      try {
-        const snapshot = await getOperator(controlApi, controller.signal);
-        if (!stopped && revision === mutationRef.current) applySnapshot(snapshot);
-      } catch (error) {
-        if (stopped || error instanceof DOMException && error.name === "AbortError") return;
-        if (!expireSession(error) && !isVisitor) setOperator(null);
-      }
-    };
-    void poll();
-    const interval = window.setInterval(poll, 5_000);
-    return () => { stopped = true; controller?.abort(); window.clearInterval(interval); };
-  }, [applySnapshot, controlApi, expireSession, isVisitor, sessionState]);
-
-  useEffect(() => {
-    if (isVisitor) return;
-    let stopped = false;
-    const poll = async () => {
-      const revision = mutationRef.current;
-      try {
-        const snapshot = await getRun(publicApi);
-        if (!stopped && revision === mutationRef.current) setRun(snapshot);
-      } catch {
-        if (!stopped) setNotice((current) => current ?? "Run status is temporarily unavailable.");
-      }
-    };
-    void poll();
-    const interval = window.setInterval(poll, 2_000);
-    return () => { stopped = true; window.clearInterval(interval); };
-  }, [isVisitor, publicApi]);
+    if (!adapter) { setSnapshot(IDLE_SNAPSHOT); return; }
+    const update = () => setSnapshot(adapter.getSnapshot());
+    const unsubscribe = adapter.subscribe(update);
+    update();
+    return unsubscribe;
+  }, [adapter]);
 
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);
     applyTheme(next);
-    const storage = (() => { try { return window.localStorage; } catch { return null; } })();
-    const issue = saveTheme(storage, next);
+    const issue = saveTheme(browserStorage(), next);
     if (issue) setNotice(issue.message);
   }, []);
 
-  const loadNetworkDraft = useCallback((network: TradingSettings["network"]) => ({ ...settings, network }), [settings]);
+  const loadNetworkDraft = useCallback((network: TradingSettings["network"]) => {
+    return loadSettings(browserStorage(), network, owner).settings;
+  }, [owner]);
 
   const save = useCallback(async (draft: TradingSettings, key?: string, clearedEndpoints: (keyof TradingSettings)[] = []) => {
-    if (!controlApi) throw new Error("Trading control is unavailable.");
+    if (!ready || mutationRef.current) throw new Error("Settings are busy.");
+    const run = adapter?.getSnapshot().run ?? IDLE_SNAPSHOT.run;
     if (run.status !== "off" && run.status !== "expired") throw new Error("Stop trading to change these settings.");
     const valid = validateSettings(draft);
-    if (isVisitor) {
-      if (valid.mode !== "paper") throw new Error("Visitor sessions are paper-only.");
-      if (valid.tickMs < 30_000) throw new Error("Visitor decision cadence must be at least 30000 ms.");
-      if (valid.hyperliquidApiUrl || valid.hyperliquidWsUrl || valid.rpcUrl || key || clearedEndpoints.length) {
-        throw new Error("Visitor paper sessions use official venue endpoints without credentials.");
-      }
+    for (const field of clearedEndpoints) {
+      if (field !== "hyperliquidApiUrl" && field !== "hyperliquidWsUrl" && field !== "rpcUrl") throw new Error("Only endpoint overrides can be cleared.");
+      valid[field] = null;
     }
-    let credential = key;
-    const nextHost = endpointHost(valid);
-    if (!isVisitor && endpointHost(settings) !== nextHost && credential === undefined && (keyRef.current || operator?.apiKeyConfigured)) credential = "";
-    const validatedKey = credential === undefined || credential === "" ? credential : validateApiKey(credential);
-    const revision = ++mutationRef.current;
+    const previous = settingsRef.current;
+    const changed = authorizationChanged(previous, valid);
+    const credential = key === undefined
+      ? changed ? undefined : keyRef.current
+      : key === "" ? undefined : validateApiKey(key);
+    const revision = ++revisionRef.current;
+    mutationRef.current = true;
     try {
-      const snapshot = isVisitor
-        ? await applyVisitorSettings(controlApi, valid)
-        : await applyOperatorSettings(controlApi, valid, validatedKey, clearedEndpoints);
-      if (revision !== mutationRef.current) return;
-      if (!isVisitor) {
-        for (const field of ["hyperliquidApiUrl", "hyperliquidWsUrl", "rpcUrl"] as const) {
-          if (clearedEndpoints.includes(field)) delete endpointMemoryRef.current[field];
-          else if (valid[field]) endpointMemoryRef.current[field] = valid[field];
-        }
-      }
-      applySnapshot(snapshot);
-      if (validatedKey === "") { keyRef.current = undefined; keyHostRef.current = null; }
-      else if (validatedKey) { keyRef.current = validatedKey; keyHostRef.current = nextHost; }
-    } catch (error) {
-      expireSession(error);
-      throw error;
-    }
-  }, [applySnapshot, controlApi, expireSession, isVisitor, operator, run.status, settings]);
+      if (changed || credential !== keyRef.current) adapter?.invalidateAuthorization();
+      validationRef.current = null;
+      setConnection(null);
+      await adapter?.applySettings(valid, credential);
+      if (revision !== revisionRef.current) throw new Error("The settings scope changed before saving completed.");
+      keyRef.current = credential;
+      setApiKeyConfigured(credential !== undefined);
+      settingsRef.current = valid;
+      setSettings(valid);
+      setNotice(saveSettings(browserStorage(), valid, owner)?.message ?? null);
+    } finally { mutationRef.current = false; }
+  }, [adapter, owner, ready]);
 
   const validateConnection = useCallback(async (draft: TradingSettings, key?: string) => {
-    if (!controlApi) throw new Error("Connection validation is unavailable.");
+    if (!adapter) throw new Error("The browser trading runtime is unavailable.");
+    if (mutationRef.current) throw new Error("Settings are busy.");
+    const run = adapter.getSnapshot().run;
     if (run.status !== "off" && run.status !== "expired") throw new Error("Stop trading before validating connections.");
     const valid = validateSettings(draft);
-    if (isVisitor && (valid.mode !== "paper" || valid.hyperliquidApiUrl || valid.hyperliquidWsUrl || valid.rpcUrl || key)) {
-      throw new Error("Visitor paper sessions use official venue endpoints without credentials.");
-    }
-    const credential = isVisitor ? undefined : key === undefined ? endpointHost(valid) === keyHostRef.current ? keyRef.current : undefined : key === "" ? "" : validateApiKey(key);
-    try {
-      const checked = await validateOperatorConnection(controlApi, valid, credential);
+    const credential = key === undefined
+      ? effectiveEndpoints(valid).apiUrl === effectiveEndpoints(settingsRef.current).apiUrl ? keyRef.current : undefined
+      : key === "" ? undefined : validateApiKey(key);
+    const revision = ++revisionRef.current;
+    const checked = await adapter.validateConnection(valid, credential);
+    if (revision === revisionRef.current) {
+      validationRef.current = { settings: JSON.stringify(valid), key: credential };
       setConnection(checked);
-      return checked;
-    } catch (error) {
-      expireSession(error);
-      throw error;
     }
-  }, [controlApi, expireSession, isVisitor, run.status]);
+    return checked;
+  }, [adapter]);
 
   const start = useCallback(async (confirmReal = false) => {
-    if (!controlApi) throw new Error("Trading control is unavailable.");
-    if (settings.enabledCoins.length === 0) throw new Error("Enable at least one asset.");
-    if (!isVisitor && (!connection?.ok || settings.mode === "real" && !connection.realAllowed)) throw new Error("Validate a compatible connection before starting.");
-    const revision = ++mutationRef.current;
-    try {
-      const snapshot = await startOperator(controlApi, isVisitor ? false : confirmReal);
-      if (revision === mutationRef.current) setRun(snapshot);
-    } catch (error) { expireSession(error); throw error; }
-  }, [connection, controlApi, expireSession, isVisitor, settings]);
+    if (!adapter) throw new Error("The browser trading runtime is unavailable.");
+    if (!ready || mutationRef.current) throw new Error("Settings are busy.");
+    const current = settingsRef.current;
+    const run = adapter.getSnapshot().run;
+    if (run.status !== "off" && run.status !== "expired") throw new Error("Stop the current run before starting another.");
+    if (!current.enabledCoins.length) throw new Error("Enable at least one asset.");
+    if (!connection?.ok || validationRef.current?.settings !== JSON.stringify(current) || validationRef.current.key !== keyRef.current) {
+      throw new Error("Validate the applied connection before starting.");
+    }
+    if (current.mode === "real" && (!connection.realAllowed || !confirmReal)) throw new Error("Authorize and confirm real trading before starting.");
+    await adapter.start(current, confirmReal);
+  }, [adapter, connection, ready]);
 
   const stop = useCallback(async () => {
-    if (!controlApi) throw new Error("Trading control is unavailable.");
-    const revision = ++mutationRef.current;
-    try {
-      const snapshot = await stopOperator(controlApi);
-      if (revision === mutationRef.current) setRun(snapshot);
-    } catch (error) { expireSession(error); throw error; }
-  }, [controlApi, expireSession]);
+    if (!adapter) throw new Error("The browser trading runtime is unavailable.");
+    await adapter.stop();
+  }, [adapter]);
 
   const reconcile = useCallback(async () => {
-    if (!controlApi) throw new Error("Cleanup reconciliation is unavailable.");
-    try {
-      const snapshot = await reconcileOperator(controlApi);
-      setRun(snapshot);
-    } catch (error) { expireSession(error); throw error; }
-  }, [controlApi, expireSession]);
+    if (!adapter) throw new Error("The browser trading runtime is unavailable.");
+    await adapter.reconcile();
+  }, [adapter]);
 
   const value = useMemo<SettingsContextValue>(() => ({
-    settings, baseline, scope: isVisitor ? "visitor" : "operator", sessionState, reconnect, theme, setTheme,
-    save, loadNetworkDraft, run, connection, operator, notice, validateConnection, start, stop, reconcile, feed, ready,
-  }), [settings, baseline, isVisitor, sessionState, reconnect, theme, setTheme, save, loadNetworkDraft, run, connection, operator, notice, validateConnection, start, stop, reconcile, feed, ready]);
+    settings, baseline, theme, setTheme, save, loadNetworkDraft,
+    run: snapshot.run, feed: snapshot.feed, connection, notice, apiKeyConfigured,
+    validateConnection, start, stop, reconcile, ready,
+  }), [settings, baseline, theme, setTheme, save, loadNetworkDraft, snapshot, connection, notice, apiKeyConfigured, validateConnection, start, stop, reconcile, ready]);
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
