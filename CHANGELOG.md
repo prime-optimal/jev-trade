@@ -13,6 +13,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added `justfile` recipes for setup, local processes, tests, typechecks, checks, and the dashboard production build.
 - Added Railway TypeScript infrastructure in `.railway/railway.ts` for the bot, dashboard, bot data volume, service variables, watch paths, health checks, and deployment settings.
 - Added maintainer documentation for architecture, trading, the API, dashboard, configuration, Jev providers, development, and deployment.
+- Added configurable Hyperliquid HTTP, WebSocket, and RPC endpoints with optional HTTP API-key authentication.
 
 ### Changed
 
@@ -28,6 +29,8 @@ All notable changes to this project are documented here. This changelog starts f
 - Changed the default `TICK_MS` from 2000 to 30000, so each sleeve asks Jev every 30 seconds. The dashboard chart timeframes are unchanged and still only group prices into candles.
 - Removed the 30 second Jev pause after a credit or provider error. The next tick calls Jev again instead of emitting late holds without a call.
 - Slowed the default `PRICE_MS` from 200 to 1000 to reduce dashboard price-event traffic. This setting does not make Hyperliquid requests and does not affect the 30-second Jev cadence.
+- Made WebSocket subscriptions the primary Hyperliquid market-data path. Book, recent-trade, and asset-context HTTP recovery polls now run only while the socket is disconnected, at a configurable 30-second default cadence.
+- Shared immutable Hyperliquid symbol and leverage metadata across sleeves instead of requesting the same startup data once per market.
 - Changed bot startup log separators to plain punctuation.
 - Fixed pre-existing root TypeScript errors with type-only changes in `src/config.ts`, `src/model.ts`, and `src/market.ts`. Root and dashboard typechecks now pass.
 - Updated `.gitignore` so maintainer docs are tracked and local `fnox.local.toml` overrides remain ignored.

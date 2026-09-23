@@ -8,6 +8,13 @@ The bot reads environment values in [`src/config.ts`](../src/config.ts), [`src/s
 | --- | --- | --- | --- | --- |
 | `HL_COINS` | `BTC,ETH,SOL,DOGE,BNB` | [`src/sleeves.ts`](../src/sleeves.ts) | No | Comma-separated Hyperliquid perps. Creates one sleeve per nonempty entry. |
 | `HL_TESTNET` | `true` | [`src/config.ts`](../src/config.ts) | No | Selects testnet. Only the exact string `false` selects mainnet. |
+| `HL_API_URL` | Network default | [`src/config.ts`](../src/config.ts) | No | Overrides the Hyperliquid HTTP API base URL used for info and exchange requests. |
+| `HL_WS_URL` | Derived from `HL_API_URL`, otherwise network default | [`src/config.ts`](../src/config.ts) | No | Overrides the Hyperliquid WebSocket endpoint. Set this when a custom provider uses a different WebSocket address. |
+| `HL_RPC_URL` | Network default | [`src/config.ts`](../src/config.ts) | No | Overrides the Hyperliquid RPC base URL used for explorer requests. |
+| `HL_API_KEY` | Unset | [`src/config.ts`](../src/config.ts) | Yes | Optional credential sent only to the custom Hyperliquid info and exchange API. It is not sent to `HL_RPC_URL` or placed in WebSocket subscription messages. |
+| `HL_API_KEY_HEADER` | `Authorization` | [`src/config.ts`](../src/config.ts) | No | HTTP header carrying `HL_API_KEY`. |
+| `HL_API_KEY_SCHEME` | `Bearer` | [`src/config.ts`](../src/config.ts) | No | Prefix before `HL_API_KEY`. Set it to an empty value when the provider expects the raw key. |
+| `HL_FALLBACK_POLL_MS` | `30000` | [`src/config.ts`](../src/config.ts) | No | HTTP recovery cadence while the Hyperliquid WebSocket is disconnected. Healthy WebSocket connections do not run recurring book, trade, or asset-context HTTP polls. |
 | `TICK_MS` | `30000` | [`src/config.ts`](../src/config.ts) | No | Decision and requote cadence in milliseconds. At the default cadence, each sleeve calls Jev every 30 seconds. The dashboard chart timeframe does not change it. |
 | `PRICE_MS` | `1000`, minimum `50` | [`src/config.ts`](../src/config.ts) | No | Chart and live-mid SSE cadence in milliseconds. This does not make a Hyperliquid request or call Jev. |
 | `QUOTE_USD` | `40` | [`src/config.ts`](../src/config.ts) | No | Target notional in USD for one entry quote. |
@@ -27,7 +34,7 @@ The bot reads environment values in [`src/config.ts`](../src/config.ts), [`src/s
 | `PORT` | `3000` | [`src/config.ts`](../src/config.ts), [`src/server.ts`](../src/server.ts) | No | Bot HTTP and SSE listen port. |
 | `NEXT_PUBLIC_API_URL` | Page host on port `3000` | [`web/src/app/page.tsx`](../web/src/app/page.tsx) | No | Browser-visible bot base URL, without a trailing slash. A bare host gets `https://`. Unset, the browser uses `http://<page hostname>:3000`. Next embeds it into the client bundle at build time. |
 
-Numeric values use JavaScript `Number()` conversion. Invalid numeric text is not replaced by the default. Provider selection and credential requirements are covered in [Jev provider](jev-provider.md).
+Numeric values use JavaScript `Number()` conversion. Invalid numeric text is not replaced by the default unless the variable documents an enforced minimum. `HL_API_KEY` authenticates info and exchange HTTP requests only. It is intentionally excluded from RPC requests, and the native WebSocket client cannot add arbitrary handshake headers. Use a provider URL with embedded WebSocket credentials or its dedicated `HL_WS_URL` when required. Provider selection and credential requirements are covered in [Jev provider](jev-provider.md).
 
 ## Value sources
 

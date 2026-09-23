@@ -3,14 +3,14 @@ import type { Book } from "./types";
 import { fillDir, type ClearinghouseLike, type FillPnlLike } from "./account";
 import { bookFromLevels } from "./book";
 import { CHART_INTERVAL, VenueChart } from "./chart";
+import { infoPost } from "./hyperliquid";
 import { parseAssetCtx, type AssetCtx } from "./indicators";
 import { sameCoin } from "./sleeves";
 import { TradeFeed } from "./trades";
 
-const INFO_URL = (testnet: boolean) =>
-  testnet ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
-const WS_URL = (testnet: boolean) =>
-  testnet ? "wss://api.hyperliquid-testnet.xyz/ws" : "wss://api.hyperliquid.xyz/ws";
+export function shouldRunHttpFallback(readyState: number | null): boolean {
+  return readyState !== WebSocket.OPEN;
+}
 
 /**
  * Local Hyperliquid book + tape over the official WS, with an HTTP snapshot so startup
@@ -34,6 +34,7 @@ export class Feed {
   private ws: WebSocket | null = null;
   private ping: ReturnType<typeof setInterval> | null = null;
   private seenTids = new Set<number>();
+  private fallbackRunning = false;
 
   constructor(readonly coin: string) {}
 
@@ -45,9 +46,7 @@ export class Feed {
     this.pollAssetCtx().catch(() => {});
     this.openSocket();
     setInterval(() => this.maybeTick(), config.tickMs);
-    setInterval(() => { if (!this.ws || this.ws.readyState !== WebSocket.OPEN) this.snapshot().catch(() => {}); }, 2_000);
-    setInterval(() => this.pollTrades().catch(() => {}), 2_000);
-    setInterval(() => this.pollAssetCtx().catch(() => {}), 15_000);
+    setInterval(() => this.runHttpFallback(), config.hyperliquid.fallbackMs);
     this.pollTrades().catch(() => {});
   }
 
@@ -63,11 +62,7 @@ export class Feed {
   }
 
   private async snapshot() {
-    const res = await fetch(INFO_URL(config.hlTestnet), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "l2Book", coin: this.coin }),
-    });
+    const res = await infoPost({ type: "l2Book", coin: this.coin });
     if (!res.ok) throw new Error(`hl l2Book HTTP ${res.status}`);
     const data = (await res.json()) as { levels?: [{ px: string; sz: string }[], { px: string; sz: string }[]] };
     if (!data.levels) return;
@@ -77,7 +72,7 @@ export class Feed {
 
   private openSocket(delay = 0) {
     setTimeout(() => {
-      const ws = new WebSocket(WS_URL(config.hlTestnet));
+      const ws = new WebSocket(config.hyperliquid.wsUrl);
       this.ws = ws;
       ws.onopen = () => {
         this.send({ method: "subscribe", subscription: { type: "l2Book", coin: this.coin, fast: true } });
@@ -171,11 +166,7 @@ export class Feed {
   }
 
   private async pollAssetCtx() {
-    const res = await fetch(INFO_URL(config.hlTestnet), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "metaAndAssetCtxs" }),
-    });
+    const res = await infoPost({ type: "metaAndAssetCtxs" });
     if (!res.ok) return;
     const pair = (await res.json()) as [{ universe?: { name?: string }[] }, unknown[]];
     if (!Array.isArray(pair) || pair.length < 2) return;
@@ -187,15 +178,21 @@ export class Feed {
   }
 
   private async pollTrades() {
-    const res = await fetch(INFO_URL(config.hlTestnet), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "recentTrades", coin: this.coin }),
-    });
+    const res = await infoPost({ type: "recentTrades", coin: this.coin });
     if (!res.ok) return;
     const prints = (await res.json()) as { px: string; sz: string; side: string; tid?: number }[];
     if (!Array.isArray(prints)) return;
     for (const t of prints) this.ingestPrint(t);
+  }
+
+  private async runHttpFallback() {
+    if (!shouldRunHttpFallback(this.ws?.readyState ?? null) || this.fallbackRunning) return;
+    this.fallbackRunning = true;
+    try {
+      await Promise.allSettled([this.snapshot(), this.pollTrades(), this.pollAssetCtx()]);
+    } finally {
+      this.fallbackRunning = false;
+    }
   }
 
   private ingestPrint(t: { px?: string; sz?: string; side?: string; tid?: number }) {

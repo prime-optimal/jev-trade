@@ -1,7 +1,8 @@
-import { ApiRequestError, ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
-import { formatPrice, formatSize, SymbolConverter } from "@nktkas/hyperliquid/utils";
+import { ApiRequestError, ExchangeClient, InfoClient } from "@nktkas/hyperliquid";
+import { formatPrice, formatSize } from "@nktkas/hyperliquid/utils";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { config, hexKey } from "./config";
+import { createHttpTransport, hyperliquidMetadata } from "./hyperliquid";
 import { accountFromClearinghouse, fillDir, FillPnlBook, type ClearinghouseLike, type FillPnlLike, type VenueAccount } from "./account";
 import { quotePrice, takerPrice } from "./book";
 import type { Feed } from "./feed";
@@ -51,7 +52,7 @@ export class Market {
     this.pair = sleeve.pair;
     this.label = sleeve.label;
     this.wallet = config.dryRun || !sleeve.privateKey ? null : privateKeyToAccount(hexKey(sleeve.privateKey));
-    const transport = new HttpTransport({ isTestnet: config.hlTestnet });
+    const transport = createHttpTransport();
     this.info = new InfoClient({ transport });
     if (this.wallet) this.ex = new ExchangeClient({ transport, wallet: this.wallet });
   }
@@ -65,8 +66,7 @@ export class Market {
   }
 
   async init() {
-    const transport = new HttpTransport({ isTestnet: config.hlTestnet });
-    const converter = await SymbolConverter.create({ transport });
+    const converter = await hyperliquidMetadata.symbolConverter();
     const assetId = converter.getAssetId(this.coin);
     const szDecimals = converter.getSzDecimals(this.coin);
     if (assetId == null || szDecimals == null) throw new Error(`unknown Hyperliquid coin ${this.coin}`);
@@ -319,14 +319,8 @@ export class Market {
 
   private async loadMaxLeverage() {
     try {
-      const res = await fetch(config.hlTestnet ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "meta" }),
-      });
-      const meta = (await res.json()) as { universe?: { name?: string; maxLeverage?: number }[] };
-      const n = Number(meta.universe?.find((u) => u.name === this.coin)?.maxLeverage);
-      if (Number.isFinite(n) && n >= 1) this.maxLeverage = Math.floor(n);
+      const maxLeverage = await hyperliquidMetadata.maxLeverage(this.coin);
+      if (maxLeverage != null) this.maxLeverage = maxLeverage;
     } catch {
       // keep 50
     }

@@ -35,6 +35,13 @@ export default defineRailway(() => {
       OPENROUTER_API_KEY: preserve(),
       PRIVATE_KEY: preserve(),
       WALLETS_JSON: preserve(),
+      HL_API_URL: preserve(),
+      HL_WS_URL: preserve(),
+      HL_RPC_URL: preserve(),
+      HL_API_KEY: preserve(),
+      HL_API_KEY_HEADER: preserve(),
+      HL_API_KEY_SCHEME: preserve(),
+      HL_FALLBACK_POLL_MS: preserve(),
     },
     volumeMounts: {
       "/data": botData,

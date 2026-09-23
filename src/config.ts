@@ -4,6 +4,55 @@ export type JevProvider = "openrouter" | "typesafe" | "gateway";
 
 type Env = Record<string, string | undefined>;
 
+export type HyperliquidEnv = {
+  isTestnet: boolean;
+  apiUrl: string;
+  infoUrl: string;
+  wsUrl: string;
+  rpcUrl: string;
+  headers: Record<string, string>;
+  fallbackMs: number;
+};
+
+const HL_MAINNET_API = "https://api.hyperliquid.xyz";
+const HL_TESTNET_API = "https://api.hyperliquid-testnet.xyz";
+const HL_MAINNET_RPC = "https://rpc.hyperliquid.xyz";
+const HL_TESTNET_RPC = "https://rpc.hyperliquid-testnet.xyz";
+
+function endpoint(value: string | undefined, fallback: string): string {
+  return (value?.trim() || fallback).replace(/\/+$/, "");
+}
+
+function boundedMs(value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback;
+}
+
+export function resolveHyperliquidEnv(e: Env, isTestnet: boolean): HyperliquidEnv {
+  const apiUrl = endpoint(e.HL_API_URL, isTestnet ? HL_TESTNET_API : HL_MAINNET_API);
+  const rpcUrl = endpoint(e.HL_RPC_URL, isTestnet ? HL_TESTNET_RPC : HL_MAINNET_RPC);
+  const api = new URL(apiUrl);
+  const rpc = new URL(rpcUrl);
+  if (api.protocol !== "http:" && api.protocol !== "https:") throw new Error("HL_API_URL must use http or https");
+  if (rpc.protocol !== "http:" && rpc.protocol !== "https:") throw new Error("HL_RPC_URL must use http or https");
+  const derivedWs = `${apiUrl.replace(/^http/, "ws")}/ws`;
+  const wsUrl = endpoint(e.HL_WS_URL, derivedWs);
+  const ws = new URL(wsUrl);
+  if (ws.protocol !== "ws:" && ws.protocol !== "wss:") throw new Error("HL_WS_URL must use ws or wss");
+  const key = e.HL_API_KEY?.trim();
+  const header = e.HL_API_KEY_HEADER?.trim() || "Authorization";
+  const scheme = e.HL_API_KEY_SCHEME === undefined ? "Bearer" : e.HL_API_KEY_SCHEME.trim();
+  return {
+    isTestnet,
+    apiUrl,
+    infoUrl: `${apiUrl}/info`,
+    wsUrl,
+    rpcUrl,
+    headers: key ? { [header]: scheme ? `${scheme} ${key}` : key } : {},
+    fallbackMs: boundedMs(e.HL_FALLBACK_POLL_MS, 30_000, 1_000, 300_000),
+  };
+}
+
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 
 export function resolveJevProvider(e: Env): JevProvider {
@@ -41,10 +90,12 @@ export function assertJevCredentials(
 
 const hlTestnet = env("HL_TESTNET", "true") !== "false";
 const jevProvider = resolveJevProvider(process.env);
+const hyperliquid = resolveHyperliquidEnv(process.env, hlTestnet);
 const jevModelId = resolveJevModelId(process.env, jevProvider);
 
 export const config = {
   hlTestnet,
+  hyperliquid,
   tickMs: Number(env("TICK_MS", "30000")),
   /** Book/price prints for the chart. Independent of Jev ticks. */
   priceMs: Math.max(50, Number(env("PRICE_MS", "1000"))),

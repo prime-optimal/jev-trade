@@ -69,17 +69,18 @@ railway domain --service bot
 railway domain --service web
 ```
 
-Set each secret without putting its value in shell history. `OPENROUTER_API_KEY` is required for the first safe deployment. Add wallet values later, before live trading:
+Set each secret without putting its value in shell history. `OPENROUTER_API_KEY` is required for the first safe deployment. Add wallet values later, before live trading. If a custom Hyperliquid provider requires an HTTP credential, set `HL_API_KEY` the same way:
 
 ```sh
 printf '%s' "$OPENROUTER_API_KEY" | railway variables set OPENROUTER_API_KEY --stdin --service bot
 printf '%s' "$PRIVATE_KEY" | railway variables set PRIVATE_KEY --stdin --service bot
 printf '%s' "$WALLETS_JSON" | railway variables set WALLETS_JSON --stdin --service bot
+printf '%s' "$HL_API_KEY" | railway variables set HL_API_KEY --stdin --service bot
 ```
 
-The CLI can write these variables but does not expose a sealing flag. In the bot service Variables tab, open each variable's menu and choose **Seal**. A sealed value remains available to builds and deployments but cannot be read through the UI or API. Do not replace a variable that `railway variables list --service bot` reports as `<sealed>`. See [Railway variables](https://docs.railway.com/variables).
+The CLI can write these variables but does not expose a sealing flag. In the bot service Variables tab, open each secret variable's menu and choose **Seal**. A sealed value remains available to builds and deployments but cannot be read through the UI or API. Do not replace a variable that `railway variables list --service bot` reports as `<sealed>`. See [Railway variables](https://docs.railway.com/variables).
 
-The first deployment must keep the safe defaults from [`.railway/railway.ts`](../.railway/railway.ts#L30-L38):
+The first deployment must keep the safe defaults from [`.railway/railway.ts`](../.railway/railway.ts#L30-L44):
 
 ```text
 MODEL=jev
@@ -126,7 +127,7 @@ The wallet-owning bot must have one active process. Check all of these before ev
 1. Exercise every configured sleeve on testnet with `HL_TESTNET=true` and `DRY_RUN=true`.
 2. Add and seal the intended production wallet variables on the bot service only.
 3. Fund the intended wallets and verify each coin-to-wallet assignment and `QUOTE_USD` setting.
-4. Change `DRY_RUN` from `"true"` to `"false"` in the bot `env` block of [`.railway/railway.ts`](../.railway/railway.ts#L30-L38), run `railway config plan`, review, then `railway config apply`. Do not flip it only in the dashboard or with `railway variables`; the IaC value would restore `true` on the next apply. Keep `HL_TESTNET` at `"true"` until real order behavior has been checked on testnet.
+4. Change `DRY_RUN` from `"true"` to `"false"` in the bot `env` block of [`.railway/railway.ts`](../.railway/railway.ts#L30-L44), run `railway config plan`, review, then `railway config apply`. Do not flip it only in the dashboard or with `railway variables`; the IaC value would restore `true` on the next apply. Keep `HL_TESTNET` at `"true"` until real order behavior has been checked on testnet.
 5. Change `HL_TESTNET` to `"false"` the same way, only for the mainnet launch.
 6. Confirm the volume is attached, replicas remain at 1, and no other process has the same keys.
 

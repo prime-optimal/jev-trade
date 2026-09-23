@@ -11,7 +11,7 @@ This boundary is intentional. Trading and secrets stay in the Bun process, while
 
 ## Startup
 
-[`src/index.ts`](../src/index.ts) registers every configured sleeve before initialization, then starts them serially to avoid a burst of Hyperliquid HTTP requests. A successful sleeve becomes live immediately. A failed sleeve remains registered as retrying, exposes its error and next retry time through the API, and retries independently after 30 minutes without restarting healthy sleeves.
+[`src/index.ts`](../src/index.ts) registers every configured sleeve before initialization, then starts them serially to avoid a burst of Hyperliquid HTTP requests. Immutable symbol and leverage metadata is fetched once and shared across every sleeve. A successful sleeve becomes live immediately. A failed sleeve remains registered as retrying, exposes its error and next retry time through the API, and retries independently after 30 minutes without restarting healthy sleeves.
 
 The HTTP and SSE server starts before sleeve initialization so the dashboard can show starting and retrying states. One process contains every sleeve.
 
@@ -56,14 +56,15 @@ flowchart LR
 
 `Trader.onBlock()` reads the latest book, harvests fills, builds `TradeState`, and awaits one model decision. It emits the block event before exchange I/O. Leverage updates and orders run on a serialized background promise so exchange latency does not hold the next model call. If a model call still occupies the next tick, that tick is marked late rather than starting a second call.
 
-## Two cadences
+## Runtime cadences
 
 | Setting | Default | Work performed |
 | --- | ---: | --- |
 | `TICK_MS` | 30000 ms | Advances the local tick, summarizes book and tape state, asks the model, emits a block event, and queues the resulting order action. |
 | `PRICE_MS` | 1000 ms | Emits a price event when the mid changes and adds live mids to chart data. It does not make a Hyperliquid request, ask the model, or place an order. |
+| `HL_FALLBACK_POLL_MS` | 30000 ms | While the WebSocket is disconnected, refreshes the book, recent trades, and asset context over HTTP. It performs no recurring HTTP work while the socket is healthy. |
 
-Book WebSocket messages may trigger either cadence when its interval has elapsed. A timer also checks the decision cadence, so a quiet book can still produce ticks.
+Book WebSocket messages may trigger either local cadence when its interval has elapsed. A timer also checks the decision cadence, so a quiet book can still produce ticks. Hyperliquid book, trade, candle, and asset-context subscriptions are the primary market-data path. HTTP supplies startup snapshots and disconnected-socket recovery.
 
 ## State and persistence
 
