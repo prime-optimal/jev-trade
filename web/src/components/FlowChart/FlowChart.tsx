@@ -5,6 +5,7 @@ import type { BlockEvent, Meta, PricePoint } from "@/lib/types";
 import { fmtCall, fmtPrice } from "@/lib/format";
 import { barsForView, fillMarks, type BarSize } from "@/lib/ohlc";
 import { Bone } from "@/components/Skeleton/Skeleton";
+import { useSettings } from "@/lib/trading/SettingsProvider";
 import CandlePane from "./CandlePane";
 import styles from "./FlowChart.module.css";
 
@@ -26,23 +27,19 @@ export default function FlowChart({
   events,
   latest,
   meta,
-  onNeedMoreTape,
 }: {
   tape?: PricePoint[];
   events: BlockEvent[];
   latest: BlockEvent | null;
   meta?: Meta | null;
-  onNeedMoreTape?: () => void;
 }) {
   const [interval, setIntervalId] = useState<BarSize>(DEFAULT_INTERVAL);
+  const { settings } = useSettings();
 
   useEffect(() => {
     setIntervalId(DEFAULT_INTERVAL);
   }, [meta?.coin]);
 
-  useEffect(() => {
-    if (interval !== "1s") onNeedMoreTape?.();
-  }, [interval, onNeedMoreTape]);
 
   const model = useMemo(() => {
     const src = tape ?? [];
@@ -57,7 +54,7 @@ export default function FlowChart({
   const shown = latest ?? events[events.length - 1] ?? null;
   const d = shown?.decision ?? null;
   const late = d?.late === true;
-  const word = late ? "LATE" : fmtCall(d) || "HOLD";
+  const word = !d ? "No decision" : late ? "LATE" : fmtCall(d) || "No decision";
   const wordColor = late
     ? "var(--late-ink)"
     : d?.intent === "hold" || d?.action === "hold"
@@ -146,6 +143,7 @@ export default function FlowChart({
             {s.label}
           </button>
         ))}
+        <a className={styles.tool} href={`https://${settings.network === "testnet" ? "app.hyperliquid-testnet.xyz" : "app.hyperliquid.xyz"}/trade/${encodeURIComponent(coin)}`} target="_blank" rel="noreferrer">View {settings.network} market</a>
       </div>
     </div>
   );
