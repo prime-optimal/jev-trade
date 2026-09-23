@@ -1,4 +1,6 @@
-export type TradingNetwork = "testnet" | "mainnet";
+import type { HyperliquidNetwork } from "../bot-types";
+
+export type TradingNetwork = HyperliquidNetwork;
 
 export interface NetworkEndpoints {
   apiUrl: string;
@@ -18,6 +20,45 @@ export const NETWORK_ENDPOINTS: Readonly<Record<TradingNetwork, Readonly<Network
     rpcUrl: "https://rpc.hyperliquid.xyz",
   },
 };
+
+/** Signing identity follows the selected network, never a transport URL. */
+export interface NetworkIdentity {
+  chainId: 421614 | 42161;
+  signatureChainId: "0x66eee" | "0xa4b1";
+  hyperliquidChain: "Testnet" | "Mainnet";
+  chainName: string;
+  rpcUrl: string;
+  blockExplorerUrl: string;
+}
+
+export const NETWORK_IDENTITIES: Readonly<Record<TradingNetwork, Readonly<NetworkIdentity>>> = {
+  testnet: {
+    chainId: 421614,
+    signatureChainId: "0x66eee",
+    hyperliquidChain: "Testnet",
+    chainName: "Arbitrum Sepolia",
+    rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+    blockExplorerUrl: "https://sepolia.arbiscan.io",
+  },
+  mainnet: {
+    chainId: 42161,
+    signatureChainId: "0xa4b1",
+    hyperliquidChain: "Mainnet",
+    chainName: "Arbitrum One",
+    rpcUrl: "https://arb1.arbitrum.io/rpc",
+    blockExplorerUrl: "https://arbiscan.io",
+  },
+};
+
+/**
+ * Public feeds and paper trading do not require a wallet chain.
+ * Real authorization explicitly switches to signatureChainId. On wallet error
+ * 4902, request wallet-approved chain addition using this identity, then switch.
+ * Custom Hyperliquid and SDK RPC endpoints never supply wallet chain metadata.
+ */
+export function networkIdentity(network: TradingNetwork): Readonly<NetworkIdentity> {
+  return NETWORK_IDENTITIES[network];
+}
 
 function isLocalHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
