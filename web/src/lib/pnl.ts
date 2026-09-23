@@ -1,4 +1,4 @@
-import type { BlockEvent } from "./bot-types";
+import type { BlockEvent } from "./trading/types";
 
 export type SleevePnl = {
   coin: string;
