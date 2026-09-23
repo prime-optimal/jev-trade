@@ -1,72 +1,90 @@
 # Trading behavior
 
-## Runs own execution
+## Browser sessions own execution
 
-The Bun process starts its public and private HTTP services and prepares execution resources. In paper mode, process startup arms exactly one timed run after the configured settings and duration have been applied; it starts when the first sleeve becomes ready. A temporarily unavailable sleeve remains visible with its failure and retries while Off until that first ready sleeve starts the run. In real mode, startup remains Off and only the private operator API can start the shared executor after explicit confirmation. Start requires at least one ready sleeve, starts only the available sleeves, and leaves unavailable sleeves retrying without fabricated decisions for their missing feeds.
+The dashboard uses one browser-local [`session.ts`](../web/src/lib/trading/session.ts), with [`feed.ts`](../web/src/lib/trading/feed.ts) and [`trader.ts`](../web/src/lib/trading/trader.ts) providing the #22 feed and decision loop. [`SettingsProvider.tsx`](../web/src/lib/trading/SettingsProvider.tsx) integrates them for #23. Bun handles address-free Jev inference only. Neither Bun nor Next receives wallet identities, raw account snapshots, or order records, or executes orders for visitors. There is no server-side visitor Worker, server wallet executor, backend control address, session gateway, private operator API, or SSE feed.
 
-Each Start creates a new `runId` and a full configured duration, 30 minutes by default. The lifecycle records authoritative `startedAt`, `deadlineAt`, `stoppedAt`, `durationMs`, and `stopReason` timestamps. An absolute wall-clock deadline and a monotonic deadline guard prevent a clock rollback from extending a run. The scheduled timer is only a wake-up. Guards also reject work after awaited inference and before order submission.
+The browser sends wallet approval requests directly to Brave Wallet and account and exchange requests directly to Hyperliquid. Only `JevRequest` crosses the application boundary through [`web/src/lib/jev.ts`](../web/src/lib/jev.ts) to `/decide`, with credentials omitted and no referrer. Wallet identity, account snapshots, and order records must not enter that request.
 
-Expiry invalidates execution immediately, stops scheduling, and runs the same cleanup as manual Off. The cleanup cancels only bot-owned resting orders for the affected coin. It is bounded to ten seconds for the lifecycle response, but a timed-out cleanup keeps running and remains tracked. `attention-required` blocks Start. Reconcile reports that cleanup is still pending until the in-flight work settles, then either completes the transition or retries a failed cleanup.
+Public data stays available while disconnected or stopped. Disabled markets remain visible. Their presence, or a healthy feed connection, is not permission to trade.
 
-Stop does not liquidate an accepted position and does not revoke wallet authorization. Already submitted work may need reconciliation. Expired and manually stopped runs never restart automatically, so the paper startup behavior does not loop. A failed sleeve may recover resources while Off, but it cannot restart an expired or manually stopped run. Restarting the process arms a new paper run rather than restoring the old run; real mode restarts Off and still requires a private, confirmed Start.
+## Connection, authorization, and mode
 
-Live orders carry a stable Jev client-order-ID namespace with the Hyperliquid asset ID. On startup, each coin discovers matching namespaced orders left by an earlier process, reconciles pending order status through the venue, and cleans up only those orders. Orders for another coin and orders without the Jev namespace, including legacy orders, are never canceled by this recovery. The process warns that unidentified orders need manual review.
+Connecting Brave Wallet selects an owner. It does not authorize trading. Agent authorization is a separate explicit wallet action and does not start a run. Changing accounts or networks does not transfer a running session to the new identity. Wallet connection, agent authorization, run policy, execution ownership, and inference are separate concerns.
 
-## Settings and mode
+Paper execution simulates orders and balances locally. It does not submit exchange orders or spend wallet funds. Its account values are simulation values, not a claim about the connected wallet. Real execution requires matching owner and network authorization and explicit confirmation of whole-account net-position management. An unavailable real authorization is an error, not permission to silently fall back to paper.
 
-Local operator Save applies one validated settings snapshot only while Off or Expired. It builds the replacement shared executor and feeds before the new values become applied. A failed replacement is discarded and the previous executor resumes unchanged.
+Account equity and withdrawable balance belong to one owner account, not to each coin. Positions are venue net positions. Real execution can therefore affect an existing position on an enabled market, including exposure opened outside this application. The dashboard shows owner equity once and market-specific positions separately.
 
-Remote visitors do not control that executor. Each visitor gets a keyless paper runtime in a separate Bun Worker. It starts Off and waits for the visitor to configure, Save, and Start. Save applies settings to that Worker. Start, Stop, expiry, history, and simulated positions also belong only to it. A visitor can select official mainnet or testnet market data, assets, duration, and numeric paper controls. Real mode, wallet or transport credentials, custom destinations, and a decision cadence below 30000 ms are rejected.
+## Finite runs
 
-If visitor cleanup reaches `attention-required`, Start remains blocked. Settings offers Reset paper run, which retries reconciliation. Refresh resumes the same Worker and its applied settings. If the capability is removed, the session expires, or the bot restarts, the UI requires an explicit Reconnect. The new session starts Off with defaults and empty history; it cannot recover the prior run.
+Only explicit On or Start begins a fresh run. Duration defaults to 30 minutes and accepts longer valid finite settings. The session computes an absolute deadline. In real mode it also limits the run to the authorization expiry minus a safety margin. The UI countdown displays that deadline; it does not enforce it by itself.
 
-Paper mode remains the default for the shared executor. `DRY_RUN` must be the exact string `false` to select shared real mode from environment configuration. In real mode, a sleeve with no configured wallet key still runs as paper; only keyed sleeves can place real orders. Real Start additionally requires matching official network endpoints, a successful preflight, and explicit confirmation through the local operator channel. Brave Wallet is not part of this implementation.
+Connect, authorize, Save, navigation, reload, reconnection, and visibility changes never start or extend execution. The current session API has no separate pause or Resume operation. There is no automatic resume after reload or recovery, and no silent signer restoration. A later explicit On starts a new run rather than restoring the previous deadline.
 
-A custom transport may pass metadata, WebSocket, and SDK RPC connectivity checks for the local operator. Shared real mode remains disabled because the implementation cannot prove a custom endpoint's network identity. Selecting an official endpoint from the other network is rejected.
+Submission guards reject work outside a running session, after its deadline, or against stale market data. Session invalidation prevents late Jev results from placing new orders. A request already submitted to the venue may still need reconciliation.
 
-## Sleeves and wallets
+## Stop, End, and owned-order cleanup
 
-One sleeve is created for each enabled coin. Supported coins are BTC, ETH, SOL, DOGE, and BNB. Wallet resolution follows this order:
+Stop and deadline expiry invalidate execution before cleanup. Ending the session is not an instruction to liquidate positions. Cleanup drains pending exchange work and attempts to cancel only orders recorded by exact client order ID, or `cloid`, as owned by this session. A shared namespace is not evidence of ownership. Cleanup does not cancel unrelated manual orders or another application's orders.
 
-1. Read coin keys from `.wallets.json`, if present.
-2. Overlay keys from `WALLETS_JSON`.
-3. Use `PRIVATE_KEY` for the first configured coin if that coin has no mapped key.
+Successful cleanup releases local session resources and clears its signing capability. Clearing the browser signer is not revoking the agent at Hyperliquid. Stop and End neither close accepted positions nor promise venue revocation.
 
-Each sleeve has its own `Market`, `Feed`, `Trader`, position, order state, and optional wallet. Paper entries rest in the local order map and match observed trade prints. Paper exits fill immediately at the calculated crossing price.
+Cleanup has a bounded wait. If owned orders remain unresolved or cleanup times out, the session reports attention required and blocks a new run. Reconciliation must settle the uncertain work before execution can start again. An error is not a hold decision or successful cancellation.
+
+Wallet changes stop new signing but retain exact-owned cancellation until cleanup or explicit End. Reconciliation uses the original owner and a dedicated network transport, even after reconnecting another wallet. Approval expiry disables all signing, including cancellation, without discarding unresolved cleanup state. Orders still open after expiry require venue-side cancellation before reconciliation can release the session.
+
+Order, leverage, and cancellation deadlines are passed as SDK execution options, not action fields. Long finite run deadlines use bounded timer intervals rather than overflowing browser timers.
+
+The order journal is browser-session state, not a server recovery service. A reload or browser closure must not be presented as proof that venue orders were canceled. Inspect the venue for outstanding orders and positions after an interrupted cleanup.
+
+## Browser lifetime
+
+Execution needs an awake browser, fresh market data, and direct venue connectivity. Visibility, offline, sleep, freshness, and deadline guards stop further execution when detected. Reconnecting or returning to the page does not restart it.
+
+A suspended or closed browser cannot guarantee timely cancellation. Venue positions and resting orders can outlive the tab. There is no server execution fallback, and a finite local deadline is not an exchange-enforced liquidation or cancellation guarantee.
 
 ## What Jev answers
 
-On every scheduled decision tick while Running, [`Trader.onBlock()`](../src/trader.ts) builds a trade state from the latest book, recent mids and trades, position, indicators, venue context, and maximum leverage. It asks Jev for bias, intent, and cross leverage even when an earlier Jev request is still pending. Intent is `open` or `hold` while flat, and `open`, `close`, or `hold` with a position.
+While running, the browser trader asks Jev for the trading decision from the public price feed on each decision tick. Jev chooses buy, sell, or hold; application code does not substitute a forced trade. Hold is a real answer, not a skipped tick.
 
-Only the newest still-live result may execute. A result that returns after a newer tick or after Stop or expiry is stale, so its exchange work is suppressed. The Jev call still occurred and is not rewritten as a hold.
+Only a still-current result in a live session may produce exchange work. Results invalidated by a newer tick, Stop, or expiry cannot place orders. Failed inference and stale results remain distinct from hold.
 
 ## Order mechanics
 
-Entries are post-only Hyperliquid `Alo` limits. The quote moves `QUOTE_INSIDE_TICKS` inside the touch, one tick by default, without crossing the spread. A changed same-side order is modified. An identical order remains unchanged.
+Entries use post-only Hyperliquid `Alo` limits. Exits use reduce-only `Ioc` limits. An exit cancels the session's owned resting entry before submitting its closing order. An unfilled IOC does not leave a resting order.
 
-Exits are reduce-only `Ioc` limits. They cross the far touch by `CLOSE_SLIPPAGE_BPS`, five basis points by default. The market cancels its owned resting entry before an exit. An unfilled IOC leaves no resting order.
+Jev chooses leverage. Real entries apply cross leverage through the direct exchange transport; paper execution records simulated leverage without a venue write. Market enablement, metadata, account readiness, and session guards still apply before submission.
 
-Jev chooses leverage on every decision. The trader writes cross leverage before maker entries unless the venue account already has that value. It skips leverage writes for exits. Paper mode records the normalized leverage without a venue request.
+Paper resting entries match observed market trades. Simulated execution does not establish that a corresponding real order would fill. Paper results and real account state must remain visibly separate.
 
 ## Product rules
 
-While Running, Jev makes the trading decision from the price feed on every scheduled Hyperliquid decision tick. Hold is a real Jev answer. It is not a skipped tick. Failed calls are recorded as failures, not presented as hold, and stale overlapping results cannot place orders.
+The demo remains a live Jev trading bot on Hyperliquid. Jev makes the buy or sell decision from the price feed on every Hyperliquid decision tick while running, and real mode executes real trades from the authorized wallet. Hold remains Jev's choice. These product rules do not establish that a wallet exercise has passed.
 
 The market stream and dashboard remain available while Off. Their availability never means orders or Jev decisions are running.
 
+## Verification boundary
+
+Documentation of the browser session contract is not proof of a completed Brave Wallet approval or live trade. Real-mode release proof requires an explicit Brave Wallet exercise on Hyperliquid testnet with observed agent approval, order placement, cancellation, interruption recovery, and privacy checks. Private keys and agent keys must stay in the browser and never enter Bun, Next, logs, or proof artifacts. A private-key-only test or paper simulation does not prove the Brave Wallet approval flow.
+
+No such wallet exercise is established by this documentation update. Do not report wallet authorization, real order submission, cleanup, or interruption recovery as verified without its observed outcome.
+
 ## Bounded follow-on roadmap
 
-Provisional release scope, pending final review against integrated #22 and #23: Brave Wallet plus finite browser-session trading is the only current release scope. This statement is a release boundary, not a claim that the browser migration has been verified. The earlier implementation descriptions remain unchanged here; #22/#23 final review must align them with the integrated behavior before closing #25.
+Brave Wallet plus finite browser-session trading is the current release scope. The behavior above reflects the integrated #22, #23, and #24 contract, not a claim that live-wallet verification has passed. This roadmap does not commit to additional wallets, unbounded runs, or unattended trading.
 
 Browser closure ends browser-owned execution and may leave resting orders or open positions. Closing the browser is not a confirmed cancellation or liquidation. A wallet connection does not make execution unattended.
 
-None of the following six milestones is implemented by this roadmap:
+The following six milestones remain unimplemented and outside the current release scope:
 
-1. Coinbase injected EVM extension. Require explicit EIP-6963 wallet selection and real Hyperliquid testnet checks for account access, chain selection, and typed-sign agent approval. Smart accounts and passkeys require separate qualification.
-2. OKX extension. Use EIP-6963 when available, otherwise the official `window.okxwallet` provider. Test coexistence with other injected wallets. Do not invent an RDNS identifier or claim typed-sign support without testing it. Enable only after real Hyperliquid testnet agent approval. Mobile OKX Connect is distinct from WalletConnect.
-3. WalletConnect mobile. Require a maintained EIP-1193 provider, a public project ID, explicit Arbitrum namespaces, and only the necessary methods. Qualify QR and deep-link flows, rejection, expiry, disconnect, and session restoration. Never restore Running or persist an agent key. Document metadata disclosed to third parties. Closing the desktop browser still ends execution, even if the mobile wallet remains connected.
-4. Longer or unbounded runs. Longer finite runs already fit the current duration validation; this roadmap does not add a new run mode. Any unbounded mode must preserve independent agent expiry, freshness guards, Stop, sleep and visibility handling, and owned-order cleanup. Define what happens when authorization expires. Removing the run timer does not provide 24/7 execution.
-5. Unattended execution. Design a separate hosted or desktop worker before implementation. Specify signer custody, restart and upgrade behavior, funding and loss policy, user control, and recovery from ambiguous order outcomes. Never silently restore Railway wallet execution.
+1. Coinbase injected EVM extension. Require explicit [EIP-6963 wallet selection](https://eips.ethereum.org/EIPS/eip-6963) and real Hyperliquid testnet checks for account access, chain selection, and typed-sign agent approval. Smart accounts and passkeys require separate qualification. Consult the [Coinbase Wallet documentation](https://docs.cdp.coinbase.com/coinbase-wallet/introduction/welcome) without treating other Coinbase wallet products as equivalent.
+2. OKX extension. Use EIP-6963 when available, otherwise the official `window.okxwallet` provider described in the [OKX injected-provider documentation](https://web3.okx.com/build/docs/waas/okx-wallet-injection). Test coexistence with other injected wallets. Do not invent an RDNS identifier or claim typed-sign support without testing it. Enable only after real Hyperliquid testnet agent approval. Mobile OKX Connect is distinct from WalletConnect.
+3. WalletConnect mobile. Require a maintained [EIP-1193 provider](https://eips.ethereum.org/EIPS/eip-1193), a public project ID, explicit Arbitrum namespaces, and only the necessary methods. Use the [WalletConnect provider documentation](https://docs.walletconnect.network/wallet-sdk/web/usage) to qualify QR and deep-link flows, rejection, expiry, disconnect, and session restoration. Connection restoration must never restore Running or silently restore a signer, and must never persist an agent key. Document metadata disclosed to third parties. Closing the desktop browser still ends execution, even if the mobile wallet remains connected.
+4. Unbounded-run policy. Longer finite runs already fit the current duration validation; they are not an unimplemented feature. Any future unbounded mode must preserve independent agent expiry, freshness guards, Stop, sleep and visibility handling, and exact-owned cleanup. Define what happens when authorization expires, including loss of cancellation authority. Removing the run timer does not provide 24/7 execution.
+5. Unattended execution. Design a separate hosted or desktop worker before implementation. Specify signer custody, restart and upgrade behavior, funding and loss policy, user control, and recovery from ambiguous order outcomes. Never silently restore Railway wallet execution. Hosted signer custody would require an explicit architecture and privacy review, not an exception hidden in a wallet adapter.
 6. Inference-key BYOK. User-supplied credentials are inference keys only, never wallet or agent keys. Before implementation, define privacy, transport, retention, logging, browser exposure, provider handling, and the address-free inference boundary. This roadmap prescribes no credential storage.
 
 Keep wallet adapters, run policy, execution ownership, and inference credential selection separate. Every future wallet must pass direct-browser Hyperliquid testnet agent approval, order placement, cancellation, and privacy checks before release. Do not add backend accounts or send wallet addresses, account data, orders, wallet keys, or agent keys through Bun or Next. Inference must remain address-free.
+
+Hyperliquid's [exchange endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint) and [nonces and API wallets](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/nonces-and-api-wallets) document venue actions and agent-wallet constraints. These direct sources inform qualification; they do not prove any wallet adapter or lifecycle behavior works in this application.
