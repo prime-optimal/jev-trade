@@ -1,7 +1,7 @@
 import { config } from "./config";
 import { clipHistory, clipSnapshotTape, clipTape, TAPE_MIDS } from "./snapshot";
 import type { RunSnapshot } from "./settings";
-import type { BlockEvent, Fill, Meta, PricePoint, Quote, SleeveMeta } from "./types";
+import type { BlockEvent, Fill, Meta, PricePoint, Quote, SleeveMeta } from "./legacy-types";
 
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*" };
 const SNAP_MS = 400;
