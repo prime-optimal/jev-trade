@@ -285,3 +285,28 @@ test("same owner and network exclude a second session before authorization, inde
   await start(second.session);
   expect(second.authorized()).toBe(1);
 });
+
+test("long finite runs rearm bounded timers without stopping early", async () => {
+  const original = globalThis.setTimeout;
+  const scheduled: Array<{ callback: () => void; delay: number }> = [];
+  let time = NOW;
+  globalThis.setTimeout = ((callback: () => void, delay: number) => {
+    scheduled.push({ callback, delay });
+    return 1;
+  }) as unknown as typeof setTimeout;
+  const session = createBrowserSession({
+    owner: OWNER, settings: { ...DEFAULT_SETTINGS, mode: "paper", runDurationMinutes: 50_000 },
+    markets, locks: createOwnerLocks(lockManager()), now: () => time,
+  });
+  try {
+    await session.start();
+    expect(scheduled[0]!.delay).toBe(2_147_483_647);
+    time += scheduled[0]!.delay;
+    scheduled[0]!.callback();
+    expect(session.snapshot().status).toBe("running");
+    expect(scheduled[1]!.delay).toBe(50_000 * 60_000 - 2_147_483_647);
+  } finally {
+    globalThis.setTimeout = original;
+    await session.stop();
+  }
+});

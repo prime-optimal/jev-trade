@@ -126,7 +126,13 @@ export function createBrowserSession(options: SessionOptions): BrowserSession {
         deadlineAt = Math.min(now() + settings.runDurationMinutes * 60_000, authorization ? authorization.expiresAt - 30_000 : Infinity);
         if (!Number.isFinite(deadlineAt) || deadlineAt <= now()) throw new Error("Agent deadline has elapsed");
         status = "running";
-        timer = setTimeout(() => { void session.stop("Run deadline reached"); }, deadlineAt - now());
+        const scheduleDeadline = () => {
+          if (epoch !== captured || status !== "running") return;
+          const remaining = deadlineAt! - now();
+          if (remaining <= 0) { void session.stop("Run deadline reached"); }
+          else timer = setTimeout(scheduleDeadline, Math.min(remaining, 2_147_483_647));
+        };
+        scheduleDeadline();
         notify();
       })();
       try { await starting; }

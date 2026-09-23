@@ -32,6 +32,10 @@ Successful cleanup releases local session resources and clears its signing capab
 
 Cleanup has a bounded wait. If owned orders remain unresolved or cleanup times out, the session reports attention required and blocks a new run. Reconciliation must settle the uncertain work before execution can start again. An error is not a hold decision or successful cancellation.
 
+Wallet changes stop new signing but retain exact-owned cancellation until cleanup or explicit End. Reconciliation uses the original owner and a dedicated network transport, even after reconnecting another wallet. Approval expiry disables all signing, including cancellation, without discarding unresolved cleanup state. Orders still open after expiry require venue-side cancellation before reconciliation can release the session.
+
+Order, leverage, and cancellation deadlines are passed as SDK execution options, not action fields. Long finite run deadlines use bounded timer intervals rather than overflowing browser timers.
+
 The order journal is browser-session state, not a server recovery service. A reload or browser closure must not be presented as proof that venue orders were canceled. Inspect the venue for outstanding orders and positions after an interrupted cleanup.
 
 ## Browser lifetime

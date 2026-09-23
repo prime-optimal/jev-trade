@@ -4,6 +4,10 @@ All notable changes to this project are documented here. This changelog starts f
 
 ## Unreleased
 
+### Fixed
+
+- Forward browser agent acceptance deadlines through Hyperliquid SDK execution options. Preserve exact-owned cleanup after wallet changes, bind reconciliation to the original account and transport, and bound long session timers.
+
 ### Added
 
 - Added OpenRouter as a Jev provider through its System One endpoint, with provider-specific model defaults and startup credential checks.

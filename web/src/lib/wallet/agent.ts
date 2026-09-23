@@ -71,6 +71,9 @@ export function createAgentSession(options: AgentOptions) {
   let stopping = false;
   let signer: PrivateKeyAccount | null = null;
   let client: ExchangeClient | null = null;
+  let cleanupClient: ExchangeClient | null = null;
+  const ownedCloids = new Map<string, number>();
+  const ownedOids = new Map<number, number>();
   let metadata: AgentMetadata | null = null;
   let stopTimer: ReturnType<typeof setTimeout> | undefined;
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -78,20 +81,24 @@ export function createAgentSession(options: AgentOptions) {
     epoch++;
     signer = null;
     client = null;
+    cleanupClient = null;
+    ownedCloids.clear();
+    ownedOids.clear();
     metadata = null;
     clearTimeout(stopTimer);
     clearTimeout(expiryTimer);
   };
-  const unsubscribe = wallet.subscribe(() => { destroy(); options.onStop(); });
+  const invalidate = () => { epoch++; stopping = true; options.onStop(); };
+  const unsubscribe = wallet.subscribe(invalidate);
   const current = () => {
-    if (metadata && now() >= metadata.expiresAt) { destroy(); options.onStop(); }
+    if (metadata && now() >= metadata.expiresAt) { if (!stopping) { stopping = true; options.onStop(); } return null; }
     if (metadata && now() >= metadata.expiresAt - AGENT_STOP_LEAD_MS && !stopping) { stopping = true; options.onStop(); }
     return metadata ? { ...metadata } : null;
   };
   return {
     metadata: current,
     setNetwork(next: TradingNetwork) {
-      if (next !== network) { network = next; destroy(); options.onStop(); }
+      if (next !== network) { network = next; invalidate(); }
     },
     replacementRequired() {
       const owner = wallet.snapshot().owner;
@@ -101,6 +108,7 @@ export function createAgentSession(options: AgentOptions) {
     },
     async authorizeFromClick({ replace = false }: { replace?: boolean } = {}) {
       if (ended || pending) throw new Error("Approval unavailable or already pending.");
+      if (ownedCloids.size || ownedOids.size) throw new Error("End the session after owned-order cleanup before replacing authorization.");
       if (this.replacementRequired() && !replace) throw new Error("Explicit replacement is required. Reload cannot restore an agent key.");
       destroy();
       stopping = false;
@@ -153,40 +161,78 @@ export function createAgentSession(options: AgentOptions) {
         const agents = await new InfoClient({ transport }).extraAgents({ user: candidate.owner });
         check();
         if (!agents.some(agent => matchesAgent(candidate, agent))) throw new Error("Approval could not be confirmed. Retry with a fresh replacement.");
-        // SDK sees only a guarded signing function, never the underlying account or private key.
-        const guardedSigner: AbstractViemLocalAccount = {
-          address: candidate.address,
-          async signTypedData(data) {
-            check();
-            if (!signer) throw new Error("Agent signer was destroyed.");
-            const signature = await signer.signTypedData(data);
-            check();
-            if (!signer) throw new Error("Agent signer was destroyed.");
-            return signature;
-          },
+        // Cleanup has its own guard: wallet changes stop submissions, not exact-owned cancellation.
+        const makeClient = (cleanup: boolean) => {
+          const guard = () => {
+            if (ended || !signer || metadata !== candidate || now() >= expiresAt) throw new Error("Agent is unavailable.");
+            if (!cleanup) {
+              check();
+              if (stopping || now() >= expiresAt - AGENT_STOP_LEAD_MS) throw new Error("Agent is stopping.");
+            }
+          };
+          const guardedSigner: AbstractViemLocalAccount = {
+            address: candidate.address,
+            async signTypedData(data) {
+              guard();
+              const signature = await signer!.signTypedData(data);
+              guard();
+              return signature;
+            },
+          };
+          const guardedTransport: HttpTransport = Object.assign(Object.create(http), {
+            request: async (...args: Parameters<HttpTransport["request"]>) => {
+              guard();
+              const response = await http.request(...args);
+              guard();
+              return response;
+            },
+          });
+          return new ExchangeClient({ wallet: guardedSigner, transport: guardedTransport, signatureChainId: identity.signatureChainId });
         };
-        client = new ExchangeClient({ wallet: guardedSigner, transport, signatureChainId: identity.signatureChainId });
+        client = makeClient(false);
+        cleanupClient = makeClient(true);
         metadata = candidate;
         try { options.storage?.setItem(agentMetadataKey(candidate.owner, selectedNetwork), JSON.stringify(candidate)); } catch { /* Storage is optional; the key never enters it. */ }
-        stopTimer = setTimeout(() => { stopping = true; options.onStop(); }, Math.max(0, expiresAt - now() - AGENT_STOP_LEAD_MS));
-        expiryTimer = setTimeout(() => { destroy(); options.onStop(); }, Math.max(0, expiresAt - now()));
+        const scheduleStop = () => {
+          const remaining = expiresAt - now() - AGENT_STOP_LEAD_MS;
+          if (remaining <= 0) { stopping = true; options.onStop(); }
+          else stopTimer = setTimeout(scheduleStop, Math.min(remaining, 2_147_483_647));
+        };
+        const scheduleExpiry = () => {
+          const remaining = expiresAt - now();
+          if (remaining <= 0) { stopping = true; options.onStop(); }
+          else expiryTimer = setTimeout(scheduleExpiry, Math.min(remaining, 2_147_483_647));
+        };
+        scheduleStop();
+        scheduleExpiry();
         return { ...candidate };
       } catch (error) {
         destroy();
         throw walletError(error);
       } finally { pending = false; }
     },
-    async order(params: OrderParameters) {
+    async order({ expiresAfter, ...params }: OrderParameters & { expiresAfter?: number }) {
       if (!current() || !client || stopping) throw new Error("Agent is unavailable or stopping.");
-      return await client.order(params);
+      for (const order of params.orders) if (order.c) ownedCloids.set(order.c, Number(order.a));
+      const result = await client.order(params, { expiresAfter });
+      result.response.data.statuses.forEach((status, index) => {
+        if (typeof status === "object" && "resting" in status) ownedOids.set(status.resting.oid, Number(params.orders[index]!.a));
+      });
+      return result;
     },
-    async cancel(params: CancelParameters) {
-      if (!current() || !client) throw new Error("Agent is unavailable.");
-      return await client.cancel(params);
+    async cancel({ expiresAfter, ...params }: CancelParameters & { expiresAfter?: number }) {
+      if (!current() || !cleanupClient) throw new Error("Agent is unavailable.");
+      if (params.cancels.some(order => ownedOids.get(Number(order.o)) !== Number(order.a))) throw new Error("Cannot cancel an unowned order.");
+      return await cleanupClient.cancel(params, { expiresAfter });
     },
-    async updateLeverage(params: UpdateLeverageParameters) {
+    async cancelOwned(order: { asset: number; cloid: `0x${string}`; expiresAfter: number }) {
+      if (!current() || !cleanupClient) throw new Error("Agent is unavailable.");
+      if (ownedCloids.get(order.cloid) !== order.asset) throw new Error("Cannot cancel an unowned order.");
+      return await cleanupClient.cancelByCloid({ cancels: [{ asset: order.asset, cloid: order.cloid }] }, { expiresAfter: order.expiresAfter });
+    },
+    async updateLeverage({ expiresAfter, ...params }: UpdateLeverageParameters & { expiresAfter?: number }) {
       if (!current() || !client || stopping) throw new Error("Agent is unavailable or stopping.");
-      return await client.updateLeverage(params);
+      return await client.updateLeverage(params, { expiresAfter });
     },
     /** Call after owned-order cleanup. This does not revoke the Hyperliquid approval. */
     endSession() { ended = true; destroy(); unsubscribe(); },

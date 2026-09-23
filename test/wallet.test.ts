@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createWalletAdapter, discoverWallets, walletError, type DiscoveryHost, type WalletProvider } from "../web/src/lib/wallet/provider";
 import { AGENT_LIFETIME_MS, createAgentSession, matchesAgent, prepareNetworkFromClick, type AgentMetadata } from "../web/src/lib/wallet/agent";
+import { createBrowserSession } from "../web/src/lib/trading/session";
+import { DEFAULT_SETTINGS } from "../web/src/lib/trading/settings";
 
 const owner = `0x${"a".repeat(40)}` as const;
 const otherOwner = `0x${"b".repeat(40)}` as const;
@@ -210,6 +212,83 @@ describe("ephemeral agent authorization", () => {
     expect(reloaded.replacementRequired()).toBe(true);
     expect(reloaded.metadata()).toBeNull();
     await expect(reloaded.authorizeFromClick()).rejects.toThrow("replacement");
+  });
+  test("real SDK forwards acceptance deadlines outside action params", async () => {
+    exchangeFixture();
+    const approvalFetch = globalThis.fetch;
+    const requests: Array<{ action: { type: string; expiresAfter?: number }; expiresAfter: number }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (!body.action || body.action.type === "approveAgent") return approvalFetch(input, init);
+      requests.push(body);
+      return Response.json({ status: "ok", response: body.action.type === "order"
+        ? { type: "order", data: { statuses: [{ resting: { oid: 42 } }] } }
+        : body.action.type === "cancel" ? { type: "cancel", data: { statuses: ["success"] } } : { type: "default" } });
+    }) as typeof fetch;
+    const { wallet } = await connected();
+    const agent = createAgentSession({ wallet, network: "testnet", onStop() {} });
+    cleanups.push(() => agent.endSession());
+    await agent.authorizeFromClick();
+    const expiresAfter = Date.now() + 5_000;
+    await agent.updateLeverage({ asset: 0, leverage: 2, isCross: true, expiresAfter });
+    await agent.order({ orders: [{ a: 0, b: true, p: "100", s: "1", r: false, t: { limit: { tif: "Alo" } } }], grouping: "na", expiresAfter });
+    await agent.cancel({ cancels: [{ a: 0, o: 42 }], expiresAfter });
+    expect(requests.map(request => [request.action.type, request.expiresAfter, request.action.expiresAfter])).toEqual([
+      ["updateLeverage", expiresAfter, undefined], ["order", expiresAfter, undefined], ["cancel", expiresAfter, undefined],
+    ]);
+  });
+  test("wallet change stops the run but preserves exact-owned cleanup until endSession", async () => {
+    exchangeFixture();
+    const approvalFetch = globalThis.fetch;
+    let canceled = false;
+    let hideEvidence = true;
+    const actions: string[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (!body.action || body.action.type === "approveAgent") return approvalFetch(input, init);
+      actions.push(body.action.type);
+      if (body.action.type === "cancelByCloid") canceled = true;
+      return Response.json({ status: "ok", response: body.action.type === "order"
+        ? { type: "order", data: { statuses: [{ resting: { oid: 42 } }] } }
+        : body.action.type === "cancelByCloid" ? { type: "cancel", data: { statuses: ["success"] } } : { type: "default" } });
+    }) as typeof fetch;
+    const { provider, wallet } = await connected();
+    let stopped: Promise<void> | undefined;
+    const agent = createAgentSession({ wallet, network: "testnet", onStop: () => { stopped = session.stop("Wallet changed"); } });
+    cleanups.push(() => agent.endSession());
+    const metadata = await agent.authorizeFromClick();
+    const session = createBrowserSession({
+      owner, settings: { ...DEFAULT_SETTINGS, mode: "real", network: "testnet", enabledCoins: ["BTC"] },
+      markets: [{ coin: "BTC", asset: 0, enabled: true, maxLeverage: 20, szDecimals: 3 }],
+      locks: { acquire: async () => ({ release() {} }) },
+      authorize: async () => ({ ...metadata, exchange: {
+        async updateLeverage(input) { await agent.updateLeverage(input); },
+        async place(order) {
+          await agent.order({ orders: [{ a: order.asset, b: order.buy, p: order.price, s: order.size, r: order.reduceOnly, t: { limit: { tif: order.tif } }, c: order.cloid }], grouping: "na", expiresAfter: order.expiresAfter });
+          return { cloid: order.cloid, state: "open", oid: 42 };
+        },
+        async cancel(order) { await agent.cancelOwned(order); },
+        async lookup(cloid) { return hideEvidence ? null : { cloid, state: canceled ? "canceled" : "open", oid: 42 }; },
+      }, clear: () => agent.endSession() }),
+      subscribeAccount: (_owner, listener) => { listener({ accountValue: 200, withdrawable: 200, receivedAt: Date.now(), positions: {} }); return () => {}; },
+    });
+    await session.start({ wholeNetPosition: true });
+    const order = { asset: 0, coin: "BTC", buy: true, price: "100", size: "1", reduceOnly: false };
+    await session.submit(order, 2, Date.now());
+    provider.emit("accountsChanged", [otherOwner]);
+    expect(session.snapshot().status).toBe("stopping");
+    await stopped;
+    expect(session.snapshot().status).toBe("attention-required");
+    expect(canceled).toBe(true);
+    await expect(session.submit(order, 2, Date.now())).rejects.toThrow();
+    await expect(agent.order({ orders: [], grouping: "na" })).rejects.toThrow();
+    await expect(agent.cancelOwned({ asset: 0, cloid: `0x${"f".repeat(32)}`, expiresAfter: Date.now() + 5000 })).rejects.toThrow("unowned");
+    hideEvidence = false;
+    await session.reconcile();
+    expect(session.snapshot().status).toBe("off");
+    expect(agent.metadata()).toBeNull();
+    await expect(agent.cancel({ cancels: [{ a: 0, o: 42 }] })).rejects.toThrow("unavailable");
+    expect(actions).toEqual(["updateLeverage", "order", "cancelByCloid"]);
   });
   test("agent matching requires address, exact expiry and full or exact base name", () => {
     const metadata: AgentMetadata = { owner, network: "testnet", address: otherOwner, expiresAt: 1000, name: "Jev Trade valid_until 1000" };

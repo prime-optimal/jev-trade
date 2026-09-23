@@ -182,18 +182,20 @@ export function createBrowserTradingAdapter(): BrowserTradingAdapter {
   const timer = setInterval(guard, 1000);
   window.addEventListener("offline", guard);
   document.addEventListener("visibilitychange", guard);
+  const createSessionExchange = (sessionAgent: NonNullable<typeof agent>, owner: string) => {
+    const sessionTransport = createHyperliquidTransport(settings);
   const lookup = async (cloid: Cloid): Promise<OrderEvidence | null> => {
-    const result = await transport!.info({ type: "orderStatus", user: wallet!.snapshot().owner, oid: cloid }) as { status: string; order?: { status: string; order: { oid: number; cloid?: string } } };
+    const result = await sessionTransport.info({ type: "orderStatus", user: owner, oid: cloid }) as { status: string; order?: { status: string; order: { oid: number; cloid?: string } } };
     const order = result.order;
     if (!order || order.order.cloid !== cloid) return null;
     const state = order.status === "open" ? "open" : order.status === "filled" ? "filled" : order.status.toLowerCase().includes("cancel") ? "canceled" : order.status.toLowerCase().includes("reject") ? "rejected" : null;
     return state ? { cloid, state, oid: order.order.oid } : null;
   };
   const exchange: DirectExchange = {
-    async updateLeverage(input) { await agent!.updateLeverage(input); },
+    async updateLeverage(input) { await sessionAgent.updateLeverage(input); },
     async place(order) {
       const input = { orders: [{ a: order.asset, b: order.buy, p: order.price, s: order.size, r: order.reduceOnly, t: { limit: { tif: order.tif } }, c: order.cloid }], grouping: "na" as const, expiresAfter: order.expiresAfter };
-      const result = await agent!.order(input);
+      const result = await sessionAgent.order(input);
       const status = result.response.data.statuses[0];
       if (status && typeof status === "object" && "resting" in status) return { cloid: order.cloid, state: "open", oid: status.resting.oid };
       if (status && typeof status === "object" && "filled" in status) return { cloid: order.cloid, state: "filled", oid: status.filled.oid };
@@ -204,10 +206,11 @@ export function createBrowserTradingAdapter(): BrowserTradingAdapter {
       const evidence = await lookup(order.cloid);
       if (!evidence) throw new Error("Order needs reconciliation");
       if (evidence.state === "open" && evidence.oid !== undefined) {
-        const input = { cancels: [{ a: order.asset, o: evidence.oid }], expiresAfter: order.expiresAfter };
-        await agent!.cancel(input);
+        await sessionAgent.cancelOwned(order);
       }
     }, lookup,
+  };
+    return { exchange, close: () => sessionTransport.close() };
   };
   const adapter: BrowserTradingAdapter = {
     getSnapshot: () => snapshot,
@@ -261,7 +264,14 @@ export function createBrowserTradingAdapter(): BrowserTradingAdapter {
         await Promise.all([...feeds.values()].map(item => item.refresh()));
         session = createBrowserSession({ owner: wallet.snapshot().owner!, settings, locks: createOwnerLocks(navigator.locks),
           markets: markets.map(market => ({ ...market, asset: market.assetIndex })), onChange: syncSession,
-          authorize: async () => { const metadata = agent?.metadata(); if (!metadata) throw new Error("Authorize trading first."); return { owner: metadata.owner, network: metadata.network, expiresAt: metadata.expiresAt, exchange, clear: () => { agent?.endSession(); agent = null; } }; },
+          authorize: async () => {
+            const sessionAgent = agent;
+            const metadata = sessionAgent?.metadata();
+            if (!sessionAgent || !metadata) throw new Error("Authorize trading first.");
+            const direct = createSessionExchange(sessionAgent, metadata.owner);
+            return { owner: metadata.owner, network: metadata.network, expiresAt: metadata.expiresAt, exchange: direct.exchange,
+              clear: () => { direct.close(); sessionAgent.endSession(); if (agent === sessionAgent) agent = null; } };
+          },
           subscribeAccount: async (_owner, listener) => { if (!snapshot.account) throw new Error("Wait for a fresh account snapshot."); accountListeners.add(listener); listener(snapshot.account); return () => { accountListeners.delete(listener); }; },
         });
         await session.start(confirmReal ? { wholeNetPosition: true } : undefined);
