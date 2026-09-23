@@ -34,6 +34,9 @@ The same bot process owns a registry of isolated visitor sessions. Creating a se
 | [`src/account.ts`](../src/account.ts) | Clearinghouse state conversion and realized PnL and fee accounting. |
 | [`src/plan.ts`](../src/plan.ts) | Intent normalization, leverage rungs, and conversion to one order plan. |
 | [`src/model.ts`](../src/model.ts) | `TradeState`, Jev questions and answer mapping, plus real and mock models. |
+| [`src/decision-events.ts`](../src/decision-events.ts) | Typed decision, quote, fill, and markout events for the journal. |
+| [`src/decision-store.ts`](../src/decision-store.ts) | Optional PostgreSQL decision journal, serialized writes, and owner-scoped cursor queries. |
+| [`src/owner-token.ts`](../src/owner-token.ts) | Signed owner tokens used to restore durable visitor ownership. |
 | [`src/trader.ts`](../src/trader.ts) | Per-tick decision loop, order queue, simulated positions, totals, and events. |
 | [`src/server.ts`](../src/server.ts) | Bun HTTP server, snapshots, history, tape, and SSE broadcasts. |
 | [`src/index.ts`](../src/index.ts) | Process composition, sleeve lifecycle wiring, and logging. |
@@ -48,19 +51,26 @@ The Jev provider is behind the `Model` interface in [`src/model.ts`](../src/mode
 
 ```mermaid
 flowchart LR
-  A[Hyperliquid book and tape] --> B[TradeState]
-  B --> C[Model.decide]
-  C --> D[planQuote]
-  D --> E[Maker quote or taker exit]
-  E --> F[Hyperliquid order]
-  C --> G[Block event]
-  F --> H[Quote and fill events]
-  G --> I[SSE server]
+  A[Hyperliquid book and tape] --> B[Immutable prompt snapshot]
+  B --> C[Overlapping Model.decide calls]
+  C --> D[Decision event with UUID]
+  D --> E{Newest and run still live}
+  E -->|Yes| F[Serialized quote work]
+  E -->|No| G[Record stale result only]
+  F --> H[Quote and correlated fills]
+  D --> I[Parent journal queue]
   H --> I
-  I --> J[Next dashboard]
+  A --> J[Markouts at later ticks]
+  J --> I
+  I --> K[PostgreSQL]
+  D --> L[SSE server]
+  H --> L
+  L --> M[Next dashboard]
 ```
 
-`Trader.onBlock()` reads the latest book, harvests fills, builds `TradeState`, and awaits one model decision. It emits the block event before exchange I/O. Leverage updates and orders run on a serialized background promise so exchange latency does not hold the next model call. If a model call still occupies the next tick, that tick is marked late rather than starting a second call.
+`Trader.onBlock()` reads the latest book, harvests fills, and creates one immutable prompt snapshot per scheduled tick. Model calls may overlap. Each successful result receives a UUID and is recorded, including stale results. Only the newest result from a live run may queue exchange work.
+
+Exchange work and PostgreSQL writes use separate serialized queues, so neither venue latency nor journal I/O blocks the next model call. Quote and individual fill events retain the decision UUID; stable fill IDs make WebSocket, HTTP reconciliation, and retry delivery idempotent. Later observations add market return and returns signed to Jev's long or short bias at 1, 5, 20, and 100 ticks. Visitor Workers send journal events to the parent Bun process, which owns the PostgreSQL connection and write queue. Stop, rebuild, and shutdown drain model and exchange work, reconcile final Hyperliquid user fills, clean up owned orders, and wait for Worker journal acknowledgement or termination before closing that queue. See the full [Jev model contract](jev-model.md).
 
 ## Runtime cadences
 
@@ -74,8 +84,10 @@ Book WebSocket messages may trigger either local cadence when its interval has e
 
 ## State and persistence
 
-Shared trading state is process memory: `Trader.history`, recent mids, pending orders, simulated positions, totals, feed trade buffers, chart points, connected SSE clients, and the snapshot cache. History is capped by `historySize`, currently 1,000 block events per sleeve. Feed and chart buffers have their own caps.
+Execution state stays in process memory: `Trader.history`, recent mids, pending orders, simulated positions, totals, feed trade buffers, chart points, connected SSE clients, and the snapshot cache. History is capped by `historySize`, currently 1,000 block events per sleeve. Feed and chart buffers have their own caps. A restart discards this execution state.
 
-The visitor registry and every visitor runtime also live only in bot process memory. Each visitor owns a separate Worker, execution runtime, market connections, settings, run lifecycle, and buffers. The default registry holds at most 8 sessions and expires a session after 10 minutes without a request. This isolation has real memory, connection, and model-inference cost, so the limits are part of the runtime design. The bot service must stay at one replica because the registry is not shared across processes.
+The visitor registry and every visitor runtime also live in process memory. Each visitor owns a separate Worker, execution runtime, market connections, settings, run lifecycle, and buffers. The default registry holds at most 8 sessions and expires a session after 10 minutes without a request. The bot service must stay at one replica because capabilities and Workers are not shared across processes.
 
-The bot does not persist this state to a database or local runtime file. A bot restart loses all visitor capabilities and sessions. Visitors must Reconnect and begin with a new Off worker. The shared executor reloads venue candles, user fills, and clearinghouse state. For live sleeves it fetches existing open orders for the coin and cancels only its own orders. The optional `.wallets.json` file is configuration, not trading-state persistence.
+When `DATABASE_URL` is configured, PostgreSQL keeps successful decision history separately from transient execution state. Records include the exact revisioned prompt snapshot, normalized decision, correlated quote and fills, and later markouts. The active session capability authorizes visitor reads. A separate signed HttpOnly owner cookie can restore the same database owner after reconnect or restart. Query routes do not accept it directly; session creation exchanges it for a new short-lived capability.
+
+A bot restart still loses active visitor capabilities, Workers, runs, settings, and in-memory history. Visitors must Reconnect to create a new Off Worker. With durable storage enabled, the new capability can be associated with the restored owner, so prior decision history remains queryable. The shared executor reloads venue candles, user fills, and clearinghouse state. For live sleeves it fetches existing open orders for the coin and cancels only its own orders. The optional `.wallets.json` file is configuration, not trading-state persistence.

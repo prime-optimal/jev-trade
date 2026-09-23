@@ -2,16 +2,18 @@ import {
   defineRailway,
   github,
   preserve,
+  postgres,
   project,
   service,
   volume,
 } from "railway/iac";
 
 export default defineRailway(() => {
-  const botData = volume("bot-data", { sizeMB: 512 });
+  const database = postgres("postgres", { region: "us-west2" });
+  const botData = volume("bot-data", { sizeMB: 512, region: "us-west2" });
 
   const bot = service("bot", {
-    source: github("prime-optimal/jev-trade", { branch: "main" }),
+    source: github("prime-optimal/jev-trade", { branch: "main", checkSuites: true }),
     rootDirectory: "/",
     build: {
       builder: "RAILPACK",
@@ -22,16 +24,21 @@ export default defineRailway(() => {
     healthcheckTimeout: 60,
     replicas: 1,
     deploy: {
-      restartPolicyType: "ON_FAILURE",
+      restartPolicyType: null,
       restartPolicyMaxRetries: 3,
       overlapSeconds: 0,
       drainingSeconds: 0,
+      limitOverride: {
+        containers: { cpu: 1, memoryBytes: 2_000_000_000 },
+      },
     },
     env: {
       MODEL: "jev",
       JEV_PROVIDER: "openrouter",
       HL_TESTNET: "true",
       DRY_RUN: "true",
+      DATABASE_URL: database.env.DATABASE_URL,
+      DECISION_OWNER_SECRET: preserve(),
       OPENROUTER_API_KEY: preserve(),
       PRIVATE_KEY: preserve(),
       WALLETS_JSON: preserve(),
@@ -52,6 +59,7 @@ export default defineRailway(() => {
     source: github("prime-optimal/jev-trade", {
       branch: "main",
       rootDirectory: "/web",
+      checkSuites: true,
     }),
     build: {
       builder: "RAILPACK",
@@ -69,10 +77,13 @@ export default defineRailway(() => {
     healthcheckTimeout: 60,
     replicas: 1,
     deploy: {
-      restartPolicyType: "ON_FAILURE",
+      restartPolicyType: null,
       restartPolicyMaxRetries: 3,
       overlapSeconds: 0,
       drainingSeconds: 0,
+      limitOverride: {
+        containers: { cpu: 4, memoryBytes: 4_000_000_000 },
+      },
     },
     env: {
       NEXT_PUBLIC_API_URL: bot.env.RAILWAY_PUBLIC_DOMAIN,
@@ -80,6 +91,6 @@ export default defineRailway(() => {
   });
 
   return project("jev-trade", {
-    resources: [botData, bot, web],
+    resources: [database, botData, bot, web],
   });
 });

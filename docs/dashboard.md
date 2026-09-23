@@ -27,7 +27,7 @@ The visitor flow starts Off:
 
 Visitor sessions cannot select real mode, enter wallet or transport credentials, or use custom HTTP, WebSocket, or RPC destinations. Their decision cadence cannot be less than 30 seconds. A visitor run uses the bot's configured model provider, so inference consumes the bot deployment's model allowance. Each session also consumes one Worker, its market connections, and memory until the session closes or expires.
 
-The visitor capability stays in an HttpOnly, SameSite=Strict cookie scoped to `/api/session`; production cookies are also Secure. Browser code talks only to the same-origin Next gateway and never receives the capability. Refresh resumes the same worker, including its applied settings and run. If the session is deleted, expires, or disappears during a bot restart, the UI stops and shows Reconnect instead of creating another session automatically. Reconnect creates a fresh Off worker with defaults, empty history, and all five supported coins.
+The visitor capability stays in an HttpOnly, SameSite=Strict cookie scoped to `/api/session`; production cookies are also Secure. Browser code talks only to the same-origin Next gateway and never receives the capability. Refresh resumes the same worker, including its applied settings and run. If the session is deleted, expires, or disappears during a bot restart, the UI stops and shows Reconnect instead of creating another session automatically. Reconnect creates a fresh Off worker with defaults and fresh execution state. With durable storage enabled, a separate signed HttpOnly owner cookie restores the database owner so the new session can read prior decisions. That owner cookie never authorizes reads. The new active capability does.
 
 The operator switch remains available only when a localhost page can reach the private loopback control API. On localhost, the browser defaults to `http://127.0.0.1:3002`. A non-local page uses visitor scope. `NEXT_PUBLIC_OPERATOR_API_URL` is only routing and adds no authentication, so it must point to a deliberately protected local channel, never a public reverse proxy.
 
@@ -37,16 +37,19 @@ The switch shows the configured limit while Off, 30 minutes by default. A runnin
 
 ## Settings page
 
-The form separates drafts from applied settings.
+The page has three tabs:
 
-- Save validates and applies one complete snapshot to the selected executor.
-- Cancel restores the applied values without making a request.
-- Reset changes the draft to its defaults. Save is still required.
-- Trading and connection fields are disabled during Starting, Running, Paused, Stopping, and Attention required. Theme remains editable.
+- Trading contains network, mode, assets, execution-only controls, and run limits.
+- Jev model shows prompt revision `jev-trade-2026-09-23.1`, the exact questions and input catalog, and edits `tickMs` and `horizonBlocks`. See the [Jev model contract](jev-model.md) for detailed field definitions.
+- Connections contains official visitor connection checks or the local operator transport controls.
 
-The page covers appearance, network, enabled assets, entry notional, run duration, and advanced cadence and order values. Local operator scope also exposes paper or real mode, transport configuration, and non-secret configured or missing credential status. Visitor scope exposes official venue choices only.
+Execution-only values remain labeled as execution controls. They are not presented as Jev inputs.
 
-Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. An explicit light or dark choice updates the whole app and browser theme color. Browser settings are network-scoped preferences, not a durable visitor executor. API keys, RPC URLs, and credential-bearing endpoint paths or queries remain memory-only in local operator scope.
+The form separates drafts from applied settings. Save validates and applies one complete snapshot to the selected executor. Cancel restores applied values without making a request. Reset changes the draft to defaults, and Save is still required. Trading and connection fields are disabled during Starting, Running, Paused, Stopping, and Attention required. Theme remains editable.
+
+Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. An explicit light or dark choice updates the whole app and browser theme color. Browser settings are network-scoped preferences, not durable visitor execution state. API keys, RPC URLs, and credential-bearing endpoint paths or queries remain memory-only in local operator scope.
+
+Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=`. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages are newest first and contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `quote`, `fills`, and `markouts`.
 
 ## Feed lifecycle
 

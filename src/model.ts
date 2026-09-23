@@ -5,6 +5,8 @@ import { assertJevCredentials, config, OPENROUTER_BASE_URL, runtimeEnv, type Jev
 import { leverageRungs, liveIntent, parseLeverage, quoteAction, type Bias, type Intent } from "./plan";
 import type { Action, Side } from "./types";
 
+export const JEV_PROMPT_REVISION = "jev-trade-2026-09-23.1";
+
 /** What the model sees. Compact, relative, human-readable. */
 export interface TradeState {
   coin: string;
@@ -78,13 +80,33 @@ export interface ModelDecision {
   inputTokens: number;
 }
 
+export type MarketFacingState = Omit<TradeState, "position"> & {
+  position: Omit<TradeState["position"], "unrealizedUsd"> & { unrealizedUsd?: number };
+};
+
+export interface JevQuestion {
+  type: "choice";
+  instructions: { question: string; goal: string; timing: string; inputs: string };
+  criteria: Record<string, string>;
+}
+
+export interface JevPrompt {
+  revision: typeof JEV_PROMPT_REVISION;
+  state: MarketFacingState;
+  questions: { bias: JevQuestion; intent: JevQuestion; leverage: JevQuestion };
+}
+export interface ModelEvaluation {
+  decision: ModelDecision;
+  prompt: JevPrompt;
+}
+
 export interface Model {
   readonly name: string;
-  decide(state: TradeState): Promise<ModelDecision>;
+  decide(state: TradeState): Promise<ModelEvaluation>;
 }
 
 /** Book, tape, and the open position. Wallet fills and lifetime PnL stay off this object. */
-export function marketFacing(state: TradeState) {
+export function marketFacing(state: TradeState): MarketFacingState {
   const pos = state.position;
   return {
     coin: state.coin,
@@ -118,7 +140,7 @@ export function marketFacing(state: TradeState) {
 }
 
 /** Labels and live fields only. No advice about when to pick an action. */
-export function jevQuestions(state: TradeState) {
+export function jevQuestions(state: TradeState): JevPrompt["questions"] {
   const asset = state.coin;
   const pos = state.position;
   const stance = pos.side === "flat"
@@ -190,6 +212,15 @@ export function jevQuestions(state: TradeState) {
       } as Record<string, string>,
     },
     leverage,
+  };
+}
+
+/** Capture exactly what is submitted to Jev before inference can outlive mutable inputs. */
+export function buildJevPrompt(state: TradeState): JevPrompt {
+  return {
+    revision: JEV_PROMPT_REVISION,
+    state: structuredClone(marketFacing(state)),
+    questions: structuredClone(jevQuestions(state)),
   };
 }
 
@@ -334,15 +365,13 @@ function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputTokens: number }> {
-  const seen = marketFacing(state);
-  const qs = jevQuestions(state);
+async function callJev(prompt: JevPrompt): Promise<{ answers: JevAnswers; inputTokens: number }> {
   const run = async () => {
     if (config.jevProvider === "gateway") {
       const r = await evaluate({
         model: gateway.evaluationModel(config.jevModelId),
-        state: seen as never,
-        questions: qs,
+        state: prompt.state as never,
+        questions: prompt.questions,
         maxRetries: 0,
       });
       return { answers: r.answers, inputTokens: r.usage?.inputTokens ?? 0 };
@@ -350,8 +379,8 @@ async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputT
     const r = await sdkClient(config.jevProvider).systemOne(
       {
         model: config.jevModelId,
-        state: seen as never,
-        questions: qs,
+        state: prompt.state as never,
+        questions: prompt.questions,
       },
       { retry: { maxRetries: 0 } },
     );
@@ -364,17 +393,21 @@ async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputT
 export class JevModel implements Model {
   readonly name = "jev";
 
-  async decide(state: TradeState): Promise<ModelDecision> {
+  async decide(state: TradeState): Promise<ModelEvaluation> {
+    const prompt = buildJevPrompt(state);
     const t0 = performance.now();
-    const r = await callJev(state);
-    return decideFromJevAnswers(
-      r.answers,
-      state.position.side,
-      state.maxLeverage,
-      state.position.leverage,
-      performance.now() - t0,
-      r.inputTokens,
-    );
+    const r = await callJev(prompt);
+    return {
+      prompt,
+      decision: decideFromJevAnswers(
+        r.answers,
+        prompt.state.position.side,
+        prompt.state.maxLeverage,
+        prompt.state.position.leverage,
+        performance.now() - t0,
+        r.inputTokens,
+      ),
+    };
   }
 }
 
@@ -382,33 +415,38 @@ export class JevModel implements Model {
 export class MockModel implements Model {
   readonly name = "mock";
 
-  async decide(state: TradeState): Promise<ModelDecision> {
+  async decide(state: TradeState): Promise<ModelEvaluation> {
+    const prompt = buildJevPrompt(state);
+    const seen = prompt.state;
     const t0 = performance.now();
-    const flow = state.trades.buySz + state.trades.sellSz ? state.trades.cvdSz / (state.trades.buySz + state.trades.sellSz) : 0;
-    const signal = state.returnsBps.last20 / 8 + state.bookImbalance * 1.5 + flow * 2 + this.noise(state.tick);
+    const flow = seen.trades.buySz + seen.trades.sellSz ? seen.trades.cvdSz / (seen.trades.buySz + seen.trades.sellSz) : 0;
+    const signal = seen.returnsBps.last20 / 8 + seen.bookImbalance * 1.5 + flow * 2 + this.noise(seen.tick);
     const longP = 1 / (1 + Math.exp(-signal));
     const bias: Bias = longP >= 0.5 ? "long" : "short";
-    const against = (bias === "long" && state.position.side === "short") || (bias === "short" && state.position.side === "long");
+    const against = (bias === "long" && seen.position.side === "short") || (bias === "short" && seen.position.side === "long");
     // A weak signal is not worth a round trip, so stand down instead of forcing a side.
     const weak = Math.abs(signal) < 0.35;
     const picked: Intent = against ? "close" : weak ? "hold" : "open";
-    const intent = liveIntent(state.position.side, picked);
+    const intent = liveIntent(seen.position.side, picked);
     const holdP = intent === "hold" ? 0.7 : 0.15;
     const closeP = intent === "close" ? 0.7 : 0.15;
-    const leverage = parseLeverage(1 + Math.abs(signal) * 8, state.maxLeverage, state.position.leverage ?? 1);
+    const leverage = parseLeverage(1 + Math.abs(signal) * 8, seen.maxLeverage, seen.position.leverage ?? 1);
     await Bun.sleep(80);
-    return pack({
-      intent,
-      bias,
-      leverage,
-      longP,
-      shortP: 1 - longP,
-      openP: Math.max(0, 1 - holdP - closeP),
-      closeP,
-      holdP,
-      latencyMs: performance.now() - t0,
-      inputTokens: Math.round(JSON.stringify(state).length / 4),
-    });
+    return {
+      prompt,
+      decision: pack({
+        intent,
+        bias,
+        leverage,
+        longP,
+        shortP: 1 - longP,
+        openP: Math.max(0, 1 - holdP - closeP),
+        closeP,
+        holdP,
+        latencyMs: performance.now() - t0,
+        inputTokens: Math.round(JSON.stringify(prompt.state).length / 4),
+      }),
+    };
   }
 
   private noise(tick: number) {

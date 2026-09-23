@@ -7,6 +7,8 @@ export interface MakerFill {
   block: number;
   txHash: string;
   orderId: number;
+  tid?: number | string;
+  time?: number;
   price: number;
   size: number;
   updatedSize: number;
@@ -26,7 +28,7 @@ export interface TradeSummary {
   lastSide: Side | null;
 }
 
-export interface Resting { side: Side; price: number; size: number; block: number }
+export interface Resting { decisionId: string; side: Side; price: number; size: number; block: number }
 
 export const emptySummary = (): TradeSummary => ({
   count: 0, buySz: 0, sellSz: 0, cvdSz: 0, vwap: null, lastPrice: null, lastSide: null,
@@ -90,21 +92,29 @@ export class TradeFeed {
   }
 }
 
-export function takeLiveFills(orders: Map<number, Resting>, raw: MakerFill[]): (Fill & { block: number })[] {
-  const out: (Fill & { block: number })[] = [];
+export function liveFillId(fill: MakerFill): string {
+  return fill.tid != null
+    ? `${fill.orderId}:${fill.tid}`
+    : `live:${JSON.stringify([fill.orderId, fill.time ?? null, fill.txHash, fill.side, fill.price, fill.size, fill.feeUsd ?? null, fill.closedPnl ?? null])}`;
+}
+
+export function takeLiveFills(orders: Map<number, Resting>, raw: MakerFill[]): (Fill & { block: number; fillId: string })[] {
+  const out: (Fill & { block: number; fillId: string })[] = [];
   for (const f of raw) {
     const o = orders.get(f.orderId);
     const remaining = f.updatedSize >= 0 ? f.updatedSize : Math.max(0, (o?.size ?? 0) - f.size);
     if (remaining <= 0) orders.delete(f.orderId);
     else if (o) o.size = remaining;
     out.push({
+      fillId: liveFillId(f),
+      decisionId: o?.decisionId ?? "uncorrelated",
       side: f.side,
       size: f.size,
       price: f.price,
       txHash: f.txHash,
       orderId: f.orderId,
       simulated: false,
-      block: f.block,
+      block: o?.block ?? f.block,
       feeUsd: f.feeUsd,
       closedPnl: f.closedPnl,
       dir: f.dir,
@@ -113,8 +123,8 @@ export function takeLiveFills(orders: Map<number, Resting>, raw: MakerFill[]): (
   return out;
 }
 
-export function takeSimFills(orders: Map<number, Resting>, prints: TradePrint[]): (Fill & { block: number })[] {
-  const out: (Fill & { block: number })[] = [];
+export function takeSimFills(orders: Map<number, Resting>, prints: TradePrint[]): (Fill & { block: number; fillId: string })[] {
+  const out: (Fill & { block: number; fillId: string })[] = [];
   for (const p of prints) {
     for (const [id, o] of orders) {
       if (p.block < o.block || o.size <= 0) continue;
@@ -123,7 +133,7 @@ export function takeSimFills(orders: Map<number, Resting>, prints: TradePrint[])
       const size = Math.min(o.size, p.size);
       o.size -= size;
       if (o.size <= 1e-9) orders.delete(id);
-      out.push({ side: o.side, size, price: o.price, txHash: null, orderId: id, simulated: true, block: p.block });
+      out.push({ decisionId: o.decisionId, side: o.side, size, price: o.price, txHash: null, orderId: id, simulated: true, block: o.block, fillId: `sim:${o.decisionId}:${id}:${o.size}` });
     }
   }
   return out;
@@ -137,5 +147,9 @@ export function aggregateFills(fills: Fill[]): Fill {
   const size = same.reduce((s, f) => s + f.size, 0);
   const price = same.reduce((s, f) => s + f.size * f.price, 0) / size;
   const roundedSize = Math.round(size * 1e8) / 1e8;
-  return { side, size: roundedSize, price, txHash: same[0]!.txHash, orderId: same[0]!.orderId, simulated: same[0]!.simulated, dir: same[0]!.dir };
+  return {
+    decisionId: same[0]!.decisionId,
+    side, size: roundedSize, price, txHash: same[0]!.txHash,
+    orderId: same[0]!.orderId, simulated: same[0]!.simulated, dir: same[0]!.dir,
+  };
 }

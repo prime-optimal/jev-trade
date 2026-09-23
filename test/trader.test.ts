@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
+import type { DecisionJournalEvent } from "../src/decision-events";
 import type { Market } from "../src/market";
-import type { Model, ModelDecision, TradeState } from "../src/model";
+import { buildJevPrompt, type Model, type ModelDecision, type ModelEvaluation, type TradeState } from "../src/model";
 import { leverageRungs, liveIntent, parseLeverage, planQuote, quoteAction } from "../src/plan";
 import { jevUnavailable, Trader } from "../src/trader";
+import { TradeFeed, type MakerFill } from "../src/trades";
 import type { BlockEvent, Book, Quote, Side } from "../src/types";
 
 test("jevUnavailable detects a TypeSafe credit 402", () => {
@@ -88,10 +90,10 @@ class ScriptModel implements Model {
   readonly name = "script";
   next: ModelDecision | Error = packed({ intent: "hold", bias: "long", action: "hold" });
   delayMs = 0;
-  async decide(): Promise<ModelDecision> {
+  async decide(state: TradeState): Promise<ModelEvaluation> {
     if (this.delayMs) await Bun.sleep(this.delayMs);
     if (this.next instanceof Error) throw this.next;
-    return this.next;
+    return { decision: this.next, prompt: buildJevPrompt(state) };
   }
 }
 
@@ -109,22 +111,26 @@ class FakeMarket {
   sendDelayMs = 0;
   sentSides: Side[] = [];
   onSend: (() => void) | null = null;
+  cleanupCalls = 0;
+  reconciledFills: MakerFill[] = [];
   candleCloses() { return []; }
   refresh() { return Promise.resolve(); }
+  reconcileUserFills() { return Promise.resolve(this.reconciledFills); }
   readBook() { return book; }
   quoteSize() { return 0.01; }
   setLeverage(n: number) { return Promise.resolve(n); }
   setRunGuard() {}
-  async send(side: Side, size: number, _book: Book, cancel: number[]): Promise<Quote> {
+  async send(side: Side, size: number, _book: Book, cancel: number[], decisionId: string): Promise<Quote> {
     this.sentSides.push(side);
     this.onSend?.();
     if (this.sendDelayMs) await Bun.sleep(this.sendDelayMs);
     this.lastOid = 4242;
     return {
-      side, price: 99.9, size, txHash: null, cancel, status: "placed",
+      decisionId, side, price: 99.9, size, txHash: null, cancel, status: "placed",
       orderId: 4242, capped: false, reduceOnly: false, taker: false,
     };
   }
+  cleanupOwned() { this.cleanupCalls++; return Promise.resolve([]); }
   async cancelResting() {
     this.cancels++;
     const oid = this.lastOid;
@@ -153,9 +159,9 @@ test("overlapping ticks both ask Jev and an older answer cannot replace the newe
       if (state.tick === 1) {
         startFirst();
         await firstGate;
-        return packed({ intent: "open", bias: "short", action: "sell" });
+        return { decision: packed({ intent: "open", bias: "short", action: "sell" }), prompt: buildJevPrompt(state) };
       }
-      return packed({ intent: "open", bias: "long", action: "buy" });
+      return { decision: packed({ intent: "open", bias: "long", action: "buy" }), prompt: buildJevPrompt(state) };
     },
   };
   const { trader, market, events } = desk(model);
@@ -185,7 +191,7 @@ test("Jev is asked again on the tick after a credit error", async () => {
   const model = new ScriptModel();
   model.next = new Error("402 Your organization has no available TypeSafe API credits");
   const decide = model.decide.bind(model);
-  model.decide = () => { calls++; return decide(); };
+  model.decide = (state) => { calls++; return decide(state); };
   const { events, trader } = desk(model);
   await trader.onBlock(1);
   model.next = packed({ intent: "hold", bias: "long", action: "hold" });
@@ -194,27 +200,50 @@ test("Jev is asked again on the tick after a credit error", async () => {
   expect(events.find((e) => e.block === 2)?.decision?.late).toBe(false);
 });
 
-test("invalidation drops an inference result before it can submit", async () => {
-  const model = new ScriptModel();
-  const { trader, market } = desk(model);
-  model.delayMs = 30;
-  model.next = packed({ intent: "open", bias: "long", action: "buy" });
+test.each(["Stop", "expiry"] as const)("a successful response after %s is journaled exactly but cannot submit or cancel", async (reason) => {
+  const { promise, resolve: release } = Promise.withResolvers<ModelEvaluation>();
+  let prompt!: ModelEvaluation["prompt"];
+  const model: Model = {
+    name: "deferred",
+    decide(state) {
+      prompt = buildJevPrompt(state);
+      return promise;
+    },
+  };
+  const market = new FakeMarket();
+  const events: BlockEvent[] = [];
+  const journal: DecisionJournalEvent[] = [];
+  const trader = new Trader(market as unknown as Market, model, (event) => events.push(event), undefined, undefined, {
+    enqueue: (event) => journal.push(event),
+  });
+  let live = true;
+  trader.setRunGuard({ runId: "run-1", isLive: () => live, assertLive: () => {
+    if (!live) throw new Error("expired");
+  } });
   const pending = trader.onBlock(1);
-  await Bun.sleep(5);
-  trader.invalidate();
+  if (reason === "Stop") trader.invalidate();
+  else live = false;
+  const decision = packed({ intent: reason === "Stop" ? "open" : "hold", bias: "long", action: reason === "Stop" ? "buy" : "hold" });
+  release({ decision, prompt });
   await pending;
-  expect(market.lastOid).toBeNull();
+  const recorded = journal.find((event) => event.type === "decision");
+  expect(recorded).toMatchObject({ type: "decision", late: true, decision, prompt });
+  expect(recorded?.decisionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(events[0]?.decision).toMatchObject({ id: recorded?.decisionId, late: true });
+  expect(market.sentSides).toEqual([]);
+  expect(market.cancels).toBe(0);
 });
 
 test("BTC simulated fill preserves the exact quoted size", () => {
   const model = new ScriptModel();
   const market = new FakeMarket();
   let observed = Number.NaN;
+  let observedDecisionId = "";
   const trader = new Trader(
     market as unknown as Market,
     model,
     () => {},
-    (_block, fill) => { observed = fill.size; },
+    (_block, fill) => { observed = fill.size; observedDecisionId = fill.decisionId; },
   );
   const quoteSize = 0.00045;
   trader.attachTradeFeed({
@@ -222,10 +251,157 @@ test("BTC simulated fill preserves the exact quoted size", () => {
     drainFills: () => [],
   } as never);
   const internals = trader as unknown as {
-    orders: Map<number, { side: Side; price: number; size: number; block: number }>;
+    orders: Map<number, { decisionId: string; side: Side; price: number; size: number; block: number }>;
     harvest(): void;
   };
-  internals.orders.set(-1, { side: "buy", price: 100, size: quoteSize, block: 1 });
+  const decisionId = crypto.randomUUID();
+  internals.orders.set(-1, { decisionId, side: "buy", price: 100, size: quoteSize, block: 1 });
   internals.harvest();
   expect(observed).toBe(quoteSize);
+  expect(observedDecisionId).toBe(decisionId);
+});
+
+test("journal markouts keep one decision id and emit each horizon once", async () => {
+  const model = new ScriptModel();
+  const events: DecisionJournalEvent[] = [];
+  const journal = { enqueue: (event: DecisionJournalEvent) => { events.push(event); } };
+  const market = new FakeMarket();
+  const trader = new Trader(market as unknown as Market, model, () => {}, () => {}, () => {}, journal);
+  for (let block = 1; block <= 101; block++) await trader.onBlock(block);
+  const first = events.find((event) => event.type === "decision" && event.block === 1);
+  expect(first?.type).toBe("decision");
+  const markouts = events.filter((event) => event.type === "markout" && event.decisionId === first?.decisionId);
+  expect(markouts.map((event) => event.horizonTicks)).toEqual([1, 5, 20, 100]);
+  expect(new Set(markouts.map((event) => event.horizonTicks)).size).toBe(4);
+});
+
+test("live IOC partial fills retain their decision and individual execution details after stand-down", async () => {
+  const model = new ScriptModel();
+  model.next = packed({ intent: "open", bias: "long", action: "buy" });
+  const market = new FakeMarket();
+  Object.defineProperty(market, "wallet", { value: {} });
+  market.send = async (side, size, _book, cancel, decisionId) => ({
+    decisionId, side, size, price: 100, cancel, orderId: 4242, txHash: null,
+    status: "placed", capped: false, reduceOnly: false, taker: true,
+  });
+  const events: DecisionJournalEvent[] = [];
+  const trader = new Trader(market as unknown as Market, model, () => {}, undefined, undefined, {
+    enqueue: (event) => events.push(event),
+  });
+  const feed = new TradeFeed();
+  trader.attachTradeFeed(feed);
+  // Await this trader's exchange queue without adding timing-dependent sleeps.
+  const exchange = trader as unknown as { exchangeTail: Promise<void> };
+  await trader.onBlock(1);
+  await exchange.exchangeTail;
+  model.next = packed({ intent: "hold", bias: "long", action: "hold" });
+  await trader.onBlock(2);
+  await exchange.exchangeTail;
+  feed.pushFill({ block: 3, tid: 71, orderId: 4242, txHash: "0xfirst", price: 100, size: 0.004, updatedSize: -1, side: "buy", feeUsd: 0.01, closedPnl: 0.2 });
+  feed.pushFill({ block: 3, tid: 72, orderId: 4242, txHash: "0xsecond", price: 101, size: 0.006, updatedSize: -1, side: "buy", feeUsd: 0.02, closedPnl: 0.3 });
+  await trader.onBlock(3);
+  const decision = events.find((event) => event.type === "decision" && event.block === 1)!;
+  const fills = events.filter((event) => event.type === "fill");
+  expect(fills).toHaveLength(2);
+  expect(fills[0]).toMatchObject({ decisionId: decision.decisionId, block: 1, fillId: "4242:71", fill: {
+    orderId: 4242, price: 100, size: 0.004, txHash: "0xfirst", feeUsd: 0.01, closedPnl: 0.2,
+  } });
+  expect(fills[1]).toMatchObject({ decisionId: decision.decisionId, block: 1, fillId: "4242:72", fill: {
+    orderId: 4242, price: 101, size: 0.006, txHash: "0xsecond", feeUsd: 0.02, closedPnl: 0.3,
+  } });
+  expect(trader.history[0]?.fill?.size).toBe(0.01);
+});
+
+test("drain waits for an in-flight placement and cleans up the late order", async () => {
+  const model = new ScriptModel();
+  model.next = packed({ intent: "open", bias: "long", action: "buy" });
+  const market = new FakeMarket();
+  const started = Promise.withResolvers<void>();
+  const response = Promise.withResolvers<Quote>();
+  market.send = async () => {
+    started.resolve();
+    return response.promise;
+  };
+  const events: DecisionJournalEvent[] = [];
+  const trader = new Trader(market as unknown as Market, model, () => {}, undefined, undefined, {
+    enqueue: (event) => events.push(event),
+  });
+  await trader.onBlock(1);
+  await started.promise;
+  trader.invalidate();
+  let drained = false;
+  const draining = trader.drain().then(() => { drained = true; });
+  await Promise.resolve();
+  expect(drained).toBe(false);
+  response.resolve({
+    decisionId: crypto.randomUUID(), side: "buy", price: 100, size: 0.01, cancel: [],
+    orderId: 4242, txHash: null, status: "placed", capped: false, reduceOnly: false, taker: false,
+  });
+  await draining;
+  expect(market.cleanupCalls).toBe(1);
+  expect(events.some((event) => event.type === "quote")).toBe(true);
+});
+
+test("fills received before order acknowledgement survive long delay and HTTP reconciliation deduplicates them", async () => {
+  const model = new ScriptModel();
+  model.next = packed({ intent: "open", bias: "long", action: "buy" });
+  const market = new FakeMarket();
+  Object.defineProperty(market, "wallet", { value: {} });
+  const started = Promise.withResolvers<void>();
+  const response = Promise.withResolvers<Quote>();
+  market.send = async (side, size, _book, cancel, decisionId) => {
+    started.resolve();
+    return response.promise.then(() => ({
+      decisionId, side, size, price: 100, cancel, orderId: 4242, txHash: null,
+      status: "placed" as const, capped: false, reduceOnly: false, taker: true,
+    }));
+  };
+  const early: MakerFill = {
+    block: 1, tid: 71, orderId: 4242, txHash: "0xfirst", price: 100,
+    size: 0.004, updatedSize: -1, side: "buy", feeUsd: 0.01,
+  };
+  const reconciled: MakerFill = {
+    block: 1, tid: 72, orderId: 4242, txHash: "0xsecond", price: 101,
+    size: 0.006, updatedSize: -1, side: "buy", feeUsd: 0.02,
+  };
+  market.reconciledFills = [early, reconciled];
+  const events: DecisionJournalEvent[] = [];
+  const trader = new Trader(market as unknown as Market, model, () => {}, undefined, undefined, {
+    enqueue: (event) => events.push(event),
+  });
+  const feed = new TradeFeed();
+  trader.attachTradeFeed(feed);
+  await trader.onBlock(1);
+  await started.promise;
+  feed.pushFill(early);
+  const internals = trader as unknown as { harvest(): void };
+  for (let attempt = 0; attempt < 6; attempt++) internals.harvest();
+  response.resolve({} as Quote);
+  await trader.drain();
+  const decision = events.find((event) => event.type === "decision")!;
+  const fills = events.filter((event) => event.type === "fill");
+  expect(fills.map((event) => event.type === "fill" && event.fillId)).toEqual(["4242:71", "4242:72"]);
+  expect(fills.every((event) => event.decisionId === decision.decisionId)).toBe(true);
+  expect(fills[1]).toMatchObject({ type: "fill", position: { side: "long", size: 0.01 } });
+});
+
+test("hold and close markouts follow long and short bias rather than order direction", async () => {
+  for (const intent of ["hold", "close"] as const) {
+    for (const bias of ["long", "short"] as const) {
+      const model = new ScriptModel();
+      model.next = packed({ intent, bias, action: quoteAction(intent, bias) });
+      const market = new FakeMarket();
+      let mid = 100;
+      market.readBook = () => ({ ...book, mid });
+      const events: DecisionJournalEvent[] = [];
+      const trader = new Trader(market as unknown as Market, model, () => {}, undefined, undefined, {
+        enqueue: (event) => events.push(event),
+      });
+      await trader.onBlock(1);
+      mid = 101;
+      await trader.onBlock(2);
+      const markout = events.find((event) => event.type === "markout" && event.block === 1);
+      expect(markout).toMatchObject({ marketReturnBps: 100, signedReturnBps: bias === "long" ? 100 : -100 });
+    }
+  }
 });

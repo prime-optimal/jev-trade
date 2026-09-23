@@ -1,7 +1,12 @@
+import type { DecisionJournalEvent } from "./decision-events";
+import { DecisionPaginationError, type DecisionStore } from "./decision-store";
+import { createOwnerTokens, type OwnerTokens } from "./owner-token";
+
 const DEFAULT_CAPACITY = 8;
 const DEFAULT_IDLE_MS = 10 * 60_000;
 const DEFAULT_READY_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_STREAMS = 2;
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 6_000;
 const MAX_BODY_BYTES = 64 * 1024;
 const CREATE_BURST = 8;
 const CREATE_PER_MINUTE = 16;
@@ -19,6 +24,7 @@ const ROUTES: Readonly<Record<string, readonly string[]>> = {
   history: ["GET"],
   tape: ["GET"],
   events: ["GET"],
+  decisions: ["GET"],
 };
 
 const MODEL_ENV = [
@@ -34,6 +40,7 @@ interface WorkerMessage {
   type?: unknown;
   port?: unknown;
   message?: unknown;
+  event?: unknown;
 }
 
 interface SessionWorker {
@@ -45,6 +52,7 @@ interface SessionWorker {
 
 interface Session {
   token: string;
+  ownerId: string;
   worker: SessionWorker;
   port: number;
   touchedAt: number;
@@ -55,7 +63,7 @@ interface Session {
 
 export interface PaperSessions {
   fetch(request: Request): Promise<Response | undefined>;
-  close(): void;
+  close(): Promise<void>;
 }
 type ProxyFetch = (input: URL, init: RequestInit) => Promise<Response>;
 
@@ -65,11 +73,15 @@ export interface PaperSessionsOptions {
   idleMs?: number;
   readyTimeoutMs?: number;
   maxStreams?: number;
+  shutdownTimeoutMs?: number;
   env?: Record<string, string | undefined>;
   now?: () => number;
   randomToken?: () => string;
   workerFactory?: (url: string, options: { env: Record<string, string> }) => SessionWorker;
   proxyFetch?: ProxyFetch;
+  store?: DecisionStore;
+  ownerSecret?: string;
+  ownerTokens?: OwnerTokens;
   sweepIntervalMs?: number;
 }
 
@@ -151,13 +163,22 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
   const idleMs = options.idleMs ?? DEFAULT_IDLE_MS;
   const readyTimeoutMs = options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
   const maxStreams = options.maxStreams ?? DEFAULT_MAX_STREAMS;
+  const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
   const now = options.now ?? Date.now;
   const randomToken = options.randomToken ?? capability;
   const proxyFetch: ProxyFetch = options.proxyFetch ?? fetch;
   const workerFactory = options.workerFactory ?? ((url, init) => new Worker(url, init) as unknown as SessionWorker);
+  const store = options.store;
+  if (store?.enabled && !options.ownerTokens && !options.ownerSecret) {
+    throw new Error("DECISION_OWNER_SECRET is required when durable decision storage is enabled");
+  }
+  const ownerTokens = options.ownerTokens ?? (options.ownerSecret ? createOwnerTokens({ secret: options.ownerSecret, now }) : null);
   const sessions = new Map<string, Session>();
   const starting = new Set<SessionWorker>();
   const cancelReadiness = new Map<SessionWorker, () => void>();
+  const workerDisposals = new WeakMap<SessionWorker, Promise<void>>();
+  const draining = new Set<Promise<void>>();
+  let closePromise: Promise<void> | undefined;
   let reserved = 0;
   let closed = false;
   let createTokens = CREATE_BURST;
@@ -178,14 +199,40 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
     createTokens--;
   };
 
-  const disposeWorker = (worker: SessionWorker, graceful = true) => {
-    try { worker.postMessage({ type: "close" }); } catch {}
-    const terminate = () => {
-      try { void worker.terminate(); } catch {}
+  const disposeWorker = (worker: SessionWorker, graceful = true): Promise<void> => {
+    const existing = workerDisposals.get(worker);
+    if (existing) return existing;
+    const { promise, resolve } = Promise.withResolvers<void>();
+    workerDisposals.set(worker, promise);
+    draining.add(promise);
+    let fallback: Timer | undefined;
+    let finished = false;
+    let terminating = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(fallback);
+      worker.removeEventListener("message", onMessage);
+      draining.delete(promise);
+      resolve();
     };
-    if (!graceful) return terminate();
-    const fallback = setTimeout(terminate, 1_000);
-    fallback.unref?.();
+    const onMessage: EventListener = (event) => {
+      if (!terminating && event instanceof MessageEvent && event.data?.type === "closed") finish();
+    };
+    const terminate = () => {
+      if (finished || terminating) return;
+      terminating = true;
+      worker.removeEventListener("message", onMessage);
+      try {
+        void Promise.resolve(worker.terminate()).catch(() => {}).then(finish);
+      } catch {
+        finish();
+      }
+    };
+    worker.addEventListener("message", onMessage);
+    fallback = setTimeout(terminate, graceful ? shutdownTimeoutMs : 0);
+    try { worker.postMessage({ type: "close" }); } catch { terminate(); }
+    return promise;
   };
 
   const dispose = (session: Session) => {
@@ -239,15 +286,34 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
     if (closed) return json({ error: "Paper sessions are unavailable" }, 503);
     const rateLimited = takeCreateToken();
     if (rateLimited) return rateLimited;
+    let body: Uint8Array | undefined;
     try {
-      await boundedBody(request);
+      body = await boundedBody(request);
     } catch {
       return json({ error: "Request body is too large" }, 413);
+    }
+    let requestedOwnerToken: string | undefined;
+    if (body?.byteLength) {
+      try {
+        const parsed: unknown = JSON.parse(new TextDecoder().decode(body));
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).some((key) => key !== "ownerToken")) throw new Error();
+        if ("ownerToken" in parsed) {
+          if (parsed.ownerToken !== undefined && typeof parsed.ownerToken !== "string") throw new Error();
+          requestedOwnerToken = parsed.ownerToken;
+        }
+      } catch {
+        return json({ error: "Request body must contain only an optional ownerToken" }, 400);
+      }
     }
     if (sessions.size + reserved >= capacity) return json({ error: "Paper session capacity reached" }, 503);
     reserved++;
     let worker: SessionWorker | undefined;
     try {
+      const restoredOwnerId = await ownerTokens?.verify(requestedOwnerToken);
+      const owner = ownerTokens
+        ? await ownerTokens.issue(restoredOwnerId ?? undefined)
+        : { ownerId: capability(), ownerToken: capability() };
+      if (closed) throw new Error("Paper sessions are unavailable");
       const safeEnv = paperSessionEnv(options.env ?? process.env);
       worker = workerFactory(new URL("./paper-session-worker.ts", import.meta.url).href, {
         env: { JEV_VISITOR_ENV: JSON.stringify(safeEnv) },
@@ -258,15 +324,20 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
       if (closed) throw new Error("Paper sessions are unavailable");
       let token = randomToken();
       while (!token || sessions.has(token)) token = randomToken();
-      const session: Session = { token, worker, port, touchedAt: now(), streams: 0, closed: false };
+      const session: Session = { token, ownerId: owner.ownerId, worker, port, touchedAt: now(), streams: 0, closed: false };
       sessions.set(token, session);
       const onWorkerError: EventListener = () => dispose(session);
       const onWorkerMessage: EventListener = (event) => {
-        if (event instanceof MessageEvent && (event.data as WorkerMessage)?.type === "error") dispose(session);
+        if (!(event instanceof MessageEvent)) return;
+        const message = event.data as WorkerMessage;
+        if (message?.type === "error") dispose(session);
+        else if (message?.type === "journal" && message.event && store) {
+          store.enqueue(session.ownerId, message.event as DecisionJournalEvent);
+        }
       };
       worker.addEventListener("error", onWorkerError);
       worker.addEventListener("message", onWorkerMessage);
-      return json({ token }, 201);
+      return json({ token, ownerToken: owner.ownerToken }, 201);
     } catch (error) {
       if (worker) {
         starting.delete(worker);
@@ -373,6 +444,22 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
       if (!token) return json({ error: "Bearer capability required" }, 401);
       const session = sessions.get(token);
       if (!session || session.closed) return json({ error: "Paper session expired" }, 410);
+      if (route === "decisions") {
+        session.touchedAt = now();
+        const limitValue = url.searchParams.get("limit");
+        const before = url.searchParams.get("before") ?? undefined;
+        for (const key of url.searchParams.keys()) {
+          if (key !== "limit" && key !== "before") return json({ error: "Unsupported query parameter" }, 400);
+        }
+        const limit = limitValue === null ? undefined : Number(limitValue);
+        try {
+          return json(await store?.list(session.ownerId, { limit, before }) ?? { rows: [], nextBefore: null }, 200);
+        } catch (error) {
+          if (error instanceof DecisionPaginationError) return json({ error: error.message }, 400);
+          console.error("Could not list paper session decisions", error);
+          return json({ error: "Decision history is unavailable" }, 503);
+        }
+      }
       if (route === "start") {
         const at = now();
         const elapsed = session.lastStartAt === undefined ? START_COOLDOWN_MS : at - session.lastStartAt;
@@ -388,7 +475,7 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
       return proxy(request, session, route);
     },
     close() {
-      if (closed) return;
+      if (closePromise) return closePromise;
       closed = true;
       clearInterval(interval);
       for (const cancel of cancelReadiness.values()) cancel();
@@ -396,6 +483,8 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
       for (const session of [...sessions.values()]) dispose(session);
       for (const worker of starting) disposeWorker(worker);
       starting.clear();
+      closePromise = Promise.all(draining).then(() => {});
+      return closePromise;
     },
   };
 }

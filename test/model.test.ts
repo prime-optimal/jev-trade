@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { decideFromJevAnswers, jevQuestions, marketFacing, type TradeState } from "../src/model";
+import { buildJevPrompt, decideFromJevAnswers, JEV_PROMPT_REVISION, jevQuestions, marketFacing, type TradeState } from "../src/model";
 
 function fixture(side: TradeState["position"]["side"]): TradeState {
   return {
@@ -38,6 +38,20 @@ function fixture(side: TradeState["position"]["side"]): TradeState {
     maxLeverage: 40,
   };
 }
+
+test("prompt snapshot captures the exact submitted state and questions", () => {
+  const state = fixture("long");
+  const prompt = buildJevPrompt(state);
+  expect(prompt).toEqual({
+    revision: JEV_PROMPT_REVISION,
+    state: marketFacing(state),
+    questions: jevQuestions(state),
+  });
+  state.mid = 1;
+  state.position.size = 99;
+  expect(prompt.state.mid).toBe(77000);
+  expect(prompt.state.position.size).toBe(0.001);
+});
 
 function blob(side: TradeState["position"]["side"]) {
   return JSON.stringify(jevQuestions(fixture(side))).toLowerCase();

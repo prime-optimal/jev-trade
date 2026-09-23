@@ -21,6 +21,9 @@ All notable changes to this project are documented here. This changelog starts f
 - Added isolated keyless visitor paper sessions for #8. Each remote visitor gets an Off Bun Worker with its own settings, feed, lifecycle, history, and simulated trades, while localhost keeps the private shared operator.
 - Added the same-origin Next session gateway with an HttpOnly, SameSite=Strict capability cookie, Secure in production, exact public Origin checks, expiry and reconnect handling, and `BOT_API_URL` runtime routing.
 - Added visitor limits for 8 concurrent sessions, 10-minute inactivity expiry, 2 SSE streams per session, 64 KiB request bodies, creation burst 8 with refill 16 per minute, a 30-second Start cooldown, and a 30000 ms minimum decision cadence.
+- Added PostgreSQL decision history with queued parent-process writes, exact revisioned Jev prompt snapshots, decision UUID correlation, individually retained fills with idempotent retry identities, bias-signed 1, 5, 20, and 100 tick markouts, and shutdown draining.
+- Added signed anonymous owner continuity plus capability-scoped visitor decision reads and a loopback-only operator decision endpoint. The owner credential expires after one year, is not accepted by query routes, and must first be exchanged for a short-lived session capability.
+- Added the Jev model contract guide covering every prompt field, exclusion, question, outcome, privacy boundary, and prompt-refinement workflow.
 
 ### Changed
 
@@ -48,6 +51,8 @@ All notable changes to this project are documented here. This changelog starts f
 - Paper-mode process startup now arms one configured-duration run that starts when the first sleeve is ready. Failures stay Off and retry, expiry and manual Stop do not loop, process restart creates a new paper run, and real mode still requires a private confirmed Start.
 - Remote settings now apply paper settings to the visitor's Worker instead of changing browser preferences only. Visitors can Save, Start, Stop, and reset cleanup without controlling the shared executor. Refresh resumes the same Worker; an expired or deleted session requires explicit Reconnect to a fresh Off session.
 - Visitor Workers receive an explicit allowlisted runtime environment before importing bot modules. This prevents Bun's parent dotenv values from being compiled into `process.env.NAME` reads inside the Worker.
+- Reorganized Settings into Trading, Jev model, and Connections tabs. The model tab exposes cadence and lookback controls, the current prompt revision and questions, and the full input catalog with explanations.
+- Changed `Model.decide` to return the normalized answer with the exact immutable prompt snapshot used for that evaluation. Successful decisions now retain one ID through quotes and correlated fills.
 
 ### Removed
 

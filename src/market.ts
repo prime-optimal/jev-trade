@@ -7,13 +7,14 @@ import { accountFromClearinghouse, fillDir, FillPnlBook, type ClearinghouseLike,
 import { quotePrice, takerPrice } from "./book";
 import type { Feed } from "./feed";
 import { cleanupOwnedOrders, createOwnedCloid, discoverOwnedOrders, isCleanupExchangeRequest, reconcileOwnedOrderStatuses, type OwnedOrder } from "./owned-orders";
-import { type SleeveConfig } from "./sleeves";
 import type { RunGuard } from "./run-lifecycle";
+import { sameCoin, type SleeveConfig } from "./sleeves";
+import type { MakerFill } from "./trades";
 import type { Book, Fill, Quote, Side } from "./types";
 
 type Ex = ExchangeClient;
 
-type QuoteBase = Required<Pick<Quote, "side" | "reduceOnly" | "capped" | "taker">>;
+type QuoteBase = Required<Pick<Quote, "decisionId" | "side" | "reduceOnly" | "capped" | "taker">>;
 
 /** Hyperliquid perp: Alo post-only quotes, modify when the side stays put. */
 export class Market {
@@ -151,6 +152,36 @@ export class Market {
     }
   }
 
+  async reconcileUserFills(): Promise<MakerFill[]> {
+    if (!this.address) return [];
+    const fills = await this.info.userFills({ user: this.address });
+    const reconciled: MakerFill[] = [];
+    for (const fill of fills) {
+      if (!sameCoin(fill.coin, this.coin)) continue;
+      this.noteFill(fill);
+      const side: Side | null = fill.side === "B" ? "buy" : fill.side === "A" ? "sell" : null;
+      const orderId = Number(fill.oid);
+      const price = Number(fill.px);
+      const size = Number(fill.sz);
+      if (!side || !Number.isFinite(orderId) || !Number.isFinite(price) || !Number.isFinite(size)) continue;
+      reconciled.push({
+        block: this.feed.tick,
+        txHash: typeof fill.hash === "string" ? fill.hash : "",
+        orderId,
+        tid: fill.tid,
+        time: Number(fill.time),
+        price,
+        size,
+        updatedSize: -1,
+        side,
+        feeUsd: Number(fill.fee) || 0,
+        closedPnl: Number.isFinite(Number(fill.closedPnl)) ? Number(fill.closedPnl) : undefined,
+        dir: fillDir(fill.dir),
+      });
+    }
+    return reconciled;
+  }
+
   async refresh() {
     if (!this.address) return;
     try {
@@ -183,10 +214,10 @@ export class Market {
   }
 
   /** Entries rest post-only. Exits cross as Ioc so they do not wait on a taker. */
-  async send(side: Side, sizeSz: number, book: Book, cancel: number[], reduceOnly = false, taker = false): Promise<Quote> {
+  async send(side: Side, sizeSz: number, book: Book, cancel: number[], decisionId: string, reduceOnly = false, taker = false): Promise<Quote> {
     this.assertRunLive();
     const size = lot(sizeSz, this.szDecimals);
-    const base: QuoteBase = { side, reduceOnly, capped: false, taker };
+    const base: QuoteBase = { decisionId, side, reduceOnly, capped: false, taker };
     if (size <= 0) {
       return { ...base, price: 0, size: 0, txHash: null, cancel, status: "reverted", orderId: null };
     }
