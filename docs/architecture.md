@@ -2,80 +2,78 @@
 
 ## Runtime split
 
-The repository contains two processes:
+Issue #19 defines the ownership contract for the browser execution cutover. It does not by itself replace every legacy runtime module listed below.
 
-- The bot runs on Bun from the repository root. It owns credentials, market data, Jev calls, account state, and Hyperliquid orders.
-- The dashboard runs on Next.js from [`web/`](../web/). It receives public JSON and SSE data from the bot. It does not import bot runtime code or hold trading credentials.
+The repository keeps two separate runtimes:
 
-This boundary is intentional. Trading and secrets stay in the Bun process, while the dashboard remains a live Next app.
+- Bun runs the address-free Jev inference service from the repository root. It owns the Jev provider credential, model calls, and inference responses.
+- Next.js runs the browser app from [`web/`](../web/). Browser code owns settings, public market feeds, paper state, wallet/provider connections, the ephemeral signing agent, account state, run lifecycle, orders, and fills. Next server routes must not become an executor or key store.
+
+The browser sends market features and non-identifying position context to Bun. Wallet addresses, private keys, signatures, provider objects, and session capabilities do not belong in inference requests or responses. Bun does not need an address to ask Jev whether to buy, sell, or hold.
+
+Network signing identity is explicit and independent of transport endpoints. Selecting a custom HTTP or WebSocket URL must not infer or change mainnet/testnet signing identity.
 
 ## Startup
 
-[`src/index.ts`](../src/index.ts) creates one reusable execution runtime for the shared executor, registers every configured sleeve, and prepares sleeves serially to avoid a burst of Hyperliquid HTTP requests. Immutable symbol and leverage metadata is fetched once and shared across its sleeves. A successful sleeve becomes live immediately. A failed sleeve remains registered as retrying and retries independently after 30 minutes without restarting healthy sleeves.
+Bun starts the inference API and initializes its Jev provider. It does not initialize trading wallets, subscribe to visitor market feeds, create visitor workers, or start trading runs.
 
-The HTTP and SSE server starts before shared sleeve initialization. In shared paper mode, startup arms one timed run after settings are applied and starts it when the first sleeve is ready. Shared real mode remains Off until a private operator starts it. Expiry or manual Stop never starts another shared run.
+The browser initializes its own settings, public feed connections, and paper state. A run starts Off and begins only through browser-owned lifecycle controls. Wallet connection and agent approval belong in the browser; an ephemeral agent key stays in browser memory. Account reads and exchange operations go directly to Hyperliquid, not through Bun.
 
-The same bot process owns a registry of isolated visitor sessions. Creating a session starts a keyless paper execution runtime in its own Bun Worker and loopback HTTP server. That Worker starts Off. The registry authenticates each nested session request with its opaque capability, proxies it only to the matching Worker, and disposes idle Workers. The shared executor and visitor Workers reuse the runtime and serializers but do not share lifecycle, settings, history, or trades.
+Stop and expiry end the browser run. Responses arriving after a run stops must not submit orders or revive it. Reloading the page must not resume live execution automatically.
 
-## Bot modules
+## Modules and ownership
 
-| File | Responsibility |
+| Module or concern | Owner and responsibility |
 | --- | --- |
-| [`src/types.ts`](../src/types.ts) | Shared HTTP and SSE wire types. |
-| [`src/config.ts`](../src/config.ts) | Environment parsing, defaults, provider selection, safety flags, and timing values. |
-| [`src/sleeves.ts`](../src/sleeves.ts) | Coin list and wallet assignment for each sleeve. |
-| [`src/market.ts`](../src/market.ts) | Hyperliquid account access, leverage, orders, fills, and dry-run behavior. |
-| [`src/book.ts`](../src/book.ts) | L2 book normalization, depth metrics, and maker or taker price calculation. |
-| [`src/feed.ts`](../src/feed.ts) | Hyperliquid HTTP snapshots, WebSocket subscriptions, trade tape, and timers. |
-| [`src/trades.ts`](../src/trades.ts) | Trade and fill buffers, summaries, and simulated fill matching. |
-| [`src/chart.ts`](../src/chart.ts) | Venue candles, one-second mids, fill markers, and chart history. |
-| [`src/indicators.ts`](../src/indicators.ts) | Indicators and venue features passed to the model. They do not gate trades. |
-| [`src/snapshot.ts`](../src/snapshot.ts) | History and tape clipping for API responses. |
-| [`src/account.ts`](../src/account.ts) | Clearinghouse state conversion and realized PnL and fee accounting. |
-| [`src/plan.ts`](../src/plan.ts) | Intent normalization, leverage rungs, and conversion to one order plan. |
-| [`src/model.ts`](../src/model.ts) | `TradeState`, Jev questions and answer mapping, plus real and mock models. |
-| [`src/trader.ts`](../src/trader.ts) | Per-tick decision loop, order queue, simulated positions, totals, and events. |
-| [`src/server.ts`](../src/server.ts) | Bun HTTP server, snapshots, history, tape, and SSE broadcasts. |
-| [`src/index.ts`](../src/index.ts) | Process composition, sleeve lifecycle wiring, and logging. |
-| [`src/execution-runtime.ts`](../src/execution-runtime.ts) | Reusable executor assembly for the shared bot and isolated visitor Workers. |
-| [`src/paper-sessions.ts`](../src/paper-sessions.ts) | In-memory visitor registry, capability routing, capacity, rate, body, stream, and idle limits. |
-| [`src/paper-session-worker.ts`](../src/paper-session-worker.ts) | Keyless visitor runtime with explicitly injected environment before runtime imports. |
-| [`src/paper-session-guard.ts`](../src/paper-session-guard.ts) | Paper-only, official-endpoint, credential-free visitor request restrictions. |
+| [`src/types.ts`](../src/types.ts) and [`web/src/lib/bot-types.ts`](../web/src/lib/bot-types.ts) | Byte-identical inference contracts, including `TradeState`, `ModelDecision`, `JevRequest`, and `JevResponse`. No display, wallet, or account transport types. |
+| [`src/model.ts`](../src/model.ts) | Bun Jev questions and answer mapping through the `Model` interface. Provider credentials remain server-side. |
+| [`src/server.ts`](../src/server.ts) and [`src/index.ts`](../src/index.ts) | Bun inference HTTP handling and service composition after cutover, not trading lifecycle or order submission. |
+| Browser `SettingsProvider.tsx` | Local settings persistence and theme, with an injectable `BrowserTradingAdapter` for feed and lifecycle. No remote session bootstrap, polling, or automatic run start. |
+| Browser `networks.ts` | Explicit signing identity map separate from the HTTP and WebSocket transport endpoint map. |
+| [`web/src/lib/trading/types.ts`](../web/src/lib/trading/types.ts) | Browser-local display and trading types, separate from the inference contract. Account and wallet data must remain browser-local rather than extending shared inference types. |
+| Public feeds, books, indicators, and charts | Browser subscriptions, snapshots, feature construction, and bounded display buffers. |
+| Paper execution | Browser-owned simulated positions, orders, fills, fees, and totals. |
+| Wallet, provider, and ephemeral agent | Browser connection, approval, signing, and in-memory key lifetime. |
+| Account and live execution | Browser account reads, leverage changes, serialized order actions, fill reconciliation, and run lifecycle. |
 
-The Jev provider is behind the `Model` interface in [`src/model.ts`](../src/model.ts). See [Jev provider](jev-provider.md) for provider configuration.
+The old server executor remains migration work, not the architecture to extend. Existing `src/market.ts`, `src/feed.ts`, `src/trader.ts`, and `src/execution-runtime.ts` contain responsibilities that belong in the browser. `src/paper-sessions.ts`, `src/paper-session-worker.ts`, and `src/paper-session-guard.ts` describe the old server visitor-session design; the cutover removes it rather than adding another browser-to-worker protocol. Do not introduce compatibility exports that put browser display types back into the shared inference files.
+
+See [Jev provider](jev-provider.md) for provider configuration. Its credential is distinct from a trading signing key.
 
 ## Per-tick flow
 
 ```mermaid
 flowchart LR
-  A[Hyperliquid book and tape] --> B[TradeState]
-  B --> C[Model.decide]
-  C --> D[planQuote]
-  D --> E[Maker quote or taker exit]
-  E --> F[Hyperliquid order]
-  C --> G[Block event]
-  F --> H[Quote and fill events]
-  G --> I[SSE server]
-  H --> I
-  I --> J[Next dashboard]
+  A[Hyperliquid public feeds] --> B[Browser TradeState]
+  B --> C[Bun address-free inference API]
+  C --> D[Jev decision]
+  D --> E[Browser decision history]
+  E --> F{Buy, sell, or hold}
+  F -->|Buy or sell| G[Browser order plan]
+  F -->|Hold| H[Record decision without an order]
+  G --> I[Browser paper execution]
+  G --> J[Browser agent signs live order]
+  J --> K[Hyperliquid]
+  K --> L[Browser account and fills]
+  I --> M[Browser display]
+  L --> M
+  H --> M
 ```
 
-`Trader.onBlock()` reads the latest book, harvests fills, builds `TradeState`, and awaits one model decision. It emits the block event before exchange I/O. Leverage updates and orders run on a serialized background promise so exchange latency does not hold the next model call. If a model call still occupies the next tick, that tick is marked late rather than starting a second call.
+Jev makes the buy/sell/hold decision on every trading tick from the price feed. Browser code constructs the inference input and applies the returned intent; it does not replace Jev with an indicator rule or reduce inference to every N ticks. Hold records a completed decision without forcing an order.
+
+Exchange work belongs to a browser-owned serialized order queue. Exchange latency must not block the next inference request. The browser associates each response with its originating run and tick before applying it. Bun returns a decision, never a signed transaction, account snapshot, or order result.
 
 ## Runtime cadences
 
-| Setting | Default | Work performed |
-| --- | ---: | --- |
-| `TICK_MS` | 30000 ms | Advances the local tick, summarizes book and tape state, asks the model, emits a block event, and queues the resulting order action. |
-| `PRICE_MS` | 1000 ms | Emits a price event when the mid changes and adds live mids to chart data. It does not make a Hyperliquid request, ask the model, or place an order. |
-| `HL_FALLBACK_POLL_MS` | 30000 ms | While the WebSocket is disconnected, refreshes the book, recent trades, and asset context over HTTP. It performs no recurring HTTP work while the socket is healthy. |
+The browser owns the trading-tick lifecycle, price-display cadence, public-feed subscriptions, and disconnected-socket recovery. Bun has no visitor tick scheduler or market-data polling loop.
 
-Book WebSocket messages may trigger either local cadence when its interval has elapsed. A timer also checks the decision cadence, so a quiet book can still produce ticks. Hyperliquid book, trade, candle, and asset-context subscriptions are the primary market-data path. HTTP supplies startup snapshots and disconnected-socket recovery.
+A price-display refresh is not a Jev decision tick. Public book, trade, candle, and asset-context subscriptions supply market data; startup snapshots and disconnected-socket recovery use public HTTP endpoints. These transport and display cadences must not gate Jev to every N trading ticks. A hold is a model answer, not a skipped tick.
 
 ## State and persistence
 
-Shared trading state is process memory: `Trader.history`, recent mids, pending orders, simulated positions, totals, feed trade buffers, chart points, connected SSE clients, and the snapshot cache. History is capped by `historySize`, currently 1,000 block events per sleeve. Feed and chart buffers have their own caps.
+Browser state includes settings, decision history, recent prices, chart points, feed buffers, paper positions and balances, pending orders, fills, account snapshots, and run lifecycle. Keep bounded histories and buffers in the browser. Paper state is local simulation, not a Bun session.
 
-The visitor registry and every visitor runtime also live only in bot process memory. Each visitor owns a separate Worker, execution runtime, market connections, settings, run lifecycle, and buffers. The default registry holds at most 8 sessions and expires a session after 10 minutes without a request. This isolation has real memory, connection, and model-inference cost, so the limits are part of the runtime design. The bot service must stay at one replica because the registry is not shared across processes.
+Persist only explicitly supported non-secret preferences or paper state in browser storage. Wallet/provider connections, agent private keys, and live execution authority are not persistent settings. Keep ephemeral keys in memory, discard them when their browser lifecycle ends, and require a fresh connection/approval flow when needed. Reload must not silently re-arm a live run. Hyperliquid remains the source of truth for live account state, open orders, and fills.
 
-The bot does not persist this state to a database or local runtime file. A bot restart loses all visitor capabilities and sessions. Visitors must Reconnect and begin with a new Off worker. The shared executor reloads venue candles, user fills, and clearinghouse state. For live sleeves it fetches existing open orders for the coin and cancels only its own orders. The optional `.wallets.json` file is configuration, not trading-state persistence.
+Bun must not persist or retain visitor settings, paper balances, wallet identities, agent keys, account state, orders, fills, or run capabilities. Request-local inference context is not a visitor session. Restarting Bun must not create or restore a trading executor, and there is no worker registry whose lifetime controls browser trading state.
