@@ -1,4 +1,4 @@
-import type { PricePoint } from "./bot-types";
+import type { PricePoint } from "./trading/types";
 
 export const SECOND_MS = 1000;
 export const MINUTE_MS = 60_000;
