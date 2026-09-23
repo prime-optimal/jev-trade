@@ -1,6 +1,4 @@
-import type { HyperliquidNetwork } from "../bot-types";
-
-export type TradingNetwork = HyperliquidNetwork;
+export type TradingNetwork = "testnet" | "mainnet";
 
 export interface NetworkEndpoints {
   apiUrl: string;
