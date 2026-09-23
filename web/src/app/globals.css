@@ -1,49 +1,101 @@
 :root {
+  color-scheme: light;
   --bg: #ffffff;
   --panel: #ffffff;
-  --panel-2: #f8f9fa;
-  --border: #000000;
-  --border-2: #000000;
-  --track: #e8e8e8;
-
-  --ink: #000000;
-  --ink-2: #333333;
-  --muted: #666666;
-  --muted-2: #666666;
-  --link-muted: #333333;
-
-  --buy: #00aa00;
-  --buy-ink: #00aa00;
-  --buy-bar: #00aa00;
+  --panel-2: #f5f6f7;
+  --surface-hover: #eceff1;
+  --border: #171717;
+  --border-2: #5f6368;
+  --track: #dedede;
+  --ink: #0a0a0a;
+  --ink-2: #303236;
+  --muted: #62666d;
+  --muted-2: #62666d;
+  --link-muted: #303236;
+  --buy: #087d20;
+  --buy-ink: #087d20;
+  --buy-bar: #087d20;
   --buy-bar-dim: #c8e6c8;
-  --sell: #cc0000;
-  --sell-ink: #cc0000;
-  --sell-bar: #cc0000;
+  --sell: #b42318;
+  --sell-ink: #b42318;
+  --sell-bar: #b42318;
   --sell-bar-dim: #f0c8c8;
-
-  --late: #b8860b;
-  --late-ink: #b8860b;
+  --late: #8a6200;
+  --late-ink: #8a6200;
   --late-cell: #fff4d6;
-  --hold-cell: #f1f3f4;
-  --up-bar: #00aa00;
-  --down-bar: #cc0000;
-  --link: #0000aa;
-
-  --badge-jev-bg: #000000;
+  --hold-cell: #edf0f2;
+  --up-bar: #087d20;
+  --down-bar: #b42318;
+  --link: #143fa3;
+  --badge-jev-bg: #0a0a0a;
   --badge-jev-fg: #ffffff;
-  --badge-standin-bg: #000000;
+  --badge-standin-bg: #0a0a0a;
   --badge-standin-fg: #ffffff;
-  --live-dot: #00aa00;
-  --pnl-pos: #00aa00;
-  --pnl-neg: #cc0000;
-  --grid: #e5e5e5;
-
+  --live-dot: #087d20;
+  --pnl-pos: #087d20;
+  --pnl-neg: #b42318;
+  --grid: #e1e3e5;
+  --focus: #2457d6;
+  --error: #b42318;
+  --disabled-bg: #eceeef;
+  --disabled-ink: #6d7278;
+  --chart-up: #111111;
+  --chart-down: #ffffff;
+  --chart-text: #62666d;
+  --chart-entry: #111111;
   --font-sans: var(--font-plex), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-mono: var(--font-plex), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-
   --page-bg: #ffffff;
   --card-radius: 0;
   --card-max: none;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --panel: #0b0d10;
+  --panel-2: #1a1d20;
+  --surface-hover: #22262a;
+  --border: #d8dce0;
+  --border-2: #858b92;
+  --track: #30353a;
+  --ink: #f4f5f6;
+  --ink-2: #d5d8dc;
+  --muted: #a8adb4;
+  --muted-2: #a8adb4;
+  --link-muted: #d5d8dc;
+  --buy: #42d66b;
+  --buy-ink: #42d66b;
+  --buy-bar: #42d66b;
+  --buy-bar-dim: #183d24;
+  --sell: #ff746c;
+  --sell-ink: #ff746c;
+  --sell-bar: #ff746c;
+  --sell-bar-dim: #4b2222;
+  --late: #f0c35a;
+  --late-ink: #f0c35a;
+  --late-cell: #392f18;
+  --hold-cell: #24282c;
+  --up-bar: #42d66b;
+  --down-bar: #ff746c;
+  --link: #8eb2ff;
+  --badge-jev-bg: #f4f5f6;
+  --badge-jev-fg: #0b0d10;
+  --badge-standin-bg: #f4f5f6;
+  --badge-standin-fg: #0b0d10;
+  --live-dot: #42d66b;
+  --pnl-pos: #42d66b;
+  --pnl-neg: #ff746c;
+  --grid: #2c3035;
+  --focus: #91b3ff;
+  --error: #ff8b84;
+  --disabled-bg: #292d31;
+  --disabled-ink: #92989f;
+  --chart-up: #f4f5f6;
+  --chart-down: #0b0d10;
+  --chart-text: #a8adb4;
+  --chart-entry: #f4f5f6;
+  --page-bg: #0b0d10;
 }
 
 *,
@@ -99,6 +151,16 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+:where(button, input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 img,
 svg {
   display: block;
@@ -125,9 +187,6 @@ svg {
 }
 
 @media (min-width: 900px) {
-  body {
-    overflow: hidden;
-  }
 
   .shell {
     height: 100vh;

@@ -3,88 +3,173 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.brandLockup,
+.links,
+.controls,
+.priceStatus,
+.runControl,
+.switch,
+.scores,
+.score {
+  display: flex;
+  align-items: center;
 }
 
 .brandLockup {
-  display: flex;
-  align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
 .brand {
-  display: inline;
-  font-family: var(--font-mono), "IBM Plex Mono", monospace;
-  font-weight: 700;
-  font-size: 14px;
-  line-height: 1;
-  letter-spacing: 0.02em;
   color: var(--ink);
+  font: 700 14px/1 var(--font-mono), monospace;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
 .tagline {
-  margin: 0;
-  font-family: var(--font-mono), "IBM Plex Mono", monospace;
-  font-weight: 500;
-  font-size: 12px;
-  line-height: 1;
-  letter-spacing: 0.02em;
   color: var(--muted);
+  font: 500 12px/1 var(--font-mono), monospace;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
 .links {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 2px;
+  gap: 3px;
+  margin-left: 4px;
 }
 
-.link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  color: var(--ink);
-  opacity: 0.55;
-}
-
-.link:hover {
-  opacity: 1;
-}
-
-.status {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--font-mono), "IBM Plex Mono", monospace;
+.navLink {
+  min-height: 30px;
+  padding: 7px 8px;
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 700;
-  font-size: 12px;
   line-height: 1;
-  letter-spacing: 0.02em;
+}
+
+.navLink:hover,
+.navLink[aria-current="page"] {
   color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.iconLink {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--muted);
+}
+
+.iconLink:hover {
+  color: var(--ink);
+}
+
+.controls {
+  gap: 14px;
+  min-width: 0;
+}
+
+.priceStatus {
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
   white-space: nowrap;
 }
 
 .dot {
   width: 7px;
   height: 7px;
+  flex: none;
   border-radius: 50%;
   background: var(--muted);
-  flex: none;
 }
 
-.status[data-live="true"] .dot {
-  background: var(--live-dot);
+.priceStatus[data-connected="true"] .dot {
+  background: var(--focus);
+}
+
+.runControl {
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.switch {
+  appearance: none;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 700 11px/1 var(--font-mono), monospace;
+  cursor: pointer;
+}
+
+.switch:disabled {
+  border-color: var(--border-2);
+  background: var(--disabled-bg);
+  color: var(--disabled-ink);
+}
+
+.switchTrack {
+  position: relative;
+  width: 26px;
+  height: 14px;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+
+.switchThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  transition: transform 120ms ease-out;
+}
+
+.switch[aria-checked="true"] .switchThumb {
+  transform: translateX(12px);
+}
+
+.runStatus,
+.remaining {
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.runStatus[data-running="true"] {
+  color: var(--live-dot);
+}
+
+.remaining {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.actionError {
+  max-width: 260px;
+  color: var(--error);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .scores {
-  display: flex;
-  align-items: baseline;
   justify-content: flex-end;
   gap: 16px;
   margin-left: auto;
@@ -92,7 +177,6 @@
 }
 
 .score {
-  display: flex;
   align-items: baseline;
   gap: 8px;
   min-width: 0;
@@ -100,52 +184,88 @@
 }
 
 .scoreKey {
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.1em;
   color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .scoreVal {
-  font-weight: 700;
-  font-size: 16px;
   color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1050px) {
   .header {
     flex-wrap: wrap;
-    align-items: center;
-    column-gap: 10px;
-    row-gap: 8px;
-    padding: max(10px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) 10px
-      max(14px, env(safe-area-inset-left, 0px));
+  }
+
+  .controls {
+    margin-left: auto;
+  }
+
+  .scores {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    margin-left: 30px;
+  }
+}
+
+@media (max-width: 700px) {
+  .header {
+    align-items: flex-start;
+    gap: 8px;
+    padding: max(10px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px));
   }
 
   .brandLockup {
-    gap: 8px;
-  }
-
-  .brand {
-    font-size: 13px;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 7px;
   }
 
   .tagline {
     display: none;
   }
 
-  .status {
-    font-size: 11px;
-    gap: 5px;
+  .links {
     margin-left: auto;
+  }
+
+  .navLink {
+    min-height: 32px;
+    padding: 8px 6px;
+  }
+
+  .controls {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    margin-left: 0;
+  }
+
+  .runControl {
+    gap: 6px;
+  }
+
+  .remaining {
+    flex-basis: 100%;
+    padding-left: 1px;
+    text-align: right;
+  }
+
+  .actionError {
+    flex: 1 1 100%;
+    max-width: none;
   }
 
   .scores {
     flex: 1 1 100%;
-    margin-left: 0;
     justify-content: space-between;
-    align-items: flex-end;
-    gap: 16px;
+    gap: 10px;
+    margin-left: 0;
     padding-top: 2px;
   }
 
@@ -162,17 +282,22 @@
 
   .scoreKey {
     font-size: 10px;
-    letter-spacing: 0.08em;
   }
 
   .scoreVal {
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1;
   }
 }
 
-@media (max-width: 359px) {
-  .brand {
-    font-size: 12px;
+@media (max-width: 390px) {
+  .priceStatus,
+  .runStatus,
+  .remaining {
+    font-size: 10px;
+  }
+
+  .switch {
+    padding-inline: 4px;
   }
 }

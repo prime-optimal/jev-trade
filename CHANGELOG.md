@@ -14,6 +14,10 @@ All notable changes to this project are documented here. This changelog starts f
 - Added Railway TypeScript infrastructure in `.railway/railway.ts` for the bot, dashboard, bot data volume, service variables, watch paths, health checks, and deployment settings.
 - Added maintainer documentation for architecture, trading, the API, dashboard, configuration, Jev providers, development, and deployment.
 - Added configurable Hyperliquid HTTP, WebSocket, and RPC endpoints with optional HTTP API-key authentication.
+- Added a standalone Settings route with validated guest and operator scopes, browser-wide light and dark themes, network and owner-isolated persistence, and memory-only handling for transport credentials.
+- Added a private loopback operator listener for settings, transport validation, Start, Stop, and owned-order reconciliation. The public API exposes read-only authoritative run state.
+- Added execution-owned timed runs that start Off, default to 30 minutes, enforce wall-clock and monotonic deadlines, and block restart when bounded owned-order cleanup needs attention.
+- Added Hyperliquid HTTP, WebSocket, and SDK RPC preflight. Real trading requires matching official endpoints and explicit confirmation. Custom endpoint identity cannot enable real mode.
 
 ### Changed
 
@@ -34,6 +38,10 @@ All notable changes to this project are documented here. This changelog starts f
 - Changed bot startup log separators to plain punctuation.
 - Fixed pre-existing root TypeScript errors with type-only changes in `src/config.ts`, `src/model.ts`, and `src/market.ts`. Root and dashboard typechecks now pass.
 - Updated `.gitignore` so maintainer docs are tracked and local `fnox.local.toml` overrides remain ignored.
+- Changed paper trading to the default unless `DRY_RUN=false` is set explicitly.
+- Separated price-stream connectivity from trading state in the dashboard Header. Public visitors can see run status but cannot control the shared executor.
+- Changed sleeve initialization and retry so neither starts decision loops while Off, Expired, or after process restart.
+- Kept the Off control plane available when initial sleeve resources fail, with visible retryable errors and recovery that cannot start trading by itself. Operator Start runs the available sleeves when at least one is ready, and recovered sleeves join only an active run. Later settings replacements remain atomic and preserve the prior executor on failure.
 
 ### Removed
 
@@ -43,8 +51,10 @@ All notable changes to this project are documented here. This changelog starts f
 
 - Fixed `dev:web`, which used `bun --cwd web run dev` and printed Bun help instead of starting the dashboard while exiting successfully.
 - Failed sleeve initialization no longer removes the sleeve from the API and dashboard. The bot exposes starting, retrying, and live status, shows the failure in the UI, and retries that sleeve after 30 minutes without restarting healthy sleeves.
+- `DRY_RUN=false` with no wallet key no longer fails every sleeve at startup with "real trading requires a wallet private key". Keyless sleeves run in paper mode again, as they did before the settings page, while keyed sleeves keep real execution.
 - Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
 
 ## Known issues
 
 - A sleeve emits a synthetic late hold without calling Jev when its previous Jev call is still running at the next tick. Provider calls have a 4,000 ms deadline, so this cannot happen at the 30,000 ms default tick. It can only happen if `TICK_MS` is set below that deadline, and that conflicts with the product claim that Jev decides on every tick.
+- A sleeve that recovers after startup keeps trading but is missing from public history, tape, and snapshot data, and the public wallet is not refreshed when the first sleeve recovers. The recovered view is added to the executor's candidate list instead of the list the server reads.

@@ -1,71 +1,76 @@
 # Configuration
 
-The bot reads environment values in [`src/config.ts`](../src/config.ts), [`src/sleeves.ts`](../src/sleeves.ts), and [`src/model.ts`](../src/model.ts). The dashboard has one public build setting in [`web/src/app/page.tsx`](../web/src/app/page.tsx).
+The Bun process reads environment values at startup, then exposes an operator-only session settings layer. The dashboard keeps guest preferences separately. Neither settings path writes `.env` or Railway variables.
 
 ## Environment variables
 
-| Name | Default | Where read | Secret | Purpose |
-| --- | --- | --- | --- | --- |
-| `HL_COINS` | `BTC,ETH,SOL,DOGE,BNB` | [`src/sleeves.ts`](../src/sleeves.ts) | No | Comma-separated Hyperliquid perps. Creates one sleeve per nonempty entry. |
-| `HL_TESTNET` | `true` | [`src/config.ts`](../src/config.ts) | No | Selects testnet. Only the exact string `false` selects mainnet. |
-| `HL_API_URL` | Network default | [`src/config.ts`](../src/config.ts) | No | Overrides the Hyperliquid HTTP API base URL used for info and exchange requests. |
-| `HL_WS_URL` | Derived from `HL_API_URL`, otherwise network default | [`src/config.ts`](../src/config.ts) | No | Overrides the Hyperliquid WebSocket endpoint. Set this when a custom provider uses a different WebSocket address. |
-| `HL_RPC_URL` | Network default | [`src/config.ts`](../src/config.ts) | No | Overrides the Hyperliquid RPC base URL used for explorer requests. |
-| `HL_API_KEY` | Unset | [`src/config.ts`](../src/config.ts) | Yes | Optional credential sent only to the custom Hyperliquid info and exchange API. It is not sent to `HL_RPC_URL` or placed in WebSocket subscription messages. |
-| `HL_API_KEY_HEADER` | `Authorization` | [`src/config.ts`](../src/config.ts) | No | HTTP header carrying `HL_API_KEY`. |
-| `HL_API_KEY_SCHEME` | `Bearer` | [`src/config.ts`](../src/config.ts) | No | Prefix before `HL_API_KEY`. Set it to an empty value when the provider expects the raw key. |
-| `HL_FALLBACK_POLL_MS` | `30000` | [`src/config.ts`](../src/config.ts) | No | HTTP recovery cadence while the Hyperliquid WebSocket is disconnected. Healthy WebSocket connections do not run recurring book, trade, or asset-context HTTP polls. |
-| `TICK_MS` | `30000` | [`src/config.ts`](../src/config.ts) | No | Decision and requote cadence in milliseconds. At the default cadence, each sleeve calls Jev every 30 seconds. The dashboard chart timeframe does not change it. |
-| `PRICE_MS` | `1000`, minimum `50` | [`src/config.ts`](../src/config.ts) | No | Chart and live-mid SSE cadence in milliseconds. This does not make a Hyperliquid request or call Jev. |
-| `QUOTE_USD` | `40` | [`src/config.ts`](../src/config.ts) | No | Target notional in USD for one entry quote. |
-| `QUOTE_INSIDE_TICKS` | `1` | [`src/config.ts`](../src/config.ts) | No | Number of price ticks an entry quote moves inside the touch. |
-| `CLOSE_SLIPPAGE_BPS` | `5` | [`src/config.ts`](../src/config.ts) | No | Basis points beyond the far touch used for reduce-only IOC exits. |
-| `HORIZON_BLOCKS` | `100` | [`src/config.ts`](../src/config.ts) | No | Lookback in decision ticks for sampled mids and trade summaries. |
-| `BANKROLL_USD` | `200` | [`src/config.ts`](../src/config.ts) | No | Dry-run bankroll denominator for PnL percentage when no venue account is present. |
-| `PRIVATE_KEY` | Unset | [`src/config.ts`](../src/config.ts), [`src/sleeves.ts`](../src/sleeves.ts) | Yes | Hyperliquid wallet key for the first listed coin when the wallet map has no key for it. |
-| `WALLETS_JSON` | Unset | [`src/sleeves.ts`](../src/sleeves.ts) | Yes | JSON wallet map overlaid on `.wallets.json`. Keys are assigned by coin. |
-| `DRY_RUN` | `false` | [`src/config.ts`](../src/config.ts) | No | Exact string `true` forces simulated orders even when wallet keys exist. A sleeve without a key is also dry-run. |
-| `MODEL` | `mock` | [`src/config.ts`](../src/config.ts) | No | Selects `mock` or `jev`. |
-| `JEV_PROVIDER` | Resolved from available keys, then `openrouter` | [`src/config.ts`](../src/config.ts) | No | Selects `openrouter`, `typesafe`, or `gateway`. |
-| `JEV_MODEL_ID` | `jev-latest`, or `typesafe-ai/jev` for gateway | [`src/config.ts`](../src/config.ts) | No | Overrides the model identifier sent to the selected Jev provider. |
-| `OPENROUTER_API_KEY` | Unset | [`src/config.ts`](../src/config.ts), [`src/model.ts`](../src/model.ts) | Yes | Credential for the OpenRouter Jev endpoint. |
-| `TYPESAFE_API_KEY` | Unset | [`src/config.ts`](../src/config.ts), [`src/model.ts`](../src/model.ts) | Yes | Credential for the official TypeSafe API. |
-| `AI_GATEWAY_API_KEY` | Unset | [`src/config.ts`](../src/config.ts), [`src/model.ts`](../src/model.ts) | Yes | Credential used by the Vercel AI Gateway provider. |
-| `PORT` | `3000` | [`src/config.ts`](../src/config.ts), [`src/server.ts`](../src/server.ts) | No | Bot HTTP and SSE listen port. |
-| `NEXT_PUBLIC_API_URL` | Page host on port `3000` | [`web/src/app/page.tsx`](../web/src/app/page.tsx) | No | Browser-visible bot base URL, without a trailing slash. A bare host gets `https://`. Unset, the browser uses `http://<page hostname>:3000`. Next embeds it into the client bundle at build time. |
+| Name | Default | Secret | Purpose |
+| --- | --- | --- | --- |
+| `HL_COINS` | `BTC,ETH,SOL,DOGE,BNB` | No | Initial enabled perps. Runtime settings support these five coins. |
+| `HL_TESTNET` | `true` | No | Only the exact string `false` selects mainnet. |
+| `HL_API_URL` | Selected network API | No | Hyperliquid HTTP API base URL. A blank WebSocket override derives from this URL. |
+| `HL_WS_URL` | Derived from HTTP API | No | Independent market WebSocket override. |
+| `HL_RPC_URL` | Selected network SDK RPC | Potentially | SDK explorer RPC URL. Query strings and provider paths may contain credentials. |
+| `HL_API_KEY` | Unset | Yes | Optional credential for a custom HTTP API. Official Hyperliquid API hosts reject transport keys. The key is never sent to the RPC or WebSocket. |
+| `HL_API_KEY_HEADER` | `Authorization` | No | Header that carries the custom API key. Reserved and invalid header names are rejected by runtime settings. |
+| `HL_API_KEY_SCHEME` | `Bearer` | No | One authentication token prepended to the key. Blank sends the raw key. |
+| `HL_FALLBACK_POLL_MS` | `30000` | No | HTTP recovery interval while the market WebSocket is disconnected. Valid runtime range is 1000 through 300000 ms. |
+| `TICK_MS` | `30000` | No | Jev decision cadence. Valid runtime range is 5000 through 300000 ms. |
+| `PRICE_MS` | `1000` | No | Chart and live-mid cadence. Valid runtime range is 50 through 5000 ms. It does not call Jev. |
+| `QUOTE_USD` | `40` | No | Positive entry notional for one quote. |
+| `QUOTE_INSIDE_TICKS` | `1` | No | Entry offset, from 0 through 10 ticks. |
+| `CLOSE_SLIPPAGE_BPS` | `5` | No | Reduce-only IOC exit slippage, from 0 through 100 basis points. |
+| `HORIZON_BLOCKS` | `100` | No | Decision lookback, from 20 through 400 ticks. |
+| `BANKROLL_USD` | `200` | No | Positive paper PnL denominator. It is not real equity or a loss limit. |
+| `RUN_DURATION_MINUTES` | `30` | No | Positive integer minutes for each new run. There is no unlimited mode. |
+| `PRIVATE_KEY` | Unset | Yes | Wallet key for the first configured coin when no wallet map entry exists. |
+| `WALLETS_JSON` | Unset | Yes | Coin-to-wallet mapping overlaid on `.wallets.json`. |
+| `DRY_RUN` | `true` | No | Paper mode unless the exact string `false` is supplied. In real mode, sleeves without a wallet key run as paper. Real orders also need successful official-network validation and explicit confirmation at Start. |
+| `MODEL` | `mock` | No | `mock` or `jev`. |
+| `JEV_PROVIDER` | Resolved from configured provider keys, then `openrouter` | No | `openrouter`, `typesafe`, or `gateway`. |
+| `JEV_MODEL_ID` | Provider default | No | Model identifier for the selected Jev provider. |
+| `OPENROUTER_API_KEY` | Unset | Yes | OpenRouter credential. |
+| `TYPESAFE_API_KEY` | Unset | Yes | Official TypeSafe credential. |
+| `AI_GATEWAY_API_KEY` | Unset | Yes | Vercel AI Gateway credential. |
+| `PORT` | `3000` | No | Public read-only HTTP and SSE port. |
+| `CONTROL_PORT` | `3002` | No | Private operator listener port. The listener always binds `127.0.0.1`. |
+| `CONTROL_ORIGIN` | `http://localhost:3001` | No | Exact local dashboard origin allowed to mutate operator state. It must be an explicit localhost, `127.0.0.1`, or IPv6 loopback HTTP origin. |
+| `CONTROL_HOST` | `127.0.0.1:<CONTROL_PORT>` | No | Exact accepted Host header. It must name a loopback host and the configured control port. |
+| `NEXT_PUBLIC_API_URL` | Page hostname on port `3000` | No | Browser-visible public bot API. A bare host gets `https://`. Set it before a production dashboard build. |
+| `NEXT_PUBLIC_OPERATOR_API_URL` | `http://127.0.0.1:3002` on localhost pages, otherwise disabled | No | Optional browser-visible operator base URL. Set it only for an explicitly arranged local channel. It does not add authentication or make remote exposure safe. |
 
-Numeric values use JavaScript `Number()` conversion. Invalid numeric text is not replaced by the default unless the variable documents an enforced minimum. `HL_API_KEY` authenticates info and exchange HTTP requests only. It is intentionally excluded from RPC requests, and the native WebSocket client cannot add arbitrary handshake headers. Use a provider URL with embedded WebSocket credentials or its dedicated `HL_WS_URL` when required. Provider selection and credential requirements are covered in [Jev provider](jev-provider.md).
+Bun loads the root `.env` automatically. Copy [`.env.example`](../.env.example) for bot values and [`web/.env.example`](../web/.env.example) for browser build values. Do not commit live credentials.
 
-## Value sources
+## Settings and operator boundary
 
-### Local non-secret values
+The public server on `PORT` is read-only. It publishes market data and authoritative run state, but it cannot apply settings or start and stop the shared wallet. Do not reverse proxy the control listener into the public site.
 
-Copy the examples, then edit the root file for the bot and the web file only when the dashboard needs a different API URL:
+The operator listener binds only to `127.0.0.1`. It checks the peer address, exact Host header, and exact Origin for mutations. Use it from the local dashboard. An SSH tunnel is suitable only when both dashboard and control ports remain local loopback endpoints and the configured origin and host still match. Never expose port 3002 to a LAN or the internet.
 
-```sh
-cp .env.example .env
-cp web/.env.example web/.env.local
-```
+The operator response includes non-secret model and provider configuration, whether provider and wallet secrets exist, the environment baseline, and session override names. It never returns wallet keys, provider keys, or the transport key. Credential-bearing endpoint paths and query strings are redacted from operator responses.
 
-Bun automatically loads the root `.env`; no dotenv package is used. The examples are [`/.env.example`](../.env.example) and [`web/.env.example`](../web/.env.example). `NEXT_PUBLIC_API_URL` must be set before a production dashboard build because its value is baked into client JavaScript.
+Save applies one validated operator snapshot while stopped and rebuilds execution resources as an all-or-nothing replacement. A failed replacement leaves the prior settings and executor in place. Initial startup is different: a transient resource failure remains published on the affected sleeve and retries while Off, so the control plane stays available without starting decisions or orders. Cancel changes only the draft. Guest Save writes browser preferences and never changes Bun. Startup is always Off, including process restart. No stored preference starts trading.
 
-### Secrets with fnox
+## Transport validation
 
-[`fnox.toml`](../fnox.toml) resolves `OPENROUTER_API_KEY` from 1Password at process start. Its configured reference is `op://u3gfzsvm2c4uhigf252w5xprgq/3jrakpjic7ov2uq5haofe32zku/credential`. [`just dev`](../justfile) and [`just start`](../justfile) run the bot through `fnox exec`, so injected process values take precedence over `.env` values.
+Validation runs while stopped and checks all three configured transports with an eight-second bound:
 
-Add wallet keys with the global mise helper tasks. They append a `provider = "onepass"` entry, which matches the provider name in `fnox.toml`. Set `FNOX_SKIP_SYNC=1` because their follow-up sync writes an age-encrypted `fnox.local.toml`, and this repo defines no age provider:
+- HTTP sends Hyperliquid `meta` to the effective `/info` URL and checks the universe shape.
+- WebSocket subscribes to `allMids` and waits for an expected channel response.
+- SDK RPC sends the explorer request `{ type: "userDetails", user: "0x0000000000000000000000000000000000000000" }` and expects a `userDetails` response with a `txs` array.
 
-```sh
-FNOX_SKIP_SYNC=1 mise run fnox-apikey -- PRIVATE_KEY
-FNOX_SKIP_SYNC=1 mise run fnox-opref -- VAR ITEM_UUID FIELD
-```
+The API key is scoped to Hyperliquid HTTP info and exchange requests. The separate SDK RPC transport receives no API-key header. Current trading does not otherwise depend on the SDK explorer RPC, but validation requires the configured RPC to support that protocol.
 
-Do not put live keys in committed environment files.
+The validator rejects a selected network paired with the other network's official API, WebSocket, or RPC endpoint. A fully official matching endpoint set establishes network identity. A custom set can pass connectivity checks, but its network identity cannot be proven, so real trading remains disabled. There is no fallback to official endpoints after a custom endpoint fails.
 
-### Per-sleeve wallet file
+## Browser persistence
 
-Copy [`.wallets.example.json`](../.wallets.example.json) to the gitignored `.wallets.json` for keys beyond the first coin. [`src/sleeves.ts`](../src/sleeves.ts) reads that file first, overlays `WALLETS_JSON`, then uses `PRIVATE_KEY` only for the first listed coin if it still has no mapped key. Both accepted JSON shapes are implemented by `parseWalletsJson()`.
+Validated guest settings use `jev-trade:settings:v1:<network>:guest`. A future lowercase wallet owner uses `jev-trade:settings:v1:<network>:<owner>`. The first load for an owner copies guest values only when that owner has no saved value. Existing owner settings remain isolated.
 
-### Production
+The selected network uses `jev-trade:network:v1`. Theme uses `jev-trade:theme:v1`. Theme is browser-wide and may change while trading runs. If storage is unavailable, settings remain in memory and the page warns that they will not survive a refresh.
 
-Set bot and dashboard production values as Railway variables. Secrets stay on the bot service. Set `NEXT_PUBLIC_API_URL` on the dashboard service before its build. See [Deployment](deployment.md) for the service layout and deployment procedure.
+Transport API keys are memory-only. RPC overrides are memory-only. HTTP and WebSocket URLs with query strings or provider base paths are also memory-only because they may contain credentials. Run state, wallet keys, and provider credentials are never stored in browser settings.
+
+## Secret sources
+
+[`fnox.toml`](../fnox.toml) resolves the configured OpenRouter secret at process start. The `just dev` and `just start` recipes use `fnox exec`. Per-coin wallet keys may come from the gitignored `.wallets.json`, `WALLETS_JSON`, and then `PRIVATE_KEY` for the first coin. The settings page shows only configured or missing status for these operator secrets.

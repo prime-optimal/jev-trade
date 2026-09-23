@@ -1,0 +1,52 @@
+{
+  "fixture": "local Bun HTTP and WebSocket server",
+  "customBasePathWithoutKey": {
+    "ok": true,
+    "realAllowed": false,
+    "observations": [
+      {
+        "path": "/stream",
+        "apiAuthPresent": false,
+        "localDestination": true
+      },
+      {
+        "path": "/provider/base/info",
+        "apiAuthPresent": false,
+        "localDestination": true
+      },
+      {
+        "path": "/rpc/base/explorer",
+        "apiAuthPresent": false,
+        "localDestination": true
+      }
+    ]
+  },
+  "customBasePathWithKey": {
+    "ok": true,
+    "realAllowed": false,
+    "apiAuthPresent": true,
+    "rpcAuthPresent": false,
+    "wsAuthPresent": false,
+    "paths": [
+      "/provider/base/info",
+      "/rpc/base/explorer",
+      "/stream"
+    ]
+  },
+  "customFailure": {
+    "ok": false,
+    "realAllowed": false,
+    "message": "Hyperliquid metadata validation failed. Check the HTTP API URL and API-key configuration.",
+    "localDestinationsOnly": true,
+    "paths": [
+      "/provider/base/info",
+      "/rpc/base/explorer",
+      "/stream"
+    ]
+  },
+  "clearedOverrides": {
+    "apiUrl": "https://api.hyperliquid-testnet.xyz",
+    "wsUrl": "wss://api.hyperliquid-testnet.xyz/ws",
+    "rpcUrl": "https://rpc.hyperliquid-testnet.xyz"
+  }
+}

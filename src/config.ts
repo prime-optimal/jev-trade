@@ -1,8 +1,10 @@
+import { effectiveEndpoints, type TradingSettings } from "./settings";
+
 const env = (key: string, fallback?: string) => process.env[key] ?? fallback;
 
 export type JevProvider = "openrouter" | "typesafe" | "gateway";
 
-type Env = Record<string, string | undefined>;
+export type Env = Record<string, string | undefined>;
 
 export type HyperliquidEnv = {
   isTestnet: boolean;
@@ -21,6 +23,12 @@ const HL_TESTNET_RPC = "https://rpc.hyperliquid-testnet.xyz";
 
 function endpoint(value: string | undefined, fallback: string): string {
   return (value?.trim() || fallback).replace(/\/+$/, "");
+}
+
+function apiInfoUrl(apiUrl: string): string {
+  const info = new URL(apiUrl);
+  info.pathname = `${info.pathname.replace(/\/+$/, "")}/info`;
+  return info.toString();
 }
 
 function boundedMs(value: string | undefined, fallback: number, min: number, max: number): number {
@@ -45,7 +53,7 @@ export function resolveHyperliquidEnv(e: Env, isTestnet: boolean): HyperliquidEn
   return {
     isTestnet,
     apiUrl,
-    infoUrl: `${apiUrl}/info`,
+    infoUrl: apiInfoUrl(apiUrl),
     wsUrl,
     rpcUrl,
     headers: key ? { [header]: scheme ? `${scheme} ${key}` : key } : {},
@@ -103,7 +111,7 @@ export const config = {
     ? "https://app.hyperliquid-testnet.xyz/explorer/tx/"
     : "https://app.hyperliquid.xyz/explorer/tx/",
   privateKey: env("PRIVATE_KEY"),
-  dryRun: env("DRY_RUN") === "true",
+  dryRun: env("DRY_RUN", "true") !== "false",
   /** Target notional of one post-only quote. */
   quoteUsd: Number(env("QUOTE_USD", "40")),
   quoteInsideTicks: Number(env("QUOTE_INSIDE_TICKS", "1")),
@@ -119,6 +127,38 @@ export const config = {
   historySize: 1000,
   bankrollUsd: Number(env("BANKROLL_USD", "200")),
 };
+
+/** Apply one already-validated snapshot. Call only while execution is stopped. */
+export function applySettingsToConfig(settings: TradingSettings, apiKey?: string): void {
+  const endpoints = effectiveEndpoints(settings);
+  config.hlTestnet = settings.network === "testnet";
+  config.dryRun = settings.mode === "paper";
+  config.tickMs = settings.tickMs;
+  config.priceMs = settings.priceMs;
+  config.quoteUsd = settings.quoteUsd;
+  config.quoteInsideTicks = settings.quoteInsideTicks;
+  config.closeSlippageBps = settings.closeSlippageBps;
+  config.horizonBlocks = settings.horizonBlocks;
+  config.bankrollUsd = settings.bankrollUsd;
+  config.explorerTx = config.hlTestnet
+    ? "https://app.hyperliquid-testnet.xyz/explorer/tx/"
+    : "https://app.hyperliquid.xyz/explorer/tx/";
+  config.hyperliquid = {
+    isTestnet: config.hlTestnet,
+    apiUrl: endpoints.apiUrl,
+    infoUrl: apiInfoUrl(endpoints.apiUrl),
+    wsUrl: endpoints.wsUrl,
+    rpcUrl: endpoints.rpcUrl,
+    headers: apiKey
+      ? {
+          [settings.hyperliquidApiKeyHeader]: settings.hyperliquidApiKeyScheme
+            ? `${settings.hyperliquidApiKeyScheme} ${apiKey}`
+            : apiKey,
+        }
+      : {},
+    fallbackMs: settings.fallbackMs,
+  };
+}
 
 export function hexKey(key: string): `0x${string}` {
   return (key.startsWith("0x") ? key : `0x${key}`) as `0x${string}`;

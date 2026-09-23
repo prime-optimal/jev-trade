@@ -1,9 +1,11 @@
 import { config } from "./config";
+import { safeTransportMessage } from "./hyperliquid";
 import { bpsBetween, snapshotIndicators, venueFeatures } from "./indicators";
 import type { Market } from "./market";
 import type { Model, ModelDecision, TradeState } from "./model";
 import { planQuote, type QuotePlan } from "./plan";
 import { aggregateFills, emptySummary, takeLiveFills, takeSimFills, type Resting, type TradeFeed } from "./trades";
+import type { RunGuard } from "./run-lifecycle";
 import type { BlockEvent, Book, Fill, PricePoint, Quote, Side, Timing, Totals } from "./types";
 
 const emptyTotals = (): Totals => ({
@@ -24,8 +26,7 @@ export function jevUnavailable(e: unknown): boolean {
 export class Trader {
   readonly history: BlockEvent[] = [];
   private mids: number[] = [];
-  private busy = false;
-  private lastBook: Book | null = null;
+  private latestScheduledBlock = -Infinity;
   private trades: TradeFeed | null = null;
   private orders = new Map<number, Resting>();
   private simId = 0;
@@ -33,6 +34,8 @@ export class Trader {
   private exchangeTail: Promise<void> = Promise.resolve();
   private position = { sz: 0, costUsd: 0 };
   private totals: Totals = emptyTotals();
+  private runGuard: RunGuard | null = null;
+  private invalidated = false;
 
   constructor(
     private market: Market,
@@ -41,6 +44,18 @@ export class Trader {
     private onFill: (block: number, fill: Fill) => void = () => {},
     private onQuote: (block: number, quote: Quote) => void = () => {},
   ) {}
+
+  setRunGuard(guard: RunGuard | null) {
+    this.runGuard = guard;
+    this.invalidated = false;
+    this.market.setRunGuard(guard);
+  }
+
+  /** Immediately prevents pending inference and queued exchange work from placing. */
+  invalidate() {
+    this.invalidated = true;
+    this.sendSeq++;
+  }
 
   get tape(): PricePoint[] {
     return this.market.chartPoints;
@@ -51,67 +66,68 @@ export class Trader {
   }
 
   async onBlock(block: number) {
+    if (!this.isRunLive()) return;
+    this.latestScheduledBlock = Math.max(this.latestScheduledBlock, block);
     this.totals.blocks++;
     if (this.totals.blocks % 5 === 0) this.market.refresh().catch(() => {});
-    if (this.busy) {
-      this.markLate(block, this.lastBook);
-      return;
-    }
-    this.busy = true;
     const t0 = performance.now();
     try {
+      if (!this.isRunLive()) return;
       const book = this.market.readBook();
       const readMs = performance.now() - t0;
-      this.lastBook = book;
       this.mids.push(book.mid);
       if (this.mids.length > 400) this.mids.shift();
       this.harvest();
-
       this.syncFromVenue();
       const timing = { readMs: Math.round(readMs), loopMs: 0 };
       try {
-        const decision = await this.model.decide(this.buildState(block, book));
+        if (!this.isRunLive()) return;
+        const state = this.buildState(block, book);
+        const decision = await this.model.decide(state);
+        if (!this.isRunLive()) return;
         this.totals.decisions++;
         this.totals.jevUsd += (decision.inputTokens / 1e6) * config.jevUsdPerMTok;
         const plan = planQuote({
           intent: decision.intent,
           bias: decision.bias,
-          positionSz: this.position.sz,
+          positionSz: state.position.side === "long" ? state.position.size : -state.position.size,
           quoteSz: this.market.quoteSize(book.mid),
         });
         timing.loopMs = Math.round(performance.now() - t0);
-        this.emit(block, book, decision, null, false, timing);
+        const stale = block < this.latestScheduledBlock;
+        this.emit(block, book, decision, null, stale, timing);
+        if (stale) return;
         if (plan) this.enqueueQuote(block, decision, plan, book);
         else this.enqueueStandDown();
       } catch (e) {
-        const msg = (e as Error).message;
-        if (jevUnavailable(e)) {
-          console.error(`tick ${block}: jev unavailable, retrying next tick: ${msg}`);
-        } else {
-          console.error(`tick ${block}:`, msg);
-        }
+        const msg = safeTransportMessage(e);
+        if (jevUnavailable(e)) console.error(`tick ${block}: jev unavailable, retrying next tick: ${msg}`);
+        else console.error(`tick ${block}:`, msg);
         this.markLate(block, book, timing);
       }
     } catch (e) {
-      console.error(`tick ${block}:`, (e as Error).message);
-    } finally {
-      this.busy = false;
+      console.error(`tick ${block}:`, safeTransportMessage(e));
     }
   }
 
   private enqueueQuote(block: number, decision: ModelDecision, plan: QuotePlan, book: Book) {
+    if (!this.isRunLive()) return;
     const seq = ++this.sendSeq;
-    this.exchangeTail = this.exchangeTail.catch(() => {}).then(async () => {
-      if (seq !== this.sendSeq) return;
+    this.exchangeTail = this.exchangeTail.catch((error) => {
+      console.error(`${this.market.label} exchange queue:`, safeTransportMessage(error));
+    }).then(async () => {
+      if (seq !== this.sendSeq || !this.isRunLive()) return;
       // An exit skips the leverage write: nothing about it depends on margin, and
       // the extra round trip is pure delay on the one order that has to land now.
       if (!plan.taker) {
+        this.assertRunLive();
         await this.market.setLeverage(decision.leverage);
-        if (seq !== this.sendSeq) return;
+        if (seq !== this.sendSeq || !this.isRunLive()) return;
       }
       const cancel = [...this.orders.keys()].filter((id) => id > 0);
+      this.assertRunLive();
       const quote = await this.market.send(plan.side, plan.size, book, cancel, plan.reduceOnly, plan.taker);
-      if (seq !== this.sendSeq) return;
+      if (seq !== this.sendSeq || !this.isRunLive()) return;
       this.applyPosted(block, quote);
     });
   }
@@ -119,12 +135,24 @@ export class Trader {
   /** Jev held. Pull the standing quote so an order it no longer wants cannot get hit. */
   private enqueueStandDown() {
     const seq = ++this.sendSeq;
-    this.exchangeTail = this.exchangeTail.catch(() => {}).then(async () => {
-      if (seq !== this.sendSeq) return;
+    this.exchangeTail = this.exchangeTail.catch((error) => {
+      console.error(`${this.market.label} exchange queue:`, safeTransportMessage(error));
+    }).then(async () => {
+      if (seq !== this.sendSeq || !this.isRunLive()) return;
+      this.assertRunLive();
       await this.market.cancelResting();
-      if (seq !== this.sendSeq) return;
+      if (seq !== this.sendSeq || !this.isRunLive()) return;
       this.orders.clear();
     });
+  }
+
+  private isRunLive(): boolean {
+    return !this.invalidated && (!this.runGuard || this.runGuard.isLive());
+  }
+
+  private assertRunLive() {
+    if (this.invalidated) throw new Error("trader run is no longer live");
+    this.runGuard?.assertLive();
   }
 
   private markLate(block: number, book: Book | null, timing?: Timing) {
@@ -284,18 +312,16 @@ export class Trader {
     const event: BlockEvent = {
       coin: this.market.coin,
       block, ts: Date.now(), mid: book.mid, bestBid: book.bid, bestAsk: book.ask, spreadBps: round(book.spreadBps, 2),
-      decision: late
-        ? { action: "hold", probabilities: { buy: 0, sell: 0, hold: 1 }, upIn10: 0.5, latencyMs: 0, late: true }
-        : decision && {
-          action: decision.action,
-          intent: decision.intent,
-          bias: decision.bias,
-          leverage: decision.leverage,
-          probabilities: decision.probabilities,
-          upIn10: decision.upIn10,
-          latencyMs: Math.round(decision.latencyMs),
-          late: false,
-        },
+      decision: decision ? {
+        action: decision.action,
+        intent: decision.intent,
+        bias: decision.bias,
+        leverage: decision.leverage,
+        probabilities: decision.probabilities,
+        upIn10: decision.upIn10,
+        latencyMs: Math.round(decision.latencyMs),
+        late,
+      } : null,
       quote,
       fill: null,
       resting: { bidSz: round(this.restingSz("buy"), this.market.szDecimals), askSz: round(this.restingSz("sell"), this.market.szDecimals) },

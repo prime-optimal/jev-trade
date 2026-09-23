@@ -26,12 +26,17 @@
 }
 
 .card:hover {
-  background: var(--surface-hover, #f1f3f4);
+  background: var(--surface-hover);
 }
 
 .active {
   background: var(--panel-2);
   box-shadow: inset 0 3px 0 var(--ink);
+}
+
+.card:focus-visible {
+  position: relative;
+  z-index: 1;
 }
 
 .degraded {

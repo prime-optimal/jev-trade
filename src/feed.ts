@@ -3,7 +3,7 @@ import type { Book } from "./types";
 import { fillDir, type ClearinghouseLike, type FillPnlLike } from "./account";
 import { bookFromLevels } from "./book";
 import { CHART_INTERVAL, VenueChart } from "./chart";
-import { infoPost } from "./hyperliquid";
+import { infoPost, safeTransportMessage } from "./hyperliquid";
 import { parseAssetCtx, type AssetCtx } from "./indicators";
 import { sameCoin } from "./sleeves";
 import { TradeFeed } from "./trades";
@@ -33,21 +33,32 @@ export class Feed {
   private user: `0x${string}` | null = null;
   private ws: WebSocket | null = null;
   private ping: ReturnType<typeof setInterval> | null = null;
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private fallbackTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private closed = false;
+  private suspended = false;
+  private generation = 0;
   private seenTids = new Set<number>();
   private fallbackRunning = false;
 
   constructor(readonly coin: string) {}
 
   async connect(): Promise<void> {
-    await this.snapshot();
-    await this.chart.loadCandles(this.coin).catch((e) => {
-      console.warn(`${this.coin} candles: ${(e as Error).message.slice(0, 160)}`);
+    if (this.closed) throw new Error(`${this.coin} feed is closed`);
+    const generation = ++this.generation;
+    this.suspended = false;
+    await this.snapshot(generation);
+    if (!this.isCurrent(generation)) return;
+    await this.chart.loadCandles(this.coin, Date.now(), () => this.isCurrent(generation)).catch((e) => {
+      console.warn(`${this.coin} candles: ${safeTransportMessage(e).slice(0, 160)}`);
     });
-    this.pollAssetCtx().catch(() => {});
-    this.openSocket();
-    setInterval(() => this.maybeTick(), config.tickMs);
-    setInterval(() => this.runHttpFallback(), config.hyperliquid.fallbackMs);
-    this.pollTrades().catch(() => {});
+    if (!this.isCurrent(generation)) return;
+    this.pollAssetCtx(generation).catch(() => {});
+    this.openSocket(0, generation);
+    this.tickTimer = setInterval(() => { if (this.isCurrent(generation)) this.maybeTick(); }, config.tickMs);
+    this.fallbackTimer = setInterval(() => { if (this.isCurrent(generation)) this.runHttpFallback(generation); }, config.hyperliquid.fallbackMs);
+    this.pollTrades(generation).catch(() => {});
   }
 
   watchUser(user: `0x${string}`) {
@@ -61,35 +72,79 @@ export class Feed {
     this.maybeTick();
   }
 
-  private async snapshot() {
+  stop() {
+    this.onTick = null;
+  }
+
+  suspend() {
+    this.suspended = true;
+    this.generation++;
+    this.stop();
+    clearInterval(this.tickTimer ?? undefined);
+    clearInterval(this.fallbackTimer ?? undefined);
+    clearTimeout(this.reconnectTimer ?? undefined);
+    clearInterval(this.ping ?? undefined);
+    this.tickTimer = null;
+    this.fallbackTimer = null;
+    this.reconnectTimer = null;
+    this.ping = null;
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      ws.onclose = null;
+      ws.onmessage = null;
+      ws.close();
+    }
+  }
+
+  close() {
+    this.closed = true;
+    this.suspend();
+  }
+
+  private isCurrent(generation: number) {
+    return generation === this.generation && !this.closed && !this.suspended;
+  }
+
+  private async snapshot(generation = this.generation) {
     const res = await infoPost({ type: "l2Book", coin: this.coin });
     if (!res.ok) throw new Error(`hl l2Book HTTP ${res.status}`);
     const data = (await res.json()) as { levels?: [{ px: string; sz: string }[], { px: string; sz: string }[]] };
-    if (!data.levels) return;
+    if (!this.isCurrent(generation) || !data.levels) return;
     const next = bookFromLevels(this.tick, data.levels[0] ?? [], data.levels[1] ?? []);
     if (next) this.book = next;
   }
 
-  private openSocket(delay = 0) {
-    setTimeout(() => {
+  private openSocket(delay = 0, generation = this.generation) {
+    if (!this.isCurrent(generation)) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.isCurrent(generation)) return;
       const ws = new WebSocket(config.hyperliquid.wsUrl);
       this.ws = ws;
       ws.onopen = () => {
+        if (!this.isCurrent(generation) || this.ws !== ws) { ws.close(); return; }
         this.send({ method: "subscribe", subscription: { type: "l2Book", coin: this.coin, fast: true } });
         this.send({ method: "subscribe", subscription: { type: "trades", coin: this.coin } });
         this.send({ method: "subscribe", subscription: { type: "candle", coin: this.coin, interval: CHART_INTERVAL } });
         this.send({ method: "subscribe", subscription: { type: "activeAssetCtx", coin: this.coin } });
         this.subscribeUser();
-        if (this.ping) clearInterval(this.ping);
-        this.ping = setInterval(() => this.send({ method: "ping" }), 20_000);
+        clearInterval(this.ping ?? undefined);
+        this.ping = setInterval(() => { if (this.isCurrent(generation)) this.send({ method: "ping" }); }, 20_000);
       };
-      ws.onmessage = (e) => this.onMessage(String(e.data));
+      ws.onmessage = (e) => {
+        if (this.isCurrent(generation) && this.ws === ws) this.onMessage(String(e.data));
+      };
       ws.onclose = () => {
-        if (this.ping) clearInterval(this.ping);
+        if (!this.isCurrent(generation) || this.ws !== ws) return;
+        clearInterval(this.ping ?? undefined);
         this.ping = null;
-        this.openSocket(Math.min(delay + 500, 8_000));
+        this.ws = null;
+        this.openSocket(Math.min(delay + 500, 8_000), generation);
       };
-      ws.onerror = () => ws.close();
+      ws.onerror = () => {
+        if (this.isCurrent(generation) && this.ws === ws) ws.close();
+      };
     }, delay);
   }
 
@@ -165,11 +220,11 @@ export class Feed {
     }
   }
 
-  private async pollAssetCtx() {
+  private async pollAssetCtx(generation = this.generation) {
     const res = await infoPost({ type: "metaAndAssetCtxs" });
     if (!res.ok) return;
     const pair = (await res.json()) as [{ universe?: { name?: string }[] }, unknown[]];
-    if (!Array.isArray(pair) || pair.length < 2) return;
+    if (!this.isCurrent(generation) || !Array.isArray(pair) || pair.length < 2) return;
     const uni = pair[0]?.universe;
     const ctxs = pair[1];
     if (!Array.isArray(uni) || !Array.isArray(ctxs)) return;
@@ -177,19 +232,19 @@ export class Feed {
     if (i >= 0) this.assetCtx = parseAssetCtx(ctxs[i]);
   }
 
-  private async pollTrades() {
+  private async pollTrades(generation = this.generation) {
     const res = await infoPost({ type: "recentTrades", coin: this.coin });
     if (!res.ok) return;
     const prints = (await res.json()) as { px: string; sz: string; side: string; tid?: number }[];
-    if (!Array.isArray(prints)) return;
+    if (!this.isCurrent(generation) || !Array.isArray(prints)) return;
     for (const t of prints) this.ingestPrint(t);
   }
 
-  private async runHttpFallback() {
-    if (!shouldRunHttpFallback(this.ws?.readyState ?? null) || this.fallbackRunning) return;
+  private async runHttpFallback(generation = this.generation) {
+    if (!this.isCurrent(generation) || !shouldRunHttpFallback(this.ws?.readyState ?? null) || this.fallbackRunning) return;
     this.fallbackRunning = true;
     try {
-      await Promise.allSettled([this.snapshot(), this.pollTrades(), this.pollAssetCtx()]);
+      await Promise.allSettled([this.snapshot(generation), this.pollTrades(generation), this.pollAssetCtx(generation)]);
     } finally {
       this.fallbackRunning = false;
     }

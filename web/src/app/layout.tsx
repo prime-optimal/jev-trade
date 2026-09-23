@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { SettingsProvider } from "@/lib/trading/SettingsProvider";
 
 const plex = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -81,15 +82,18 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+const themeBoot = `(function(){var t;try{t=localStorage.getItem("jev-trade:theme:v1")}catch(e){}if(t!=="light"&&t!=="dark"){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==="dark"?"#0b0d10":"#ffffff"})()`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={plex.variable}>
+    <html lang="en" className={plex.variable} suppressHydrationWarning>
       <head>
         <link rel="describedby" href="https://www.jev-trade.com/llms.txt" />
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
       </head>
       <body>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-        {children}
+        <SettingsProvider>{children}</SettingsProvider>
       </body>
     </html>
   );

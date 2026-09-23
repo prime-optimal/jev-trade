@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Market } from "../src/market";
-import type { Model, ModelDecision } from "../src/model";
+import type { Model, ModelDecision, TradeState } from "../src/model";
 import { leverageRungs, liveIntent, parseLeverage, planQuote, quoteAction } from "../src/plan";
 import { jevUnavailable, Trader } from "../src/trader";
 import type { BlockEvent, Book, Quote, Side } from "../src/types";
@@ -107,12 +107,17 @@ class FakeMarket {
   lastOid: number | null = null;
   cancels = 0;
   sendDelayMs = 0;
+  sentSides: Side[] = [];
+  onSend: (() => void) | null = null;
   candleCloses() { return []; }
   refresh() { return Promise.resolve(); }
   readBook() { return book; }
   quoteSize() { return 0.01; }
   setLeverage(n: number) { return Promise.resolve(n); }
+  setRunGuard() {}
   async send(side: Side, size: number, _book: Book, cancel: number[]): Promise<Quote> {
+    this.sentSides.push(side);
+    this.onSend?.();
     if (this.sendDelayMs) await Bun.sleep(this.sendDelayMs);
     this.lastOid = 4242;
     return {
@@ -128,43 +133,51 @@ class FakeMarket {
   }
 }
 
-function desk(model: ScriptModel, market = new FakeMarket()) {
+function desk(model: Model, market = new FakeMarket()) {
   const events: BlockEvent[] = [];
   const trader = new Trader(market as unknown as Market, model, (e) => events.push(e));
   return { trader, market, events };
 }
 
-test("a hold tick pulls an in-flight quote before it can rest", async () => {
-  const model = new ScriptModel();
-  const { trader, market } = desk(model);
-  market.sendDelayMs = 80;
-  model.next = packed({ intent: "open", bias: "long", action: "buy" });
-  const open = trader.onBlock(1);
-  await Bun.sleep(10);
-  model.next = packed({ intent: "hold", bias: "long", action: "hold" });
-  await trader.onBlock(2);
-  await open;
-  await Bun.sleep(120);
-  expect(market.cancels).toBeGreaterThan(0);
-});
 
-test("a busy tick still emits late so the desk can show it", async () => {
-  const model = new ScriptModel();
-  const { trader, events } = desk(model);
-  model.delayMs = 40;
+test("overlapping ticks both ask Jev and an older answer cannot replace the newer order", async () => {
+  let calls = 0;
+  let startFirst!: () => void;
+  let releaseFirst!: () => void;
+  const firstStarted = new Promise<void>((resolve) => { startFirst = resolve; });
+  const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const model: Model = {
+    name: "overlap",
+    async decide(state: TradeState) {
+      calls++;
+      if (state.tick === 1) {
+        startFirst();
+        await firstGate;
+        return packed({ intent: "open", bias: "short", action: "sell" });
+      }
+      return packed({ intent: "open", bias: "long", action: "buy" });
+    },
+  };
+  const { trader, market, events } = desk(model);
+  const newerSent = new Promise<void>((resolve) => { market.onSend = resolve; });
   const first = trader.onBlock(1);
-  await Bun.sleep(5);
+  await firstStarted;
   await trader.onBlock(2);
+  await newerSent;
+  releaseFirst();
   await first;
-  expect(events.some((e) => e.block === 2 && e.decision?.late === true)).toBe(true);
+  expect(calls).toBe(2);
+  expect(events.find((event) => event.block === 1)?.decision?.late).toBe(true);
+  expect(events.find((event) => event.block === 2)?.decision?.action).toBe("buy");
+  expect(market.sentSides).toEqual(["buy"]);
 });
 
-test("a failed Jev call emits late instead of going silent", async () => {
+test("a failed Jev call reports no fabricated Jev decision", async () => {
   const model = new ScriptModel();
   const { events, trader } = desk(model);
   model.next = new Error("boom");
   await trader.onBlock(1);
-  expect(events.some((e) => e.decision?.late === true)).toBe(true);
+  expect(events.find((e) => e.block === 1)?.decision).toBeNull();
 });
 
 test("Jev is asked again on the tick after a credit error", async () => {
@@ -179,4 +192,40 @@ test("Jev is asked again on the tick after a credit error", async () => {
   await trader.onBlock(2);
   expect(calls).toBe(2);
   expect(events.find((e) => e.block === 2)?.decision?.late).toBe(false);
+});
+
+test("invalidation drops an inference result before it can submit", async () => {
+  const model = new ScriptModel();
+  const { trader, market } = desk(model);
+  model.delayMs = 30;
+  model.next = packed({ intent: "open", bias: "long", action: "buy" });
+  const pending = trader.onBlock(1);
+  await Bun.sleep(5);
+  trader.invalidate();
+  await pending;
+  expect(market.lastOid).toBeNull();
+});
+
+test("BTC simulated fill preserves the exact quoted size", () => {
+  const model = new ScriptModel();
+  const market = new FakeMarket();
+  let observed = Number.NaN;
+  const trader = new Trader(
+    market as unknown as Market,
+    model,
+    () => {},
+    (_block, fill) => { observed = fill.size; },
+  );
+  const quoteSize = 0.00045;
+  trader.attachTradeFeed({
+    drainPrints: () => [{ block: 2, price: 99, size: quoteSize, side: "sell" }],
+    drainFills: () => [],
+  } as never);
+  const internals = trader as unknown as {
+    orders: Map<number, { side: Side; price: number; size: number; block: number }>;
+    harvest(): void;
+  };
+  internals.orders.set(-1, { side: "buy", price: 100, size: quoteSize, block: 1 });
+  internals.harvest();
+  expect(observed).toBe(quoteSize);
 });

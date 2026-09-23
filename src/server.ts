@@ -1,5 +1,6 @@
 import { config } from "./config";
 import { clipHistory, clipSnapshotTape, clipTape, TAPE_MIDS } from "./snapshot";
+import type { RunSnapshot } from "./settings";
 import type { BlockEvent, Fill, Meta, PricePoint, Quote, SleeveMeta } from "./types";
 
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*" };
@@ -31,14 +32,27 @@ function jsonMaybeGzip(req: Request, body: unknown, status = 200) {
 
 export type SleeveView = { coin: string; history: () => BlockEvent[]; tape: () => PricePoint[] };
 
-/** GET /snapshot, GET /history, GET /tape, GET /events SSE */
-export function startServer(meta: Meta, sleeves: SleeveView[]) {
+export interface PublicServer {
+  broadcast(e: BlockEvent): void;
+  broadcastQuote(coin: string, block: number, quote: Quote): void;
+  broadcastFill(coin: string, block: number, fill: Fill, ts?: number): void;
+  broadcastRun(run: RunSnapshot): void;
+  broadcastSleeve(sleeve: SleeveMeta): void;
+  broadcastPrice(coin: string, print: { ts: number; mid: number; bestBid: number; bestAsk: number; spreadBps: number }): void;
+}
+
+/** Public read-only market data and authoritative run status. */
+export function startServer(meta: Meta, sleeves: SleeveView[], runSnapshot: () => RunSnapshot): PublicServer {
   const clients = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const enc = new TextEncoder();
   const send = (c: ReadableStreamDefaultController<Uint8Array>, type: string, data: unknown) => {
     try { c.enqueue(enc.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)); } catch { clients.delete(c); }
   };
   setInterval(() => clients.forEach((c) => send(c, "ping", Date.now())), 15_000);
+  const publicMeta = () => {
+    const { model: _operatorModel, ...visible } = meta;
+    return visible;
+  };
 
   const historyByCoin = () => {
     const out: Record<string, BlockEvent[]> = {};
@@ -57,7 +71,7 @@ export function startServer(meta: Meta, sleeves: SleeveView[]) {
       history[s.coin] = clipHistory(s.history());
       tape[s.coin] = clipSnapshotTape(s.tape());
     }
-    return { ...meta, historyByCoin: history, tapeByCoin: tape };
+    return { ...publicMeta(), historyByCoin: history, tapeByCoin: tape };
   };
   const latestByCoin = () => {
     const out: Record<string, BlockEvent | null> = {};
@@ -77,14 +91,16 @@ export function startServer(meta: Meta, sleeves: SleeveView[]) {
 
   Bun.serve({
     port: config.port,
+    idleTimeout: 0,
     fetch(req) {
       const url = new URL(req.url);
       const { pathname } = url;
       if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
-      if (pathname === "/") return json({ ...meta, latestByCoin: latestByCoin() });
+      if (pathname === "/") return json({ ...publicMeta(), latestByCoin: latestByCoin() });
       if (pathname === "/snapshot") return jsonMaybeGzip(req, snap().json);
       if (pathname === "/history") return jsonMaybeGzip(req, historyByCoin());
       if (pathname === "/tape") return jsonMaybeGzip(req, tapeByCoin());
+      if (pathname === "/run" && req.method === "GET") return json(runSnapshot());
       if (pathname === "/events") {
         const lite = url.searchParams.get("lite") === "1";
         const stream = new ReadableStream<Uint8Array>({
@@ -108,6 +124,7 @@ export function startServer(meta: Meta, sleeves: SleeveView[]) {
     broadcast: (e: BlockEvent) => broadcast("block", e),
     broadcastQuote: (coin: string, block: number, quote: Quote) => broadcast("quote", { coin, block, quote }),
     broadcastFill: (coin: string, block: number, fill: Fill, ts?: number) => broadcast("fill", { coin, block, fill, ts }),
+    broadcastRun: (run: RunSnapshot) => broadcast("run", run),
     broadcastSleeve: (sleeve: SleeveMeta) => {
       snapCache = null;
       broadcast("sleeve", { type: "sleeve", sleeve });
