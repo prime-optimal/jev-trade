@@ -1,55 +1,59 @@
 # Trading behavior
 
-## Runs own execution
+## Browser sessions own execution
 
-The Bun process starts its public and private HTTP services and prepares execution resources. In paper mode, process startup arms exactly one timed run after the configured settings and duration have been applied; it starts when the first sleeve becomes ready. A temporarily unavailable sleeve remains visible with its failure and retries while Off until that first ready sleeve starts the run. In real mode, startup remains Off and only the private operator API can start the shared executor after explicit confirmation. Start requires at least one ready sleeve, starts only the available sleeves, and leaves unavailable sleeves retrying without fabricated decisions for their missing feeds.
+The dashboard uses one browser-local session and the #22 feed and trading APIs. Bun handles Jev inference only. Neither Bun nor Next receives wallet, account, or order data or executes orders for dashboard visitors. There is no server-side visitor Worker, server wallet executor, or backend control address in this flow.
 
-Each Start creates a new `runId` and a full configured duration, 30 minutes by default. The lifecycle records authoritative `startedAt`, `deadlineAt`, `stoppedAt`, `durationMs`, and `stopReason` timestamps. An absolute wall-clock deadline and a monotonic deadline guard prevent a clock rollback from extending a run. The scheduled timer is only a wake-up. Guards also reject work after awaited inference and before order submission.
+The browser sends wallet approval requests directly to Brave Wallet and account and exchange requests directly to Hyperliquid. Only `JevRequest` crosses the application boundary through [`web/src/lib/jev.ts`](../web/src/lib/jev.ts), with credentials omitted and no referrer. Wallet identity, account snapshots, and order records must not enter that request.
 
-Expiry invalidates execution immediately, stops scheduling, and runs the same cleanup as manual Off. The cleanup cancels only bot-owned resting orders for the affected coin. It is bounded to ten seconds for the lifecycle response, but a timed-out cleanup keeps running and remains tracked. `attention-required` blocks Start. Reconcile reports that cleanup is still pending until the in-flight work settles, then either completes the transition or retries a failed cleanup.
+Public data stays available while disconnected or stopped. Disabled markets remain visible. Their presence, or a healthy feed connection, is not permission to trade.
 
-Stop does not liquidate an accepted position and does not revoke wallet authorization. Already submitted work may need reconciliation. Expired and manually stopped runs never restart automatically, so the paper startup behavior does not loop. A failed sleeve may recover resources while Off, but it cannot restart an expired or manually stopped run. Restarting the process arms a new paper run rather than restoring the old run; real mode restarts Off and still requires a private, confirmed Start.
+## Connection, authorization, and mode
 
-Live orders carry a stable Jev client-order-ID namespace with the Hyperliquid asset ID. On startup, each coin discovers matching namespaced orders left by an earlier process, reconciles pending order status through the venue, and cleans up only those orders. Orders for another coin and orders without the Jev namespace, including legacy orders, are never canceled by this recovery. The process warns that unidentified orders need manual review.
+Connecting Brave Wallet selects an owner. It does not authorize trading. Agent authorization is a separate explicit wallet action and does not start a run. Changing accounts or networks does not transfer a running session to the new identity.
 
-## Settings and mode
+Paper execution simulates orders and balances locally. It does not submit exchange orders or spend wallet funds. Its account values are simulation values, not a claim about the connected wallet. Real execution requires matching owner and network authorization and explicit confirmation of whole-account net-position management. An unavailable real authorization is an error, not permission to silently fall back to paper.
 
-Local operator Save applies one validated settings snapshot only while Off or Expired. It builds the replacement shared executor and feeds before the new values become applied. A failed replacement is discarded and the previous executor resumes unchanged.
+Account equity and withdrawable balance belong to one owner account, not to each coin. Positions are venue net positions. Real execution can therefore affect an existing position on an enabled market, including exposure opened outside this application. The dashboard shows owner equity once and market-specific positions separately.
 
-Remote visitors do not control that executor. Each visitor gets a keyless paper runtime in a separate Bun Worker. It starts Off and waits for the visitor to configure, Save, and Start. Save applies settings to that Worker. Start, Stop, expiry, history, and simulated positions also belong only to it. A visitor can select official mainnet or testnet market data, assets, duration, and numeric paper controls. Real mode, wallet or transport credentials, custom destinations, and a decision cadence below 30000 ms are rejected.
+## Finite runs
 
-If visitor cleanup reaches `attention-required`, Start remains blocked. Settings offers Reset paper run, which retries reconciliation. Refresh resumes the same Worker and its applied settings. If the capability is removed, the session expires, or the bot restarts, the UI requires an explicit Reconnect. The new session starts Off with defaults and empty history; it cannot recover the prior run.
+Only explicit On or Start begins a fresh run. Duration defaults to 30 minutes and accepts longer valid finite settings. The session computes an absolute deadline. In real mode it also limits the run to the authorization expiry minus a safety margin. The UI countdown displays that deadline; it does not enforce it by itself.
 
-Paper mode remains the default for the shared executor. `DRY_RUN` must be the exact string `false` to select shared real mode from environment configuration. In real mode, a sleeve with no configured wallet key still runs as paper; only keyed sleeves can place real orders. Real Start additionally requires matching official network endpoints, a successful preflight, and explicit confirmation through the local operator channel. Brave Wallet is not part of this implementation.
+Connect, authorize, Save, navigation, reload, reconnection, and visibility changes never start or extend execution. The current session API has no separate pause or Resume operation. There is no automatic resume after reload or recovery. A later explicit On starts a new run rather than restoring the previous deadline.
 
-A custom transport may pass metadata, WebSocket, and SDK RPC connectivity checks for the local operator. Shared real mode remains disabled because the implementation cannot prove a custom endpoint's network identity. Selecting an official endpoint from the other network is rejected.
+Submission guards reject work outside a running session, after its deadline, or against stale market data. Session invalidation prevents late Jev results from placing new orders. A request already submitted to the venue may still need reconciliation.
 
-## Sleeves and wallets
+## Stop, End, and owned-order cleanup
 
-One sleeve is created for each enabled coin. Supported coins are BTC, ETH, SOL, DOGE, and BNB. Wallet resolution follows this order:
+Stop and deadline expiry invalidate execution before cleanup. Ending the session is not an instruction to liquidate positions. Cleanup drains pending exchange work and attempts to cancel only orders recorded as owned by this session. It does not cancel unrelated manual orders or another application's orders.
 
-1. Read coin keys from `.wallets.json`, if present.
-2. Overlay keys from `WALLETS_JSON`.
-3. Use `PRIVATE_KEY` for the first configured coin if that coin has no mapped key.
+Successful cleanup releases local session resources and clears its signing capability. Clearing the browser signer is not revoking the agent at Hyperliquid. Stop and End neither close accepted positions nor promise venue revocation.
 
-Each sleeve has its own `Market`, `Feed`, `Trader`, position, order state, and optional wallet. Paper entries rest in the local order map and match observed trade prints. Paper exits fill immediately at the calculated crossing price.
+Cleanup has a bounded wait. If owned orders remain unresolved or cleanup times out, the session reports attention required and blocks a new run. Reconciliation must settle the uncertain work before execution can start again. An error is not a hold decision or successful cancellation.
+
+The order journal is browser-session state, not a server recovery service. A reload or browser closure must not be presented as proof that venue orders were canceled. Inspect the venue for outstanding orders and positions after an interrupted cleanup.
+
+## Browser lifetime
+
+Execution needs an awake browser, fresh market data, and direct venue connectivity. Visibility, offline, sleep, freshness, and deadline guards stop further execution when detected. Reconnecting or returning to the page does not restart it.
+
+A suspended or closed browser cannot guarantee timely cancellation. Venue positions and resting orders can outlive the tab. There is no server execution fallback, and a finite local deadline is not an exchange-enforced liquidation or cancellation guarantee.
 
 ## What Jev answers
 
-On every scheduled decision tick while Running, [`Trader.onBlock()`](../src/trader.ts) builds a trade state from the latest book, recent mids and trades, position, indicators, venue context, and maximum leverage. It asks Jev for bias, intent, and cross leverage even when an earlier Jev request is still pending. Intent is `open` or `hold` while flat, and `open`, `close`, or `hold` with a position.
+While running, the browser trader asks Jev for the trading decision from the public price feed on each decision tick. Jev chooses buy, sell, or hold; application code does not substitute a forced trade. Hold is a real answer, not a skipped tick.
 
-Only the newest still-live result may execute. A result that returns after a newer tick or after Stop or expiry is stale, so its exchange work is suppressed. The Jev call still occurred and is not rewritten as a hold.
+Only a still-current result in a live session may produce exchange work. Results invalidated by a newer tick, Stop, or expiry cannot place orders. Failed inference and stale results remain distinct from hold.
 
 ## Order mechanics
 
-Entries are post-only Hyperliquid `Alo` limits. The quote moves `QUOTE_INSIDE_TICKS` inside the touch, one tick by default, without crossing the spread. A changed same-side order is modified. An identical order remains unchanged.
+Entries use post-only Hyperliquid `Alo` limits. Exits use reduce-only `Ioc` limits. An exit cancels the session's owned resting entry before submitting its closing order. An unfilled IOC does not leave a resting order.
 
-Exits are reduce-only `Ioc` limits. They cross the far touch by `CLOSE_SLIPPAGE_BPS`, five basis points by default. The market cancels its owned resting entry before an exit. An unfilled IOC leaves no resting order.
+Jev chooses leverage. Real entries apply cross leverage through the direct exchange transport; paper execution records simulated leverage without a venue write. Market enablement, metadata, account readiness, and session guards still apply before submission.
 
-Jev chooses leverage on every decision. The trader writes cross leverage before maker entries unless the venue account already has that value. It skips leverage writes for exits. Paper mode records the normalized leverage without a venue request.
+Paper resting entries match observed market trades. Simulated execution does not establish that a corresponding real order would fill. Paper results and real account state must remain visibly separate.
 
-## Product rules
+## Verification boundary
 
-While Running, Jev makes the trading decision from the price feed on every scheduled Hyperliquid decision tick. Hold is a real Jev answer. It is not a skipped tick. Failed calls are recorded as failures, not presented as hold, and stale overlapping results cannot place orders.
-
-The market stream and dashboard remain available while Off. Their availability never means orders or Jev decisions are running.
+Documentation of the browser session contract is not proof of a completed Brave Wallet approval or live trade. Do not report wallet authorization, real order submission, cleanup, or interruption recovery as verified without an explicit wallet exercise and its observed outcome.
