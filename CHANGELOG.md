@@ -27,6 +27,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added `railway` just recipes: `deploy-plan`, `deploy-infra`, `deploy-setup`, `deploy` and `deploy-status`.
 - Changed the default `TICK_MS` from 2000 to 30000, so each sleeve asks Jev every 30 seconds. The dashboard chart timeframes are unchanged and still only group prices into candles.
 - Removed the 30 second Jev pause after a credit or provider error. The next tick calls Jev again instead of emitting late holds without a call.
+- Slowed the default `PRICE_MS` from 200 to 1000 to reduce dashboard price-event traffic. This setting does not make Hyperliquid requests and does not affect the 30-second Jev cadence.
 - Changed bot startup log separators to plain punctuation.
 - Fixed pre-existing root TypeScript errors with type-only changes in `src/config.ts`, `src/model.ts`, and `src/market.ts`. Root and dashboard typechecks now pass.
 - Updated `.gitignore` so maintainer docs are tracked and local `fnox.local.toml` overrides remain ignored.
@@ -38,6 +39,8 @@ All notable changes to this project are documented here. This changelog starts f
 ### Fixed
 
 - Fixed `dev:web`, which used `bun --cwd web run dev` and printed Bun help instead of starting the dashboard while exiting successfully.
+- Failed sleeve initialization no longer removes the sleeve from the API and dashboard. The bot exposes starting, retrying, and live status, shows the failure in the UI, and retries that sleeve after 30 minutes without restarting healthy sleeves.
+- Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
 
 ## Known issues
 

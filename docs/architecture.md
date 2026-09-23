@@ -11,9 +11,9 @@ This boundary is intentional. Trading and secrets stay in the Bun process, while
 
 ## Startup
 
-[`src/index.ts`](../src/index.ts) calls `loadSleeves()`, then starts each sleeve independently. For each sleeve it creates and connects a `Feed`, initializes a `Market`, creates a `Trader` and `Model`, and registers callbacks. A failed sleeve gets three startup attempts. Startup stops if no sleeve succeeds.
+[`src/index.ts`](../src/index.ts) registers every configured sleeve before initialization, then starts them serially to avoid a burst of Hyperliquid HTTP requests. A successful sleeve becomes live immediately. A failed sleeve remains registered as retrying, exposes its error and next retry time through the API, and retries independently after 30 minutes without restarting healthy sleeves.
 
-After at least one sleeve starts, `index.ts` starts the HTTP and SSE server, then enables each feed's decision callback. One process contains every sleeve.
+The HTTP and SSE server starts before sleeve initialization so the dashboard can show starting and retrying states. One process contains every sleeve.
 
 ## Bot modules
 
@@ -34,7 +34,7 @@ After at least one sleeve starts, `index.ts` starts the HTTP and SSE server, the
 | [`src/model.ts`](../src/model.ts) | `TradeState`, Jev questions and answer mapping, plus real and mock models. |
 | [`src/trader.ts`](../src/trader.ts) | Per-tick decision loop, order queue, simulated positions, totals, and events. |
 | [`src/server.ts`](../src/server.ts) | Bun HTTP server, snapshots, history, tape, and SSE broadcasts. |
-| [`src/index.ts`](../src/index.ts) | Process composition, startup retries, and logging. |
+| [`src/index.ts`](../src/index.ts) | Process composition, sleeve lifecycle wiring, and logging. |
 
 The Jev provider is behind the `Model` interface in [`src/model.ts`](../src/model.ts). See [Jev provider](jev-provider.md) for provider configuration.
 
@@ -61,7 +61,7 @@ flowchart LR
 | Setting | Default | Work performed |
 | --- | ---: | --- |
 | `TICK_MS` | 30000 ms | Advances the local tick, summarizes book and tape state, asks the model, emits a block event, and queues the resulting order action. |
-| `PRICE_MS` | 200 ms | Emits a price event when the mid changes and adds live mids to chart data. It does not ask the model or place an order. |
+| `PRICE_MS` | 1000 ms | Emits a price event when the mid changes and adds live mids to chart data. It does not make a Hyperliquid request, ask the model, or place an order. |
 
 Book WebSocket messages may trigger either cadence when its interval has elapsed. A timer also checks the decision cadence, so a quiet book can still produce ticks.
 

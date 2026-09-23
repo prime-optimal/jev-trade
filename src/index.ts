@@ -3,14 +3,14 @@ import { Feed } from "./feed";
 import { Market } from "./market";
 import { createModel } from "./model";
 import { loadSleeves } from "./sleeves";
-import { startServer, type SleeveView } from "./server";
+import { startServer } from "./server";
+import { createSleeveLifecycle } from "./sleeve-lifecycle";
 import { Trader } from "./trader";
 import type { BlockEvent, Fill, Meta, Quote, Timing } from "./types";
 
 const specs = loadSleeves();
 if (!specs.length) throw new Error("no sleeves");
 
-const views: SleeveView[] = [];
 const first = specs[0]!;
 const meta: Meta = {
   model: config.model,
@@ -26,69 +26,57 @@ const meta: Meta = {
   sleeves: [],
 };
 
-let server: ReturnType<typeof startServer> | undefined;
-const starters: Array<() => void> = [];
+const lifecycle = createSleeveLifecycle({
+  specs,
+  meta,
+  onStatus: (sleeve) => {
+    if (sleeve.coin === first.coin && sleeve.status === "live") meta.wallet = sleeve.wallet;
+    server.broadcastSleeve(sleeve);
+  },
+  initialize: async (spec) => {
+    const feed = new Feed(spec.coin);
+    feed.onPrice = (book) => {
+      server.broadcastPrice(spec.coin, {
+        ts: Date.now(),
+        mid: book.mid,
+        bestBid: book.bid,
+        bestAsk: book.ask,
+        spreadBps: book.spreadBps,
+      });
+    };
+    const market = new Market(feed, spec);
+    await market.init();
+    await feed.connect();
+    const trader = new Trader(
+      market,
+      createModel(),
+      onEvent(spec.coin),
+      onFill(spec.coin),
+      onQuote(spec.coin),
+    );
+    trader.attachTradeFeed(feed.trades);
+    market.onVenueFill = (p) => {
+      server.broadcastFill(spec.coin, 0, {
+        side: p.side,
+        size: p.size,
+        price: p.price,
+        txHash: p.hash ?? null,
+        orderId: 0,
+        simulated: false,
+        dir: p.dir,
+      }, p.ts);
+    };
+    console.log(`sleeve ${spec.label} ${spec.pair} ${config.dryRun || !spec.privateKey ? "DRY RUN" : market.address}`);
+    return {
+      wallet: market.address,
+      view: { coin: spec.coin, history: () => trader.history, tape: () => trader.tape },
+      start: () => feed.start((tick) => trader.onBlock(tick)),
+    };
+  },
+});
 
-for (const spec of specs) {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const feed = new Feed(spec.coin);
-      feed.onPrice = (book) => {
-        server?.broadcastPrice(spec.coin, {
-          ts: Date.now(),
-          mid: book.mid,
-          bestBid: book.bid,
-          bestAsk: book.ask,
-          spreadBps: book.spreadBps,
-        });
-      };
-      await feed.connect();
-      const market = new Market(feed, spec);
-      await market.init();
-      const trader = new Trader(
-        market,
-        createModel(),
-        onEvent(spec.coin),
-        onFill(spec.coin),
-        onQuote(spec.coin),
-      );
-      trader.attachTradeFeed(feed.trades);
-      market.onVenueFill = (p) => {
-        server?.broadcastFill(spec.coin, 0, {
-          side: p.side,
-          size: p.size,
-          price: p.price,
-          txHash: p.hash ?? null,
-          orderId: 0,
-          simulated: false,
-          dir: p.dir,
-        }, p.ts);
-      };
-      views.push({ coin: spec.coin, history: () => trader.history, tape: () => trader.tape });
-      meta.sleeves.push({ coin: spec.coin, pair: spec.pair, label: spec.label, wallet: market.address });
-      if (spec === first) {
-        meta.wallet = market.address;
-        meta.coin = spec.coin;
-        meta.pair = spec.pair;
-        meta.market = spec.pair;
-      }
-      starters.push(() => feed.start((tick) => trader.onBlock(tick)));
-      console.log(`sleeve ${spec.label} ${spec.pair} ${config.dryRun || !spec.privateKey ? "DRY RUN" : market.address}`);
-      lastErr = null;
-      break;
-    } catch (e) {
-      lastErr = e;
-      await Bun.sleep(1000 * (attempt + 1));
-    }
-  }
-  if (lastErr) console.error(`sleeve ${spec.label} failed: ${(lastErr as Error).message}`);
-}
-
-if (!views.length) throw new Error("no sleeves started");
-
-server = startServer(meta, views);
-for (const start of starters) start();
+const server = startServer(meta, lifecycle.views);
+await lifecycle.initializeAll();
 
 console.log(`jev-trade ${meta.sleeves.map((s) => s.label).join(" ")} model=${meta.model}${config.model === "jev" ? ` ${config.jevProvider}` : ""} tick ${config.tickMs}ms price ${config.priceMs}ms quote $${config.quoteUsd} :${config.port}`);
 

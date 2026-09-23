@@ -55,6 +55,34 @@ export default function SleeveStrip({
         const size =
           pos && pos.side !== "flat" ? fmtCoin(pos.size, sleeve.coin, 4) : "";
         const call = lastCallByCoin[sleeve.coin] || (latest?.decision?.late ? "LATE" : "");
+        if (sleeve.status !== "live" || !latest) {
+          const retrying = sleeve.status === "retrying";
+          const statusLine = retrying
+            ? sleeve.retryAt == null ? "Retrying" : `Retrying ${retryTime(sleeve.retryAt)}`
+            : sleeve.status === "starting" ? "Starting" : "Waiting for market data";
+          const detail = retrying ? sleeve.error || "Initialization failed" : "Market data unavailable";
+          return (
+            <button
+              key={sleeve.coin}
+              type="button"
+              className={`${styles.card} ${styles.degraded} ${active ? styles.active : ""}`}
+              onClick={() => onSelect(sleeve.coin)}
+              aria-pressed={active}
+              aria-label={`${displayCoin(sleeve.coin)} unavailable. ${statusLine}. ${detail}`}
+            >
+              <span className={styles.top}>
+                <span className={styles.name}>
+                  <TokenIcon coin={sleeve.coin} />
+                  <span className={styles.label}>{sleeve.label}</span>
+                </span>
+                <span className={styles.mid}>Unavailable</span>
+              </span>
+              <span className={styles.unavailable}>Unavailable</span>
+              <span className={styles.book}>{statusLine}</span>
+              <span className={styles.call} title={detail}>{detail}</span>
+            </button>
+          );
+        }
         return (
           <button
             key={sleeve.coin}
@@ -85,6 +113,12 @@ export default function SleeveStrip({
       })}
     </div>
   );
+}
+
+function retryTime(retryAt: number): string {
+  const date = new Date(retryAt);
+  if (!Number.isFinite(date.getTime())) return "soon";
+  return `at ${date.toISOString().slice(11, 16)} UTC`;
 }
 
 function openPnl(latest: BlockEvent | null | undefined): number {

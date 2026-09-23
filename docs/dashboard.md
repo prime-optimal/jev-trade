@@ -45,9 +45,11 @@ Each component keeps its styles in the same directory as a CSS module.
 
 [`useFeed()`](../web/src/lib/useFeed.ts) first fetches `GET /snapshot` and opens `/events?lite=1`. The lite stream sends a `ready` event instead of duplicating the snapshot. After the first snapshot, the hook fetches `/tape` for deeper chart history.
 
-The reducer keeps state by coin. `block` appends or replaces a decision event. Later `quote` and `fill` events update the matching block. `price` updates the current mark and live candle without creating a decision. The browser keeps at most 1,000 block events and 200,000 tape points per sleeve.
+The reducer keeps state by coin. `block` appends or replaces a decision event. Later `quote` and `fill` events update the matching block. `price` updates the current mark and live candle without creating a decision. `sleeve` updates starting, retrying, and live metadata without a reload. The browser keeps at most 1,000 block events and 200,000 tape points per sleeve.
 
 A 45-second event gap triggers reconnection. Before the first snapshot, the timeout is 90 seconds. Reconnect delay starts at one second and caps at ten seconds. `ping` events keep the connection live.
+
+Every configured sleeve keeps a card even if initialization fails. A retrying card shows that the market is unavailable, the public error summary, and the scheduled retry time. Healthy sleeves continue updating normally while the failed sleeve retries in the background.
 
 ## Shared wire types
 

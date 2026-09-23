@@ -17,6 +17,8 @@
 
 The server serializes each SSE message as an `event` line followed by one JSON `data` line.
 
+Status transitions use the `sleeve` event with `{ type: "sleeve", sleeve: SleeveMeta }`. The dashboard receives starting, retrying, and live transitions without reloading.
+
 ## Common payloads
 
 The canonical interfaces are in [`src/types.ts`](../src/types.ts).
@@ -40,9 +42,14 @@ The canonical interfaces are in [`src/types.ts`](../src/types.ts).
     pair: string;
     label: string;
     wallet: string | null;
+    status: "starting" | "live" | "retrying";
+    error: string | null;
+    retryAt: number | null;
   }>;
 }
 ```
+
+Every configured sleeve is present in `sleeves`, including one that could not initialize. A retrying sleeve includes a public error summary and the Unix millisecond time of its next initialization attempt.
 
 ### `BlockEvent`
 

@@ -34,6 +34,17 @@
   box-shadow: inset 0 3px 0 var(--ink);
 }
 
+.degraded {
+  background: var(--panel-2);
+}
+
+.unavailable {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
 .top {
   display: flex;
   align-items: center;

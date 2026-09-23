@@ -26,6 +26,17 @@ test("loadSleeves follows HL_COINS", () => {
   }
 });
 
+test("loadSleeves includes every default market", () => {
+  const prev = process.env.HL_COINS;
+  delete process.env.HL_COINS;
+  try {
+    expect(loadSleeves().map((s) => s.coin)).toEqual(["BTC", "ETH", "SOL", "DOGE", "BNB"]);
+  } finally {
+    if (prev == null) delete process.env.HL_COINS;
+    else process.env.HL_COINS = prev;
+  }
+});
+
 test("parseWalletsJson reads sleeves array or coin map", () => {
   const keyA = `0x${"aa".repeat(32)}`;
   const keyB = `0x${"bb".repeat(32)}`;
