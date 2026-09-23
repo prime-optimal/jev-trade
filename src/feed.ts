@@ -1,5 +1,5 @@
 import { config } from "./config";
-import type { Book } from "./types";
+import type { Book } from "./legacy-types";
 import { fillDir, type ClearinghouseLike, type FillPnlLike } from "./account";
 import { bookFromLevels } from "./book";
 import { CHART_INTERVAL, VenueChart } from "./chart";

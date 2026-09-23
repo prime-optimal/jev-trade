@@ -1,4 +1,4 @@
-import type { BlockEvent, PricePoint } from "./types";
+import type { BlockEvent, PricePoint } from "./legacy-types";
 
 /** Enough CALLS rows for the first paint. The rest stream in. */
 export const SNAPSHOT_HISTORY = 12;

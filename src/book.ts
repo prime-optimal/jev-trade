@@ -1,4 +1,5 @@
-import type { Book, Side } from "./types";
+import type { Book } from "./legacy-types";
+import type { Side } from "./types";
 import { config } from "./config";
 
 export interface HlLevel { px: string; sz: string }
