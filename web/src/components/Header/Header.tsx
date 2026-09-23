@@ -50,7 +50,7 @@ function clock(value: number): string {
 
 export default function Header({ connection, balance, unrealized, realized }: HeaderProps) {
   const pathname = usePathname();
-  const { settings, scope, run, connection: venueConnection, start, stop, ready } = useSettings();
+  const { settings, scope, sessionState, run, connection: venueConnection, start, stop, ready } = useSettings();
   const [now, setNow] = useState(() => Date.now());
   const [actionError, setActionError] = useState<string | null>(null);
   const status = run.status;
@@ -77,6 +77,11 @@ export default function Header({ connection, balance, unrealized, realized }: He
   }, [clockOffset, now, run.deadlineAt, run.durationMs, run.startedAt, run.stoppedAt, settings.runDurationMinutes, status]);
 
   const statusText = (() => {
+    if (scope === "visitor" && !ready) {
+      if (sessionState === "expired") return "Session expired";
+      if (sessionState === "error") return "Session unavailable";
+      return "Session connecting";
+    }
     const progress = `${clock(timing.elapsed)} / ${clock(timing.duration)}`;
     if (status === "running") return `Running ${progress}`;
     if (status === "starting") return `Starting ${progress}`;
@@ -88,18 +93,18 @@ export default function Header({ connection, balance, unrealized, realized }: He
   })();
 
   const connectionReady = venueConnection?.ok === true && (settings.mode !== "real" || venueConnection.realAllowed);
-  const canStart = scope === "operator" && ready && connectionReady && settings.enabledCoins.length > 0 && (status === "off" || status === "expired");
-  const canStop = scope === "operator" && ready && active && status !== "stopping";
+  const canStart = ready && (scope === "visitor" || connectionReady) && settings.enabledCoins.length > 0 && (status === "off" || status === "expired");
+  const canStop = ready && active && status !== "stopping";
   const switchDisabled = active ? !canStop : !canStart;
-  const switchHint = scope !== "operator"
-    ? "Operator control is available only through the private local channel."
+  const switchHint = !ready
+    ? scope === "visitor" && sessionState === "expired" ? "Reconnect your expired paper session in Settings." : "Trading control is connecting."
     : settings.enabledCoins.length === 0
       ? "Enable at least one asset."
-      : !connectionReady
+      : scope === "operator" && !connectionReady
         ? "Validate a compatible connection before starting."
         : status === "attention-required"
           ? "Resolve the execution warning before starting another run."
-          : undefined;
+          : scope === "visitor" ? "Controls this visitor paper session only." : undefined;
 
   async function toggleRun() {
     setActionError(null);

@@ -1,6 +1,7 @@
+import { createGateway } from "@ai-sdk/gateway";
 import { experimental_evaluate as evaluate } from "ai";
 import { TypeSafeClient } from "@typesafe-ai/sdk";
-import { assertJevCredentials, config, OPENROUTER_BASE_URL, type JevProvider } from "./config";
+import { assertJevCredentials, config, OPENROUTER_BASE_URL, runtimeEnv, type JevProvider } from "./config";
 import { leverageRungs, liveIntent, parseLeverage, quoteAction, type Bias, type Intent } from "./plan";
 import type { Action, Side } from "./types";
 
@@ -301,20 +302,21 @@ export function decideFromJevAnswers(
   });
 }
 
+const gateway = createGateway({ apiKey: runtimeEnv.AI_GATEWAY_API_KEY });
 let typesafe: TypeSafeClient | undefined;
 let openrouter: TypeSafeClient | undefined;
 
 function sdkClient(provider: Exclude<JevProvider, "gateway">): TypeSafeClient {
   if (provider === "openrouter") {
     return (openrouter ??= new TypeSafeClient({
-      apiKey: process.env.OPENROUTER_API_KEY,
+      apiKey: runtimeEnv.OPENROUTER_API_KEY,
       baseURL: OPENROUTER_BASE_URL,
       defaultModel: config.jevModelId,
       retry: { maxRetries: 0 },
     }));
   }
   return (typesafe ??= new TypeSafeClient({
-    apiKey: process.env.TYPESAFE_API_KEY,
+    apiKey: runtimeEnv.TYPESAFE_API_KEY,
     defaultModel: config.jevModelId,
     retry: { maxRetries: 0 },
   }));
@@ -338,7 +340,7 @@ async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputT
   const run = async () => {
     if (config.jevProvider === "gateway") {
       const r = await evaluate({
-        model: config.jevModelId,
+        model: gateway.evaluationModel(config.jevModelId),
         state: seen as never,
         questions: qs,
         maxRetries: 0,
@@ -418,6 +420,6 @@ export class MockModel implements Model {
 
 export const createModel = (): Model => {
   if (config.model !== "jev") return new MockModel();
-  assertJevCredentials(config.model, config.jevProvider, process.env);
+  assertJevCredentials(config.model, config.jevProvider, runtimeEnv);
   return new JevModel();
 };

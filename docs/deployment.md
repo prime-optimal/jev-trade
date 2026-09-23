@@ -97,19 +97,24 @@ DRY_RUN=true
 
 After deployment:
 
-1. Request the bot public URL and confirm `/` returns HTTP 200.
-2. Open the web public URL and confirm the dashboard receives the live feed.
-3. Confirm the bot remains on testnet and dry-run before adding wallet funds.
+1. Request the bot Railway endpoint and confirm `/` returns HTTP 200.
+2. Open the web Railway endpoint and confirm it receives the shared feed.
+3. Create a visitor session through the web endpoint, save paper settings, and exercise Start and Stop.
+4. Confirm the bot remains on testnet and dry-run before adding wallet funds.
 
-With these paper-mode defaults, each bot process starts one configured-duration run when its first sleeve becomes ready. Expiry or manual Stop does not loop into another run; restarting the process creates a new paper run. A real-mode process starts Off and requires explicit confirmation through the private operator API. The public Railway dashboard remains a read-only guest view.
+Deploy this feature as a matched bot and web version. The bot provides the Worker registry and `/sessions` routes; the web service provides the cookie gateway and visitor UI. Updating only one service leaves the visitor path incompatible. Do not treat the unrelated `www` Vercel host as proof of the Railway deployment. Verify the actual Railway endpoints first, then connect or promote any external hostname separately.
+
+With the safe paper defaults, the shared bot process still starts one configured-duration run when its first sleeve becomes ready. Visitor Workers start Off and require their own Save and Start flow. Shared expiry or manual Stop does not loop into another run. Shared real mode still requires explicit confirmation through the private local operator API.
 
 Railway documents generated domains under [public networking](https://docs.railway.com/networking/public-networking) and health checks under [deployment health checks](https://docs.railway.com/deployments/healthchecks).
 
 ## Dashboard API address
 
-The web service sets `NEXT_PUBLIC_API_URL` from `bot.env.RAILWAY_PUBLIC_DOMAIN` in [the IaC graph](../.railway/railway.ts#L70-L72). Railway resolves that service reference to the bot's generated host. [`web/src/app/page.tsx`](../web/src/app/page.tsx#L16-L17) adds `https://` when the value has no scheme.
+The web service sets `NEXT_PUBLIC_API_URL` from `bot.env.RAILWAY_PUBLIC_DOMAIN` in [the IaC graph](../.railway/railway.ts#L77-L79). Railway resolves that service reference to the bot's generated host. Browser code uses this value for the shared read-only feed. The server-side visitor gateway uses the runtime `BOT_API_URL` when present and otherwise falls back to `NEXT_PUBLIC_API_URL`.
 
-Railway exposes variables during builds as well as runtime. Next compiles `NEXT_PUBLIC_API_URL` into browser JavaScript during `bun run build`. If the bot domain changes, rebuild and redeploy `web`; restarting the existing web deployment is not enough. See [Railway variable references](https://docs.railway.com/variables/reference) and [build and start commands](https://docs.railway.com/builds/build-and-start-commands).
+Set `BOT_API_URL` when the server-side route needs a different bot address, for example an internal Railway URL. It must be an HTTP or HTTPS base URL without credentials, query, or fragment. `NEXT_PUBLIC_API_URL` is available during the Next build and is compiled into browser JavaScript. If that public bot domain changes, rebuild and redeploy `web`; restarting the old deployment is not enough. A `BOT_API_URL`-only change is a runtime setting.
+
+Production visitor mutations pass through Next. The gateway stores the session capability in an HttpOnly, Secure, SameSite=Strict cookie scoped to `/api/session`. It accepts a mutation only when `Origin` exactly matches the public origin formed from `Host` and `X-Forwarded-Proto`. Preserve those headers through Railway's proxy and verify this check at the real web Railway endpoint.
 
 ## Watch patterns
 
@@ -119,16 +124,18 @@ Railway matches every watch pattern from the repository root, even when a servic
 
 ## Single-bot safety
 
-The wallet-owning bot must have one active process. Check all of these before every live deployment:
+The bot must have one active process. This protects both wallet ownership and the in-memory visitor registry:
 
 - Keep `bot-data` attached at `/data`. A Railway volume prevents old and new deployments of the same service from running at the same time, so deploys have brief downtime.
-- Keep bot replicas at 1. Railway does not support replicas with a mounted volume.
+- Keep bot replicas at 1. Railway does not support replicas with a mounted volume, and visitor capabilities cannot route across independent registries.
 - Do not create a second Railway environment, PR environment, or service with the same wallet keys.
 - Do not run a local live bot against wallets used by production.
 - Scope `PRIVATE_KEY` and `WALLETS_JSON` to the production `bot` service. Never add them as shared variables or web variables.
-- Accept deploy downtime. Preventing duplicate orders is more important than a zero-downtime handoff.
+- Accept deploy downtime. Restarting the bot expires every visitor session; visitors reconnect to a fresh Off worker.
 
-`overlapSeconds: 0` and `drainingSeconds: 0` reduce handoff time, but the mounted volume is what enforces stop-before-start behavior. See the Railway [volume reference](https://docs.railway.com/volumes/reference) and [deployment reference](https://docs.railway.com/deployments/reference).
+Each active visitor consumes a Bun Worker, venue connections, memory, and model calls while running. Defaults cap the registry at 8 sessions, expire it after 10 idle minutes, allow 2 SSE streams per session, limit creation to burst 8 and refill 16 per minute, cap request bodies at 64 KiB, and enforce a 30-second Start cooldown and 30000 ms minimum decision cadence.
+
+`overlapSeconds: 0` and `drainingSeconds: 0` reduce handoff time, but the mounted volume enforces stop-before-start behavior. See the Railway [volume reference](https://docs.railway.com/volumes/reference) and [deployment reference](https://docs.railway.com/deployments/reference).
 
 ## Going live
 

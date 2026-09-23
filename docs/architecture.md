@@ -11,9 +11,11 @@ This boundary is intentional. Trading and secrets stay in the Bun process, while
 
 ## Startup
 
-[`src/index.ts`](../src/index.ts) registers every configured sleeve before initialization, then prepares them serially to avoid a burst of Hyperliquid HTTP requests. Immutable symbol and leverage metadata is fetched once and shared across every sleeve. A successful sleeve becomes live immediately. A failed sleeve remains registered as retrying, exposes its error and next retry time through the API, and retries independently after 30 minutes without restarting healthy sleeves.
+[`src/index.ts`](../src/index.ts) creates one reusable execution runtime for the shared executor, registers every configured sleeve, and prepares sleeves serially to avoid a burst of Hyperliquid HTTP requests. Immutable symbol and leverage metadata is fetched once and shared across its sleeves. A successful sleeve becomes live immediately. A failed sleeve remains registered as retrying and retries independently after 30 minutes without restarting healthy sleeves.
 
-The HTTP and SSE server starts before sleeve initialization so the dashboard can show starting and retrying states. In paper mode, startup arms one timed run after settings are applied and starts it when the first sleeve is ready. Failures remain Off and retry until then. In real mode, startup remains Off and a private operator may start when at least one sleeve is ready. Healthy sleeves run independently, while recovered sleeves join only if that same run is still active. Expiry or manual Stop never starts another run; restarting the process arms a new paper run. One process contains every sleeve.
+The HTTP and SSE server starts before shared sleeve initialization. In shared paper mode, startup arms one timed run after settings are applied and starts it when the first sleeve is ready. Shared real mode remains Off until a private operator starts it. Expiry or manual Stop never starts another shared run.
+
+The same bot process owns a registry of isolated visitor sessions. Creating a session starts a keyless paper execution runtime in its own Bun Worker and loopback HTTP server. That Worker starts Off. The registry authenticates each nested session request with its opaque capability, proxies it only to the matching Worker, and disposes idle Workers. The shared executor and visitor Workers reuse the runtime and serializers but do not share lifecycle, settings, history, or trades.
 
 ## Bot modules
 
@@ -35,6 +37,10 @@ The HTTP and SSE server starts before sleeve initialization so the dashboard can
 | [`src/trader.ts`](../src/trader.ts) | Per-tick decision loop, order queue, simulated positions, totals, and events. |
 | [`src/server.ts`](../src/server.ts) | Bun HTTP server, snapshots, history, tape, and SSE broadcasts. |
 | [`src/index.ts`](../src/index.ts) | Process composition, sleeve lifecycle wiring, and logging. |
+| [`src/execution-runtime.ts`](../src/execution-runtime.ts) | Reusable executor assembly for the shared bot and isolated visitor Workers. |
+| [`src/paper-sessions.ts`](../src/paper-sessions.ts) | In-memory visitor registry, capability routing, capacity, rate, body, stream, and idle limits. |
+| [`src/paper-session-worker.ts`](../src/paper-session-worker.ts) | Keyless visitor runtime with explicitly injected environment before runtime imports. |
+| [`src/paper-session-guard.ts`](../src/paper-session-guard.ts) | Paper-only, official-endpoint, credential-free visitor request restrictions. |
 
 The Jev provider is behind the `Model` interface in [`src/model.ts`](../src/model.ts). See [Jev provider](jev-provider.md) for provider configuration.
 
@@ -68,6 +74,8 @@ Book WebSocket messages may trigger either local cadence when its interval has e
 
 ## State and persistence
 
-Trading state is process memory: `Trader.history`, recent mids, pending orders, simulated positions, totals, feed trade buffers, chart points, connected SSE clients, and the snapshot cache. History is capped by `historySize`, currently 1,000 block events per sleeve. Feed and chart buffers have their own caps.
+Shared trading state is process memory: `Trader.history`, recent mids, pending orders, simulated positions, totals, feed trade buffers, chart points, connected SSE clients, and the snapshot cache. History is capped by `historySize`, currently 1,000 block events per sleeve. Feed and chart buffers have their own caps.
 
-The bot does not persist this state to a database or local runtime file. On restart it reloads venue candles, user fills, and clearinghouse state. For live sleeves it fetches its existing open orders for the coin and cancels them. The optional `.wallets.json` file is configuration, not trading-state persistence.
+The visitor registry and every visitor runtime also live only in bot process memory. Each visitor owns a separate Worker, execution runtime, market connections, settings, run lifecycle, and buffers. The default registry holds at most 8 sessions and expires a session after 10 minutes without a request. This isolation has real memory, connection, and model-inference cost, so the limits are part of the runtime design. The bot service must stay at one replica because the registry is not shared across processes.
+
+The bot does not persist this state to a database or local runtime file. A bot restart loses all visitor capabilities and sessions. Visitors must Reconnect and begin with a new Off worker. The shared executor reloads venue candles, user fills, and clearinghouse state. For live sleeves it fetches existing open orders for the coin and cancels only its own orders. The optional `.wallets.json` file is configuration, not trading-state persistence.

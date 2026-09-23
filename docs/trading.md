@@ -14,11 +14,15 @@ Live orders carry a stable Jev client-order-ID namespace with the Hyperliquid as
 
 ## Settings and mode
 
-Operator Save applies one validated settings snapshot only while Off or Expired. It builds the replacement executor and its feeds before the new values become applied. A failed replacement is discarded and the previous executor is resumed unchanged; its retry callbacks cannot run inside the replacement transaction. Guest browser settings do not affect Bun execution.
+Local operator Save applies one validated settings snapshot only while Off or Expired. It builds the replacement shared executor and feeds before the new values become applied. A failed replacement is discarded and the previous executor resumes unchanged.
 
-Paper mode is the default. `DRY_RUN` must be the exact string `false` to select real mode from environment configuration. In real mode, a sleeve with no configured wallet key still starts and runs in paper mode with simulated fills; only keyed sleeves can place real orders. Real Start additionally requires matching official network endpoints, a successful preflight, and explicit confirmation. Brave Wallet is not part of this implementation.
+Remote visitors do not control that executor. Each visitor gets a keyless paper runtime in a separate Bun Worker. It starts Off and waits for the visitor to configure, Save, and Start. Save applies settings to that Worker. Start, Stop, expiry, history, and simulated positions also belong only to it. A visitor can select official mainnet or testnet market data, assets, duration, and numeric paper controls. Real mode, wallet or transport credentials, custom destinations, and a decision cadence below 30000 ms are rejected.
 
-A custom transport may pass metadata, WebSocket, and SDK RPC connectivity checks. Real mode remains disabled because the implementation cannot prove a custom endpoint's network identity. Selecting an official endpoint from the other network is rejected.
+If visitor cleanup reaches `attention-required`, Start remains blocked. Settings offers Reset paper run, which retries reconciliation. Refresh resumes the same Worker and its applied settings. If the capability is removed, the session expires, or the bot restarts, the UI requires an explicit Reconnect. The new session starts Off with defaults and empty history; it cannot recover the prior run.
+
+Paper mode remains the default for the shared executor. `DRY_RUN` must be the exact string `false` to select shared real mode from environment configuration. In real mode, a sleeve with no configured wallet key still runs as paper; only keyed sleeves can place real orders. Real Start additionally requires matching official network endpoints, a successful preflight, and explicit confirmation through the local operator channel. Brave Wallet is not part of this implementation.
+
+A custom transport may pass metadata, WebSocket, and SDK RPC connectivity checks for the local operator. Shared real mode remains disabled because the implementation cannot prove a custom endpoint's network identity. Selecting an official endpoint from the other network is rejected.
 
 ## Sleeves and wallets
 

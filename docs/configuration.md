@@ -1,6 +1,6 @@
 # Configuration
 
-The Bun process reads environment values at startup, then exposes an operator-only session settings layer. The dashboard keeps guest preferences separately. Neither settings path writes `.env` or Railway variables.
+The Bun process reads environment values at startup, then exposes two settings layers. A local operator controls the shared executor through the loopback listener. Each remote visitor controls a separate keyless paper Worker through the session gateway. Neither path writes `.env` or Railway variables.
 
 ## Environment variables
 
@@ -38,18 +38,21 @@ The Bun process reads environment values at startup, then exposes an operator-on
 | `CONTROL_HOST` | `127.0.0.1:<CONTROL_PORT>` | No | Exact accepted Host header. It must name a loopback host and the configured control port. |
 | `NEXT_PUBLIC_API_URL` | Page hostname on port `3000` | No | Browser-visible public bot API. A bare host gets `https://`. Set it before a production dashboard build. |
 | `NEXT_PUBLIC_OPERATOR_API_URL` | `http://127.0.0.1:3002` on localhost pages, otherwise disabled | No | Optional browser-visible operator base URL. Set it only for an explicitly arranged local channel. It does not add authentication or make remote exposure safe. |
+| `BOT_API_URL` | `NEXT_PUBLIC_API_URL` | No | Server-side bot base URL used by the Next visitor-session gateway. Prefer this runtime override when it differs from the browser-visible API URL. |
 
 Bun loads the root `.env` automatically. Copy [`.env.example`](../.env.example) for bot values and [`web/.env.example`](../web/.env.example) for browser build values. Do not commit live credentials.
 
-## Settings and operator boundary
+## Settings and control boundaries
 
-The public server on `PORT` is read-only. It publishes market data and authoritative run state, but it cannot apply settings or start and stop the shared wallet. Do not reverse proxy the control listener into the public site.
+The shared public endpoints on `PORT` remain read-only. They publish market data and authoritative shared run state. Visitor mutations under `/sessions` require the opaque capability for that visitor's Worker and never reach the shared executor. Do not reverse proxy the loopback operator listener into the public site.
 
 The operator listener binds only to `127.0.0.1`. It checks the peer address, exact Host header, and exact Origin for mutations. Use it from the local dashboard. An SSH tunnel is suitable only when both dashboard and control ports remain local loopback endpoints and the configured origin and host still match. Never expose port 3002 to a LAN or the internet.
 
 The operator response includes non-secret model and provider configuration, whether provider and wallet secrets exist, the environment baseline, and session override names. It never returns wallet keys, provider keys, or the transport key. Credential-bearing endpoint paths and query strings are redacted from operator responses.
 
-Save applies one validated operator snapshot while stopped and rebuilds execution resources as an all-or-nothing replacement. A failed replacement leaves the prior settings and executor in place. On process startup, paper mode applies the configured settings and duration, then arms one run that starts when the first sleeve is ready; transient resource failures remain published and retry while Off until then. Expiry and manual Stop do not arm another run, while restarting the process creates a new paper run. Real mode always starts Off and requires a private, explicitly confirmed Start. Cancel changes only the draft. Guest Save writes browser preferences and never changes Bun, and the public server remains read-only.
+Local operator Save applies one validated snapshot while stopped and rebuilds shared execution resources as an all-or-nothing replacement. A failed replacement leaves the prior settings and executor in place. On process startup, shared paper mode applies the configured settings and duration, then arms one run that starts when the first sleeve is ready. Expiry and manual Stop do not arm another run. Shared real mode always starts Off and requires a private, explicitly confirmed Start.
+
+Each remote visitor Worker starts Off. Visitor Save applies the snapshot to that Worker, not only to browser storage. Start and Stop control only that Worker. Visitor settings are paper-only, use official mainnet or testnet transports, reject credentials and custom destinations, and enforce a minimum 30000 ms decision cadence.
 
 ## Transport validation
 
@@ -63,13 +66,15 @@ The API key is scoped to Hyperliquid HTTP info and exchange requests. The separa
 
 The validator rejects a selected network paired with the other network's official API, WebSocket, or RPC endpoint. A fully official matching endpoint set establishes network identity. A custom set can pass connectivity checks, but its network identity cannot be proven, so real trading remains disabled. There is no fallback to official endpoints after a custom endpoint fails.
 
-## Browser persistence
+## Visitor sessions and browser persistence
 
-Validated guest settings use `jev-trade:settings:v1:<network>:guest`. A future lowercase wallet owner uses `jev-trade:settings:v1:<network>:<owner>`. The first load for an owner copies guest values only when that owner has no saved value. Existing owner settings remain isolated.
+The bot keeps the visitor registry and every visitor Worker in process memory. The default limit is 8 concurrent sessions. A session expires after 10 minutes without a request, permits 2 SSE streams, accepts request bodies up to 64 KiB, limits creation to a burst of 8 with a refill of 16 per minute, and applies a 30-second Start cooldown. Restarting the bot discards every visitor session, run, setting, and history.
 
-The selected network uses `jev-trade:network:v1`. Theme uses `jev-trade:theme:v1`. Theme is browser-wide and may change while trading runs. If storage is unavailable, settings remain in memory and the page warns that they will not survive a refresh.
+Next stores the opaque capability in an HttpOnly, SameSite=Strict cookie under `/api/session`; production adds Secure. Mutations require an Origin equal to the public origin reconstructed from the exact Host and forwarded protocol. A refresh resumes the same Worker and applied settings while the capability remains valid.
 
-Transport API keys are memory-only. RPC overrides are memory-only. HTTP and WebSocket URLs with query strings or provider base paths are also memory-only because they may contain credentials. Run state, wallet keys, and provider credentials are never stored in browser settings.
+If the session is deleted, expires, or is lost on bot restart, the UI requires a manual Reconnect. It does not silently replace the session. Reconnect creates a fresh Off Worker with defaults, empty history, and all five supported coins.
+
+The selected network uses `jev-trade:network:v1`, and theme uses `jev-trade:theme:v1`. Transport API keys, RPC overrides, credential-bearing URLs, run state, wallet keys, and provider credentials are never stored in the browser. Visitor scope does not accept any of those transport or wallet values.
 
 ## Secret sources
 
