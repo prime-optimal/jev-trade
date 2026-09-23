@@ -26,12 +26,31 @@ The `railway` group in the [`justfile`](../justfile) wraps the flow below. Every
 |---|---|
 | `just deploy-plan` | `railway config plan` for `.railway/railway.ts`. Read-only. |
 | `just deploy-infra` | Runs the plan, then `railway config apply`, which asks for confirmation. |
-| `just deploy-setup` | Reads `OPENROUTER_API_KEY` through fnox, writes it to the bot service from stdin without triggering a deploy, then creates or prints both public domains. Approve the 1Password prompt when it appears. |
 | `just deploy-setup` | Reads required secrets through fnox, writes preserved bot secrets without triggering a deploy, then creates or prints both public domains. Approve the 1Password prompt when it appears. |
 | `just deploy` | Runs `just check`, uploads this checkout to `bot` and `web` with `railway up --ci`, streams each build, then prints status. Use it to ship a branch before it merges. |
 | `just deploy-status` | Latest deployment status for `bot` and `web`. |
 
 Both services track GitHub `main`, so a merged push to `main` redeploys whichever service's watch patterns match. `just deploy` is for code that is not on `main` yet. The next push to `main` replaces that upload.
+
+## Merge gate
+
+Because a merge to `main` deploys, [`.github/workflows/test.yml`](../.github/workflows/test.yml) has to prove the merged commit builds, not just that it passes tests. It runs two jobs on every pull request and on pushes to `main`:
+
+- `test` installs both workspaces with `--frozen-lockfile` on the pinned Bun version, runs `bun test`, typechecks the bot and the dashboard, then builds the dashboard.
+- `build` installs a pinned Railpack, starts a pinned BuildKit container, and runs `railpack build` for the bot context (`.`) and the dashboard context (`web`).
+
+Both jobs are required status checks on `main`, so a pull request with a red build cannot be merged through the normal path. `enforce_admins` is off, so a repository admin can still merge past a failure when an emergency demands it. Force pushes and branch deletion on `main` are disabled.
+
+The `build` job runs against `actions/checkout`, which is the git tree. That is what makes it trustworthy: a local `railpack build` reads the working directory, so untracked files such as a local `mise.toml` or agent scaffolding enter the plan and get installed into the image even though Railway's GitHub source never contains them. Reproduce a CI build locally by exporting a commit first:
+
+```sh
+git archive HEAD | tar -x -C /tmp/jev-clean
+docker run --rm --privileged -d --name buildkit moby/buildkit:v0.33.0
+BUILDKIT_HOST='docker-container://buildkit' railpack build --name jev-bot /tmp/jev-clean
+BUILDKIT_HOST='docker-container://buildkit' railpack build --name jev-web /tmp/jev-clean/web
+```
+
+`git archive HEAD` exports the last commit, not the working tree, so commit before using it as a check. Railway does not pin a Railpack builder version, so neither the CI build nor a local build is a byte-for-byte reproduction of a Railway build. Both catch the failures that matter: detection changes, lockfile drift, and build command errors.
 
 First deploy of a fresh project:
 

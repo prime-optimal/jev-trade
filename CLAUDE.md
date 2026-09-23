@@ -68,3 +68,9 @@ The demo is a live Jev trading bot on Hyperliquid. Every design or strategy chan
 Non-negotiables: Jev makes the buy/sell call (not code), from the price feed; real trades from a real wallet; a Jev decision every tick, not every N ticks. The demo is the live dashboard. No middle dots, em dashes or en dashes in any rendered text. No blinking or pulsing indicators.
 
 Hold is one of Jev's answers, so a tick can end with no order. That is Jev's call, not the code skipping a tick, and the decision still happens every tick. Do not reintroduce a forced buy or sell just to keep an order on the book.
+
+## GitHub workflow
+
+- Repository: https://github.com/prime-optimal/jev-trade
+- Project: [Jev Trade #10](https://github.com/users/prime-optimal/projects/10)
+- Planning labels: `feat`, `chore`
