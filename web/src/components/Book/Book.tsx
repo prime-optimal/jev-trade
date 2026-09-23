@@ -1,337 +1,52 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { BlockEvent, Meta, PricePoint, SleeveMeta } from "@/lib/types";
-import { closedLots, tapeFills } from "@/lib/fills";
-import { roePct } from "@/lib/pnl";
-import { displayCoin, fmtClock, fmtCoin, fmtPct, fmtPrice, fmtSignedUsd, fmtUsd, shortTx, txUrl } from "@/lib/format";
-import { Bone } from "@/components/Skeleton/Skeleton";
+import { useState } from "react";
+import { displayCoin, fmtClock, fmtPrice, fmtSignedUsd } from "@/lib/format";
+import { useSettings } from "@/lib/trading/SettingsProvider";
 import styles from "./Book.module.css";
 
-type Tab = "positions" | "trades" | "history";
+const TABS = ["positions", "fills", "orders", "history"] as const;
+type Tab = typeof TABS[number];
 
-const TRADE_CAP = 200;
-
-function fmtSize(size: number): string {
-  if (size > 0 && size < 0.01) {
-    return size.toLocaleString("en-US", { maximumFractionDigits: 5, minimumFractionDigits: 3 });
-  }
-  return size.toLocaleString("en-US", { maximumFractionDigits: 4 });
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+function numeric(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (value === "") return null;
+  const result = Number(value);
+  return Number.isFinite(result) ? result : null;
 }
 
-export default function Book({
-  sleeves,
-  latestByCoin,
-  tapeByCoin,
-  selected,
-  meta,
-  onSelect,
-  onNeedMoreTape,
-  waiting = false,
-}: {
-  sleeves: SleeveMeta[];
-  latestByCoin: Record<string, BlockEvent | null>;
-  tapeByCoin: Record<string, PricePoint[]>;
-  selected: string;
-  meta?: Meta | null;
-  onSelect: (coin: string) => void;
-  onNeedMoreTape?: () => void;
-  waiting?: boolean;
-}) {
+export default function Book({ selected, onSelect }: { selected: string; onSelect: (coin: string) => void }) {
+  const { wallet, account, fills, session, settings } = useSettings();
   const [tab, setTab] = useState<Tab>("positions");
-  const [allMarkets, setAllMarkets] = useState(false);
+  const positions = account ? Object.entries(account.positions).filter(([, position]) => position.size !== 0) : [];
+  const journal = session?.orders ?? [];
+  const orders = tab === "orders" ? journal.filter((order) => ["pending", "open", "unknown"].includes(order.state)) : journal;
+  const market = (coin: string) => <button type="button" className={styles.scopeBtn} aria-pressed={selected === coin} onClick={() => onSelect(coin)}>{displayCoin(coin)}{settings.enabledCoins.some((enabled) => enabled === coin) ? "" : " (disabled)"}</button>;
+  const labels: Record<Tab, string> = { positions: "Account positions", fills: "Account fills", orders: "Session orders", history: "Session history" };
 
-  const trades = useMemo(() => {
-    const rows = [];
-    for (const sleeve of sleeves) {
-      if (!allMarkets && sleeve.coin !== selected) continue;
-      for (const fill of tapeFills(tapeByCoin[sleeve.coin] ?? [])) {
-        rows.push({ ...fill, coin: sleeve.coin });
-      }
-    }
-    rows.sort((a, b) => b.ts - a.ts);
-    return rows.slice(0, TRADE_CAP);
-  }, [allMarkets, selected, sleeves, tapeByCoin]);
-
-  const history = useMemo(() => {
-    const rows = [];
-    for (const sleeve of sleeves) {
-      if (!allMarkets && sleeve.coin !== selected) continue;
-      for (const lot of closedLots(tapeFills(tapeByCoin[sleeve.coin] ?? []))) {
-        rows.push({ ...lot, coin: sleeve.coin });
-      }
-    }
-    rows.sort((a, b) => b.ts - a.ts);
-    return rows.slice(0, TRADE_CAP);
-  }, [allMarkets, selected, sleeves, tapeByCoin]);
-
-  return (
-    <section className={styles.wrap}>
-      <div className={styles.tabs} role="tablist" aria-label="Account book">
-        <button
-          type="button"
-          className={tab === "positions" ? styles.tabOn : styles.tab}
-          role="tab"
-          aria-selected={tab === "positions"}
-          onClick={() => setTab("positions")}
-        >
-          Positions
-        </button>
-        <button
-          type="button"
-          className={tab === "trades" ? styles.tabOn : styles.tab}
-          role="tab"
-          aria-selected={tab === "trades"}
-          onClick={() => {
-            setTab("trades");
-            onNeedMoreTape?.();
-          }}
-        >
-          Trades
-        </button>
-        <button
-          type="button"
-          className={tab === "history" ? styles.tabOn : styles.tab}
-          role="tab"
-          aria-selected={tab === "history"}
-          onClick={() => {
-            setTab("history");
-            onNeedMoreTape?.();
-          }}
-        >
-          History
-        </button>
-        {tab === "trades" || tab === "history" ? (
-          <span className={styles.scope}>
-            <button
-              type="button"
-              className={allMarkets ? styles.scopeBtn : styles.scopeOn}
-              onClick={() => setAllMarkets(false)}
-            >
-              {displayCoin(selected)}
-            </button>
-            <button
-              type="button"
-              className={allMarkets ? styles.scopeOn : styles.scopeBtn}
-              onClick={() => setAllMarkets(true)}
-            >
-              All
-            </button>
-          </span>
-        ) : null}
-      </div>
-      {tab === "positions" ? (
-        <div className={styles.scroller}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Market</th>
-                <th>Side</th>
-                <th>Size</th>
-                <th>Entry</th>
-                <th>Mark</th>
-                <th>Value</th>
-                <th>Unrealized</th>
-                <th>ROE</th>
-                <th>Lev</th>
-              </tr>
-            </thead>
-            <tbody>
-              {waiting && sleeves.length === 0
-                ? Array.from({ length: 5 }, (_, i) => (
-                    <tr key={i} className={styles.skelRow}>
-                      <td><Bone w={36} h={10} /></td>
-                      <td><Bone w={40} h={10} /></td>
-                      <td><Bone w={72} h={10} /></td>
-                      <td><Bone w={56} h={10} /></td>
-                      <td><Bone w={56} h={10} /></td>
-                      <td><Bone w={52} h={10} /></td>
-                      <td><Bone w={56} h={10} /></td>
-                      <td><Bone w={28} h={10} /></td>
-                      <td><Bone w={28} h={10} /></td>
-                    </tr>
-                  ))
-                : sleeves.map((sleeve) => {
-                const latest = latestByCoin[sleeve.coin] ?? null;
-                const pos = latest?.position;
-                const open = Boolean(pos && pos.side !== "flat" && pos.size > 0);
-                const mark = latest?.mid ?? null;
-                const value = open && mark != null ? pos!.size * mark : null;
-                const u = open ? pos!.unrealizedUsd : 0;
-                const roe = roePct(pos);
-                const side = (pos?.side ?? "flat").toUpperCase();
-                const sideColor =
-                  pos?.side === "long" ? "var(--buy-ink)" : pos?.side === "short" ? "var(--sell-ink)" : undefined;
-                const pnlColor = open ? (u >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)") : undefined;
-                const on = sleeve.coin === selected;
-                return (
-                  <tr
-                    key={sleeve.coin}
-                    className={on ? styles.rowOn : undefined}
-                    onClick={() => onSelect(sleeve.coin)}
-                  >
-                    <td>{displayCoin(sleeve.coin)}</td>
-                    <td style={sideColor ? { color: sideColor } : undefined}>{side}</td>
-                    <td>{open ? fmtCoin(pos!.size, sleeve.coin, 4) : "-"}</td>
-                    <td>{open && pos?.entryPrice != null ? fmtPrice(pos.entryPrice) : "-"}</td>
-                    <td>{mark != null ? fmtPrice(mark) : "-"}</td>
-                    <td>{value != null ? fmtPrice(value) : "-"}</td>
-                    <td style={pnlColor ? { color: pnlColor } : undefined}>
-                      {open ? fmtSignedUsd(u, 2) : "-"}
-                    </td>
-                    <td style={pnlColor ? { color: pnlColor } : undefined}>
-                      {roe != null ? fmtPct(roe) : "-"}
-                    </td>
-                    <td>{pos?.leverage != null ? `${pos.leverage}x` : "-"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : tab === "history" ? (
-        waiting && history.length === 0 ? (
-          <div className={styles.scroller} aria-busy="true" aria-label="Loading history">
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Market</th>
-                  <th>Side</th>
-                  <th>Size</th>
-                  <th>Entry</th>
-                  <th>Exit</th>
-                  <th>PnL</th>
-                  <th>Fee</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from({ length: 6 }, (_, i) => (
-                  <tr key={i} className={styles.skelRow}>
-                    <td><Bone w={64} h={10} /></td>
-                    <td><Bone w={36} h={10} /></td>
-                    <td><Bone w={40} h={10} /></td>
-                    <td><Bone w={48} h={10} /></td>
-                    <td><Bone w={56} h={10} /></td>
-                    <td><Bone w={56} h={10} /></td>
-                    <td><Bone w={56} h={10} /></td>
-                    <td><Bone w={40} h={10} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : history.length === 0 ? (
-          <div className={styles.empty}>no closed lots yet</div>
-        ) : (
-          <div className={styles.scroller}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Market</th>
-                  <th>Side</th>
-                  <th>Size</th>
-                  <th>Entry</th>
-                  <th>Exit</th>
-                  <th>PnL</th>
-                  <th>Fee</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((lot) => {
-                  const sideColor = lot.side === "long" ? "var(--buy-ink)" : "var(--sell-ink)";
-                  const pnlColor = lot.pnl >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)";
-                  return (
-                    <tr key={`${lot.coin}|${lot.key}`} onClick={() => onSelect(lot.coin)}>
-                      <td>{fmtClock(lot.ts, true)}</td>
-                      <td>{displayCoin(lot.coin)}</td>
-                      <td style={{ color: sideColor }}>{lot.side.toUpperCase()}</td>
-                      <td>{fmtSize(lot.size)}</td>
-                      <td>{lot.entry != null ? fmtPrice(lot.entry) : "-"}</td>
-                      <td>{fmtPrice(lot.exit)}</td>
-                      <td style={{ color: pnlColor }}>{fmtSignedUsd(lot.pnl, 2)}</td>
-                      <td>{lot.fee ? fmtUsd(lot.fee, 2) : "-"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )
-      ) : waiting && trades.length === 0 ? (
-        <div className={styles.scroller} aria-busy="true" aria-label="Loading trades">
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Market</th>
-                <th>Side</th>
-                <th>Action</th>
-                <th>Price</th>
-                <th>Size</th>
-                <th>Tx</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: 6 }, (_, i) => (
-                <tr key={i} className={styles.skelRow}>
-                  <td><Bone w={64} h={10} /></td>
-                  <td><Bone w={36} h={10} /></td>
-                  <td><Bone w={36} h={10} /></td>
-                  <td><Bone w={44} h={10} /></td>
-                  <td><Bone w={56} h={10} /></td>
-                  <td><Bone w={48} h={10} /></td>
-                  <td><Bone w={52} h={10} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : trades.length === 0 ? (
-        <div className={styles.empty}>no trades yet</div>
-      ) : (
-        <div className={styles.scroller}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Market</th>
-                <th>Side</th>
-                <th>Action</th>
-                <th>Price</th>
-                <th>Size</th>
-                <th>Tx</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trades.map((fill) => {
-                const sideColor = fill.side === "buy" ? "var(--buy-ink)" : "var(--sell-ink)";
-                const action = fill.dir === "open" ? "OPEN" : fill.dir === "close" ? "CLOSE" : fill.dir === "flip" ? "FLIP" : "FILL";
-                return (
-                  <tr key={`${fill.coin}|${fill.key}`} onClick={() => onSelect(fill.coin)}>
-                    <td>{fmtClock(fill.ts, true)}</td>
-                    <td>{displayCoin(fill.coin)}</td>
-                    <td style={{ color: sideColor }}>{fill.side.toUpperCase()}</td>
-                    <td style={{ color: sideColor }}>{action}</td>
-                    <td>{fmtPrice(fill.price)}</td>
-                    <td>{fmtSize(fill.size)}</td>
-                    <td>
-                      {fill.hash ? (
-                        <a href={txUrl(fill.hash, meta?.explorerTx)} target="_blank" rel="noreferrer">
-                          {shortTx(fill.hash)}
-                        </a>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
+  return <section className={styles.wrap}>
+    <div className={styles.tabs} role="tablist" aria-label="Account and session book">
+      {TABS.map((item, index) => <button key={item} id={`book-tab-${item}`} type="button" role="tab" aria-selected={tab === item} aria-controls={`book-panel-${item}`} tabIndex={tab === item ? 0 : -1} className={tab === item ? styles.tabOn : styles.tab} onClick={() => setTab(item)} onKeyDown={(event) => {
+        const next = event.key === "ArrowRight" ? (index + 1) % TABS.length : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : null;
+        if (next === null) return;
+        event.preventDefault(); setTab(TABS[next]); document.getElementById(`book-tab-${TABS[next]}`)?.focus();
+      }}>{labels[item]}</button>)}
+    </div>
+    <div role="tabpanel" id={`book-panel-${tab}`} aria-labelledby={`book-tab-${tab}`} tabIndex={0} className={styles.scroller}>
+      {!wallet.connected ? <p className={styles.empty}>Connect Brave Wallet to view account data. No session is running.</p> : tab === "positions" ? positions.length === 0 ? <p className={styles.empty}>{account ? "No open account positions." : "Waiting for an account snapshot."}</p> : <table className={styles.table}>
+        <thead><tr><th>Market</th><th>Side</th><th>Size</th><th>Entry</th><th>Unrealized</th><th>Leverage</th></tr></thead>
+        <tbody>{positions.map(([coin, position]) => <tr key={coin}><td>{market(coin)}</td><td>{position.size > 0 ? "LONG" : "SHORT"}</td><td>{Math.abs(position.size)}</td><td>{fmtPrice(position.entryPrice)}</td><td>{fmtSignedUsd(position.unrealizedUsd, 2)}</td><td>{position.leverage}x</td></tr>)}</tbody>
+      </table> : tab === "fills" ? fills.length === 0 ? <p className={styles.empty}>No account fills received.</p> : <table className={styles.table}>
+        <thead><tr><th>Time</th><th>Market</th><th>Side</th><th>Price</th><th>Size</th></tr></thead>
+        <tbody>{fills.map((value, index) => { const fill = record(value); const coin = typeof fill.coin === "string" ? fill.coin : ""; const time = numeric(fill.time); const price = numeric(fill.px); const size = numeric(fill.sz); return <tr key={typeof fill.tid === "number" ? fill.tid : index}><td>{time === null ? "-" : fmtClock(time, true)}</td><td>{coin ? market(coin) : "-"}</td><td>{fill.side === "B" ? "BUY" : fill.side === "A" ? "SELL" : "-"}</td><td>{price === null ? "-" : fmtPrice(price)}</td><td>{size ?? "-"}</td></tr>; })}</tbody>
+      </table> : orders.length === 0 ? <p className={styles.empty}>No {tab === "orders" ? "open session orders" : "session order history"}.</p> : <table className={styles.table}>
+        <thead><tr><th>Submitted</th><th>Market</th><th>Status</th><th>Cleanup</th></tr></thead>
+        <tbody>{orders.map((order) => <tr key={order.cloid}><td>{fmtClock(order.submittedAt, true)}</td><td>{market(order.coin)}</td><td>{order.state}</td><td>{order.cancelPending ? "Cancellation pending" : "-"}</td></tr>)}</tbody>
+      </table>}
+    </div>
+    <p className={styles.empty}>Positions and fills cover the whole account. Orders and history belong to this browser session. Stop cancels app-owned orders only; it does not close positions or revoke wallet approval.</p>
+  </section>;
 }
