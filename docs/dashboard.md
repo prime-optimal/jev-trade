@@ -21,7 +21,7 @@ The public dashboard is not a global trading control. The operator switch works 
 
 On a localhost page, the browser defaults the operator API to `http://127.0.0.1:3002`. A non-local page has no operator API unless `NEXT_PUBLIC_OPERATOR_API_URL` was explicitly built in. That variable is only routing. It adds no authentication, so it must point to a deliberately protected local channel, never a public reverse proxy.
 
-Startup and process restart are Off. Start requires at least one enabled asset and a successful transport validation. Real mode also opens an explicit confirmation prompt and the Bun API requires `confirmReal: true`. No Brave Wallet connection is required for the current server-wallet operator path.
+In paper mode, process startup arms one configured-duration run and starts it when the first sleeve is ready. Expiry and manual Off do not start another run; a process restart creates a new paper run. Real mode starts Off, opens an explicit confirmation prompt for a private Start, and requires `confirmReal: true` at the Bun API. No Brave Wallet connection is required for the current server-wallet operator path.
 
 The switch shows the configured limit while Off, 30 minutes by default. A running display shows elapsed time and remaining time. Manual Off and expiry use the same owned-order cleanup path. `Attention required` blocks another start and locks execution settings. The private operator view shows Retry cleanup, which calls reconcile and unlocks the form only after cleanup succeeds. Stop does not liquidate positions.
 
@@ -44,7 +44,7 @@ Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. 
 
 A 45-second event gap reconnects the stream. Before the first snapshot, the timeout is 90 seconds. Retry delay starts at one second and caps at ten seconds. `ping` events keep the connection active. Run state is also polled from public `GET /run` every two seconds, and operator state is polled every five seconds when the local channel exists.
 
-Every configured sleeve remains visible if initialization fails. Startup remains Off, and retrying while Off only prepares resources. After an operator starts a run, healthy sleeves continue independently and a recovered sleeve joins that active run. An unavailable sleeve produces no fabricated decisions, and recovery cannot restart an expired or manually stopped run.
+Every configured sleeve remains visible if initialization fails. Paper startup failures remain Off and retry until the first ready sleeve starts the single armed run. During that run, healthy sleeves continue independently and a recovered sleeve joins only while it remains active. An unavailable sleeve produces no fabricated decisions, and recovery cannot restart an expired or manually stopped run. Real-mode recovery only prepares resources while Off.
 
 ## Shared wire types
 

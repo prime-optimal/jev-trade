@@ -40,14 +40,17 @@ All notable changes to this project are documented here. This changelog starts f
 - Updated `.gitignore` so maintainer docs are tracked and local `fnox.local.toml` overrides remain ignored.
 - Changed paper trading to the default unless `DRY_RUN=false` is set explicitly.
 - Separated price-stream connectivity from trading state in the dashboard Header. Public visitors can see run status but cannot control the shared executor.
-- Changed sleeve initialization and retry so neither starts decision loops while Off, Expired, or after process restart.
-- Kept the Off control plane available when initial sleeve resources fail, with visible retryable errors and recovery that cannot start trading by itself. Operator Start runs the available sleeves when at least one is ready, and recovered sleeves join only an active run. Later settings replacements remain atomic and preserve the prior executor on failure.
+- Changed sleeve initialization and retry so recovery cannot start decision loops after manual Stop or expiry. During the single armed paper startup, the first ready sleeve starts the run; recovered sleeves join only while that run remains active.
+- Kept the Off control plane available when initial sleeve resources fail, with visible retryable errors. Operator Start runs the available sleeves when at least one is ready. Later settings replacements remain atomic and preserve the prior executor on failure.
+- Paper-mode process startup now arms one configured-duration run that starts when the first sleeve is ready. Failures stay Off and retry, expiry and manual Stop do not loop, process restart creates a new paper run, and real mode still requires a private confirmed Start.
 
 ### Removed
 
 - Removed the Dockerfile and `.dockerignore`; Railway now builds both services with Railpack.
 
 ### Fixed
+
+- Corrected the production bot domain target from port 3000 to the Railway-injected port 8080, restoring public access to `/` and `/snapshot`.
 
 - Fixed `dev:web`, which used `bun --cwd web run dev` and printed Bun help instead of starting the dashboard while exiting successfully.
 - Failed sleeve initialization no longer removes the sleeve from the API and dashboard. The bot exposes starting, retrying, and live status, shows the failure in the UI, and retries that sleeve after 30 minutes without restarting healthy sleeves.

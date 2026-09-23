@@ -7,6 +7,7 @@ import { createOperatorControl } from "./operator-control";
 import { createRunLifecycle, type RunGuard } from "./run-lifecycle";
 import { startServer, type PublicServer, type SleeveView } from "./server";
 import { createSleeveLifecycle, type SleeveLifecycle } from "./sleeve-lifecycle";
+import { createStartupAutostart, type StartupAutostart } from "./startup-autostart";
 import { coinPair, loadSleeves, type SleeveConfig } from "./sleeves";
 import { Trader } from "./trader";
 import type { TradingSettings } from "./settings";
@@ -47,10 +48,14 @@ let activeSettings: TradingSettings | null = null;
 let activeApiKey: string | undefined;
 let activeGuard: RunGuard | null = null;
 let rebuildingExecutor = false;
+let startupAutostart: StartupAutostart;
 
 const runLifecycle = createRunLifecycle({
   durationMinutes: 30,
-  onChange: (run) => server?.broadcastRun(run),
+  onChange: (run) => {
+    server?.broadcastRun(run);
+    startupAutostart?.observe(run.status);
+  },
   hooks: {
     async start(guard) {
       const current = executor;
@@ -70,6 +75,11 @@ const runLifecycle = createRunLifecycle({
       await Promise.all(current.sleeves.map((sleeve) => sleeve.market.cleanupOwned()));
     },
   },
+});
+startupAutostart = createStartupAutostart({
+  status: () => runLifecycle.snapshot().status,
+  anyReady: () => executor?.lifecycle.anyReady() ?? false,
+  start: () => runLifecycle.start(),
 });
 
 server = startServer(meta, views, runLifecycle.snapshot);
@@ -113,6 +123,7 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
     onStatus: (sleeve) => {
       if (sleeve.coin === first?.coin && sleeve.status === "live") candidateMeta.wallet = sleeve.wallet;
       if (committed) server?.broadcastSleeve(sleeve);
+      if (committed && sleeve.status === "live") void startupAutostart.request();
     },
     initialize: async (spec) => {
       const feed = new Feed(spec.coin);
@@ -183,6 +194,7 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
     activeApiKey = apiKey;
     committed = true;
     for (const sleeve of meta.sleeves) server?.broadcastSleeve(sleeve);
+    void startupAutostart.request();
   };
 
   rebuildingExecutor = true;
@@ -213,9 +225,10 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
 const operator = createOperatorControl({ lifecycle: runLifecycle, rebuild: rebuildExecutor });
 await rebuildExecutor(operator.runtime.settings(), operator.runtime.credential());
 runLifecycle.applyDuration(operator.runtime.settings().runDurationMinutes);
+await startupAutostart.arm(operator.runtime.settings().mode);
 operator.listen();
 
-console.log(`jev-trade ready Off model=${meta.model}${config.model === "jev" ? ` ${config.jevProvider}` : ""} :${config.port}`);
+console.log(`jev-trade ready ${runLifecycle.snapshot().status} model=${meta.model}${config.model === "jev" ? ` ${config.jevProvider}` : ""} :${config.port}`);
 
 function onEvent(coin: string) {
   return (event: BlockEvent, timing?: Timing) => {

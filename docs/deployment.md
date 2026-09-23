@@ -69,6 +69,12 @@ railway domain --service bot
 railway domain --service web
 ```
 
+Railway injects `PORT` at runtime. The bot's local default of 3000 is not a production guarantee. Set the public domain target to the port in the bot's ready log. Check that the CLI is linked to the correct project and environment before updating it:
+
+```sh
+railway domain update <domain> --port 8080 --service bot
+```
+
 Set each secret without putting its value in shell history. `OPENROUTER_API_KEY` is required for the first safe deployment. Add wallet values later, before live trading. If a custom Hyperliquid provider requires an HTTP credential, set `HL_API_KEY` the same way:
 
 ```sh
@@ -94,6 +100,8 @@ After deployment:
 1. Request the bot public URL and confirm `/` returns HTTP 200.
 2. Open the web public URL and confirm the dashboard receives the live feed.
 3. Confirm the bot remains on testnet and dry-run before adding wallet funds.
+
+With these paper-mode defaults, each bot process starts one configured-duration run when its first sleeve becomes ready. Expiry or manual Stop does not loop into another run; restarting the process creates a new paper run. A real-mode process starts Off and requires explicit confirmation through the private operator API. The public Railway dashboard remains a read-only guest view.
 
 Railway documents generated domains under [public networking](https://docs.railway.com/networking/public-networking) and health checks under [deployment health checks](https://docs.railway.com/deployments/healthchecks).
 
