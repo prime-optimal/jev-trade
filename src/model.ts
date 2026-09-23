@@ -249,18 +249,6 @@ function sdkClient(provider: Exclude<JevProvider, "gateway">): TypeSafeClient {
   }));
 }
 
-const JEV_DEADLINE_MS = 4000;
-
-function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`jev timeout ${ms}ms`)), ms);
-    p.then(
-      (v) => { clearTimeout(t); resolve(v); },
-      (e) => { clearTimeout(t); reject(e); },
-    );
-  });
-}
-
 async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputTokens: number }> {
   const seen = marketFacing(state);
   const qs = jevQuestions(state);
@@ -284,7 +272,8 @@ async function callJev(state: TradeState): Promise<{ answers: JevAnswers; inputT
     );
     return { answers: r.answers, inputTokens: r.usage.input_tokens ?? 0 };
   };
-  return withDeadline(run(), JEV_DEADLINE_MS);
+  // The server may time out its response, but owns the permit until this settles.
+  return run();
 }
 
 /** Real Jev. JEV_PROVIDER selects OpenRouter, official TypeSafe, or Vercel AI Gateway. */
@@ -346,7 +335,7 @@ export class MockModel implements Model {
 }
 
 export const createModel = (): Model => {
-  if (config.model !== "jev") return new MockModel();
+  if (config.model === "mock" && !config.production) return new MockModel();
   assertJevCredentials(config.model, config.jevProvider, runtimeEnv);
   return new JevModel();
 };
