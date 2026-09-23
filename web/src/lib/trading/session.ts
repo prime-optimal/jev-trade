@@ -183,7 +183,7 @@ export function createBrowserSession(options: SessionOptions): BrowserSession {
       account.positions[pending.order.coin] = { size: nextSize, entryPrice, leverage: pending.leverage };
       const released = pending.margin * size / pending.remaining;
       reservedMargin -= released; pending.margin -= released; pending.remaining -= size;
-      if (pending.remaining <= 0 || pending.order.reduceOnly) {
+      if (pending.remaining <= 0) {
         reservedMargin -= pending.margin;
         paper.delete(id);
       }

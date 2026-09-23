@@ -144,6 +144,37 @@ test("paper assets reserve and realize against one shared bankroll", async () =>
   expect(session.snapshot().account.withdrawable).toBe(0);
 });
 
+test("partial paper exits retain their order until the remaining size is filled", async () => {
+  const { session } = setup({ settings: { mode: "paper" } });
+  await start(session);
+  const entry = await session.submit(order(), 1, NOW);
+  session.paperFill(entry, 1, 100);
+  const exit = await session.submit(order("BTC", { buy: false, price: "110", reduceOnly: true }), 1, NOW);
+
+  session.paperFill(exit, 0.25, 110);
+  expect(session.snapshot().account.positions.BTC?.size).toBe(0.75);
+  expect(session.snapshot().reservedMargin).toBe(0);
+  await expect(session.submit(order(), 1, NOW)).rejects.toThrow("Cancel the existing paper order first");
+  await expect(session.submit(order("BTC", { buy: false, size: "0.75", reduceOnly: true }), 1, NOW))
+    .rejects.toThrow("Cancel the existing paper order first");
+
+  session.paperFill(exit, 0.25, 110);
+  expect(session.snapshot().account.positions.BTC?.size).toBe(0.5);
+  await expect(session.submit(order(), 1, NOW)).rejects.toThrow("Cancel the existing paper order first");
+
+  session.paperFill(exit, 0.5, 110);
+  expect(session.snapshot().account.positions.BTC?.size).toBe(0);
+  expect(session.snapshot().account.accountValue).toBe(210);
+  expect(session.snapshot().account.withdrawable).toBe(210);
+  expect(session.snapshot().reservedMargin).toBe(0);
+  expect(() => session.paperFill(exit, 0.1, 110)).toThrow("Paper order is not active");
+  await expect(session.cancel(exit)).rejects.toThrow("Unknown paper order");
+
+  const replacement = await session.submit(order(), 1, NOW);
+  session.paperFill(replacement, 1, 100);
+  expect(session.snapshot().account.positions.BTC?.size).toBe(1);
+});
+
 test("disabled exposure stays visible but cannot submit even a reducing order", async () => {
   const { session, venue } = setup({ settings: { enabledCoins: ["BTC"] }, account: {
     accountValue: 200, withdrawable: 150, receivedAt: NOW,
