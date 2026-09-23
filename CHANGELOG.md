@@ -52,9 +52,9 @@ All notable changes to this project are documented here. This changelog starts f
 - Fixed `dev:web`, which used `bun --cwd web run dev` and printed Bun help instead of starting the dashboard while exiting successfully.
 - Failed sleeve initialization no longer removes the sleeve from the API and dashboard. The bot exposes starting, retrying, and live status, shows the failure in the UI, and retries that sleeve after 30 minutes without restarting healthy sleeves.
 - `DRY_RUN=false` with no wallet key no longer fails every sleeve at startup with "real trading requires a wallet private key". Keyless sleeves run in paper mode again, as they did before the settings page, while keyed sleeves keep real execution.
-- A sleeve that recovers after startup now appears in public history, tape, and snapshot data, and the public wallet updates when the first sleeve recovers.
 - Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
 
 ## Known issues
 
 - A sleeve emits a synthetic late hold without calling Jev when its previous Jev call is still running at the next tick. Provider calls have a 4,000 ms deadline, so this cannot happen at the 30,000 ms default tick. It can only happen if `TICK_MS` is set below that deadline, and that conflicts with the product claim that Jev decides on every tick.
+- A sleeve that recovers after startup keeps trading but is missing from public history, tape, and snapshot data, and the public wallet is not refreshed when the first sleeve recovers. The recovered view is added to the executor's candidate list instead of the list the server reads.

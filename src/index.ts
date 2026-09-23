@@ -112,10 +112,7 @@ async function rebuildExecutor(settings: TradingSettings, apiKey?: string): Prom
       && ["off", "running"].includes(runLifecycle.snapshot().status),
     onStatus: (sleeve) => {
       if (sleeve.coin === first?.coin && sleeve.status === "live") candidateMeta.wallet = sleeve.wallet;
-      if (!committed || executor?.lifecycle !== lifecycle) return;
-      views.splice(0, views.length, ...candidateViews);
-      meta.wallet = candidateMeta.wallet;
-      server?.broadcastSleeve(sleeve);
+      if (committed) server?.broadcastSleeve(sleeve);
     },
     initialize: async (spec) => {
       const feed = new Feed(spec.coin);
