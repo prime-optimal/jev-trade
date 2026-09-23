@@ -4,12 +4,9 @@ import {
   preserve,
   project,
   service,
-  volume,
 } from "railway/iac";
 
 export default defineRailway(() => {
-  const botData = volume("bot-data", { sizeMB: 512 });
-
   const bot = service("bot", {
     source: github("prime-optimal/jev-trade", { branch: "main" }),
     rootDirectory: "/",
@@ -18,7 +15,7 @@ export default defineRailway(() => {
       watchPatterns: ["/src/**", "/package.json", "/bun.lock", "/railpack.json"],
     },
     start: "bun run start",
-    healthcheck: "/",
+    healthcheck: "/health",
     healthcheckTimeout: 60,
     replicas: 1,
     deploy: {
@@ -30,21 +27,9 @@ export default defineRailway(() => {
     env: {
       MODEL: "jev",
       JEV_PROVIDER: "openrouter",
-      HL_TESTNET: "true",
-      DRY_RUN: "true",
+      NODE_ENV: "production",
+      WEB_ORIGINS: "https://www.jev-trade.com,https://jev-trade.com",
       OPENROUTER_API_KEY: preserve(),
-      PRIVATE_KEY: preserve(),
-      WALLETS_JSON: preserve(),
-      HL_API_URL: preserve(),
-      HL_WS_URL: preserve(),
-      HL_RPC_URL: preserve(),
-      HL_API_KEY: preserve(),
-      HL_API_KEY_HEADER: preserve(),
-      HL_API_KEY_SCHEME: preserve(),
-      HL_FALLBACK_POLL_MS: preserve(),
-    },
-    volumeMounts: {
-      "/data": botData,
     },
   });
 
@@ -75,11 +60,12 @@ export default defineRailway(() => {
       drainingSeconds: 0,
     },
     env: {
-      NEXT_PUBLIC_API_URL: bot.env.RAILWAY_PUBLIC_DOMAIN,
+      // Railway expands this at build time; the browser requires an absolute URL.
+      NEXT_PUBLIC_API_URL: "https://${{bot.RAILWAY_PUBLIC_DOMAIN}}",
     },
   });
 
   return project("jev-trade", {
-    resources: [botData, bot, web],
+    resources: [bot, web],
   });
 });

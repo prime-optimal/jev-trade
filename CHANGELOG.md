@@ -4,9 +4,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ## Unreleased
 
-### Fixed
-
-- Forward browser agent acceptance deadlines through Hyperliquid SDK execution options. Preserve exact-owned cleanup after wallet changes, bind reconciliation to the original account and transport, and bound long session timers.
+Entries below record the implementation sequence, including superseded server-owned behavior. Issue #24 removes that runtime; earlier operator, Worker, SSE, server wallet, auto-start, and volume entries remain historical records, not current setup instructions. Browser runs now require explicit On and do not resume on reload. Infrastructure edits here do not apply or delete live Railway resources.
 
 ### Added
 
@@ -34,12 +32,16 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Changed
 
+- Completed #24's inference-only Bun and browser-local trading cutover. Kept `/health`, `/decide`, the exact address-free `JevRequest`, direct browser wallet and Hyperliquid ownership, explicit finite runs, and the #21 through #23 safety fixes.
+- Updated #24 Railway declarations to healthcheck `/health`, set explicit production `WEB_ORIGINS`, and pass an absolute inference URL to the standalone Next build. No live infrastructure was applied.
+- Updated #24 CI to install root and web dependencies separately, run the root suite and both typechecks, and build Next in an independent job. Rewrote current API, configuration, deployment, and public documentation to match browser ownership and distinguish implemented real trading from unverified wallet exercises.
+
 - Made OpenRouter the default Jev provider when no provider credential selects another provider. TypeSafe and Vercel AI Gateway remain available.
 - Shared the TypeSafe SDK client path between OpenRouter and the official TypeSafe API.
 - Pinned Bun 1.3.14 in both package manifests and `railpack.json`.
 - Railpack builds both services: frozen `bun install`, bot starts with `bun run start`, dashboard builds with `bun run build` and starts with `bun run start`.
 - Changed the dashboard production start script to `next start`, which honors Railway's `PORT`.
-- Changed the dashboard and visitor gateway API URL handling to add `https://` when `NEXT_PUBLIC_API_URL` is a bare Railway host.
+- Previously normalized bare Railway hosts in the shared-feed dashboard and visitor gateway. Those clients are removed by #24; the current browser inference adapter requires an absolute `NEXT_PUBLIC_API_URL`, now supplied by IaC.
 - Updated `web/public/llms.txt` to name OpenRouter as the default Jev API.
 - The dashboard dev server now allows this machine's LAN IPv4 addresses in `allowedDevOrigins`, and with `NEXT_PUBLIC_API_URL` unset the dashboard reads the bot at the page's own host on port 3000. Opening it by LAN IP no longer needs a manual `next.config.ts` edit.
 - Added `railway` just recipes: `deploy-plan`, `deploy-infra`, `deploy-setup`, `deploy` and `deploy-status`.
@@ -55,15 +57,20 @@ All notable changes to this project are documented here. This changelog starts f
 - Separated price-stream connectivity from trading state in the dashboard Header. Public visitors can see run status but cannot control the shared executor.
 - Changed sleeve initialization and retry so recovery cannot start decision loops after manual Stop or expiry. During the single armed paper startup, the first ready sleeve starts the run; recovered sleeves join only while that run remains active.
 - Kept the Off control plane available when initial sleeve resources fail, with visible retryable errors. Operator Start runs the available sleeves when at least one is ready. Later settings replacements remain atomic and preserve the prior executor on failure.
-- Paper-mode process startup now arms one configured-duration run that starts when the first sleeve is ready. Failures stay Off and retry, expiry and manual Stop do not loop, process restart creates a new paper run, and real mode still requires a private confirmed Start.
+- Previously armed one configured-duration paper run at process startup when the first sleeve became ready. This server behavior is removed by #24; browser startup and reload stay Off until explicit On.
 - Remote settings now apply paper settings to the visitor's Worker instead of changing browser preferences only. Visitors can Save, Start, Stop, and reset cleanup without controlling the shared executor. Refresh resumes the same Worker; an expired or deleted session requires explicit Reconnect to a fresh Off session.
 - Visitor Workers receive an explicit allowlisted runtime environment before importing bot modules. This prevents Bun's parent dotenv values from being compiled into `process.env.NAME` reads inside the Worker.
 
 ### Removed
 
+- Removed the disconnected server-owned wallet, market, execution, operator, persistence, visitor Worker, and SSE session gateway paths in #24 rather than retaining compatibility routes.
+- Removed server trading and wallet variables and bot data-volume ownership from #24 templates and IaC. This changes source only, not live secrets or volume data; any later destructive plan requires separate review and approval.
+
 - Removed the Dockerfile and `.dockerignore`; Railway now builds both services with Railpack.
 
 ### Fixed
+
+- Forward browser agent acceptance deadlines through Hyperliquid SDK execution options. Preserve exact-owned cleanup after wallet changes, bind reconciliation to the original account and transport, and bound long session timers.
 
 - Corrected the production bot domain target from port 3000 to the Railway-injected port 8080, restoring public access to `/` and `/snapshot`.
 

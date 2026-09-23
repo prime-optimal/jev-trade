@@ -3,91 +3,72 @@
 [![Live desk](https://img.shields.io/badge/live-jev--trade.com-111)](https://www.jev-trade.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111)](LICENSE)
 
-I built a trading bot with Jev. Jev reads the Hyperliquid book every tick and answers buy, sell, or hold. The bot sends the order. Five coins, five wallets, real fills.
+I built a trading bot with Jev. Jev reads the Hyperliquid price feed on every trading tick and decides buy, sell, or hold. The browser applies its answer, using local paper execution or direct wallet-authorized real orders.
 
-**[Watch the live desk](https://www.jev-trade.com/)**
+**[Open the desk](https://www.jev-trade.com/)**
 
-[![Jev Trade live desk](assets/desk.png)](https://www.jev-trade.com/)
+[![Jev Trade desk](assets/desk.png)](https://www.jev-trade.com/)
 
-Jev makes the call. Hold is one of its answers, so a tick can end with no order. Position, balance, and PnL come from Hyperliquid.
+Jev makes the call. Hold is an answer, not a skipped tick or a forced trade. BTC, ETH, SOL, DOGE, and BNB share one connected owner's account in real mode. They are not five isolated wallets. Account balances and positions come directly from Hyperliquid.
+
+The browser real-trading path is implemented, but this cutover does not establish a completed Brave Wallet approval or live fill. Those actions, cleanup, and interruption recovery require explicit wallet testing before being reported as verified.
 
 Based on [jev-trader](https://github.com/jarrodwatts/jev-trader) by Jarrod Watts under the MIT license. The venue is Hyperliquid, not Monad or Kuru.
 
-## What you are looking at
+## Ownership
 
-- Five isolated sleeves for BTC, ETH, SOL, DOGE, and BNB. Each has its own wallet and Jev call.
-- The left pane is the live book as candles. Green and red marks are fills. The entry line is the open position.
-- The right pane is the latest Jev call and the tape of every tick.
-- The table shows Positions and Trades, the same split a futures desk uses.
+Bun on port 3000 serves only `/health` and `/decide`. It keeps the Jev provider credential, validates address-free inference inputs, and returns decisions. It never receives a wallet key or account address and never submits exchange orders.
 
-With a wallet key and `DRY_RUN` not set to `true`, the bot sends real orders on testnet or mainnet. Start with a dry run.
+The separate Next app in `web/` runs on port 3001 locally. Browser modules own public feeds, charts, paper state, wallet connection, ephemeral agent authorization, account reads, finite runs, and orders. Next is not an exchange proxy. No server Worker, SSE gateway, or operator listener runs visitors' trading sessions.
 
 ## How a tick works
 
-1. The bot reads the book.
-2. Jev picks long or short, then open, close, or hold.
-3. An entry is a post-only Alo quote one tick inside the touch. It stays on the maker side until a taker hits it.
-4. An exit is an Ioc that crosses the touch. If it does not fill, the order is reported as reverted.
-5. Hold sends no order and pulls any resting quote Jev no longer wants.
+1. The browser constructs market features and non-identifying position context from direct Hyperliquid data.
+2. Bun asks Jev for a decision and returns it with the originating tick.
+3. The browser checks the run, deadline, tick, and market freshness before acting.
+4. Entries use post-only `Alo` quotes. Exits use reduce-only `Ioc` orders. Hold does not force a trade.
+5. The browser reconciles its own orders and fills directly with Hyperliquid.
 
-The bot is Bun on port 3000. The dashboard is a separate Next app in `web/` on port 3001. Keys, evaluation, and orders stay in the Bun process.
+Only explicit On starts a finite run. Connecting, authorizing, saving settings, navigating, and reloading do not start or resume trading. Stop cancels this session's owned resting orders where possible; it does not liquidate positions or revoke the venue agent. An awake browser is required. Orders can remain on the venue after a tab closes or sleeps.
 
 ## Run locally
 
-Install [Bun](https://bun.sh), [just](https://just.systems/), [fnox](https://fnox.jdx.dev/), and the 1Password CLI. Then install both dependency trees and copy the non-secret configuration:
+Install Bun, just, and fnox with the 1Password CLI for the configured provider secret source. Install the two dependency trees separately through the recipe:
 
 ```sh
 just install
 cp .env.example .env
+just dev
 ```
 
-`fnox.toml` resolves the OpenRouter key from 1Password. Start the bot and dashboard in separate terminals:
+In another terminal:
 
 ```sh
-just dev
 just web
 ```
 
-Open http://localhost:3001, or the Network URL `just web` prints to reach it from another device on your LAN. With `NEXT_PUBLIC_API_URL` unset, the dashboard reads the bot on the same host at port 3000.
+Open http://localhost:3001. The root template selects `MODEL=mock` for local development. For Jev decisions, select `MODEL=jev` and supply the chosen provider credential. Production requires Jev. OpenRouter is the default; TypeSafe and Vercel AI Gateway remain supported.
 
-`HL_TESTNET=true` is the default. `DRY_RUN=true` forces simulated orders, and a sleeve without a wallet key also runs dry. `MODEL=mock` needs no provider key.
+The browser defaults to the page host on port 3000 for inference. To use another API, set an absolute `NEXT_PUBLIC_API_URL` before building web, and allow the dashboard's exact origin in Bun's `WEB_ORIGINS`.
 
-## Live Jev
+Choose network, markets, paper or real mode, sizing, and finite duration in browser settings. Start with paper. Real mode requires explicit Brave Wallet connection, network preparation, agent approval, and whole-account net-position confirmation. Never add trading private keys to `.env`, Railway, or Next.
 
-Set `MODEL=jev`. OpenRouter is the default provider:
-
-```dotenv
-MODEL=jev
-JEV_PROVIDER=openrouter
-OPENROUTER_API_KEY=
-```
-
-The bot also supports the official TypeSafe API with `JEV_PROVIDER=typesafe` and `TYPESAFE_API_KEY`, or Vercel AI Gateway with `JEV_PROVIDER=gateway` and `AI_GATEWAY_API_KEY`. If `JEV_PROVIDER` is unset, available credentials select OpenRouter first, then TypeSafe, then Gateway. See [Jev provider](docs/jev-provider.md) for model defaults and request details.
-
-## Live testnet orders
-
-1. Keep `HL_TESTNET=true`.
-2. Set `PRIVATE_KEY` for the first coin.
-3. Copy `.wallets.example.json` to `.wallets.json` and add the other sleeve keys, or set `WALLETS_JSON`.
-4. Get mock USDC from https://app.hyperliquid-testnet.xyz/drip. The faucet only pays addresses that have deposited on mainnet.
-5. Leave `DRY_RUN=false`. A missing sleeve key still makes that sleeve a dry run.
-
-`HL_TESTNET=false` selects mainnet. Do not set it until wallet assignment and quote sizing have been reviewed.
-
-## Verify
+## Checks
 
 ```sh
 just check
 just build-web
 ```
 
+CI separately installs root and web dependencies, runs tests and both typechecks, and builds Next. It does not deploy or verify a live wallet trade.
+
 ## Deployment
 
-Railway builds the bot and dashboard with Railpack. TypeScript infrastructure in [`.railway/railway.ts`](.railway/railway.ts) defines both services and the bot volume. Never run more than one live bot process against the same wallets. See [Deployment](docs/deployment.md) before creating or changing Railway resources.
+Both Railway services track `main`; merging is the normal application deploy. `just deploy` is an optional pre-merge upload with production side effects. [`.railway/railway.ts`](.railway/railway.ts) declares the two services without server wallet variables or a data volume. Source changes do not apply infrastructure or delete live resources. See [Deployment](docs/deployment.md) before any infrastructure operation.
 
 ## Docs
 
-Start with the [maintainer documentation map](docs/README.md). Project changes are recorded in the [changelog](CHANGELOG.md).
+Start with the [maintainer documentation map](docs/README.md). Changes are recorded in the [changelog](CHANGELOG.md).
 
 ## License
 

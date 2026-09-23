@@ -2,7 +2,7 @@
 
 ## Runtime split
 
-Issue #19 defines the ownership contract for the browser execution cutover. It does not by itself replace every legacy runtime module listed below.
+Issue #24 completes the source cutover to the browser ownership contract introduced in #19 and implemented in #20 through #23.
 
 The repository keeps two separate runtimes:
 
@@ -27,16 +27,16 @@ Stop and expiry end the browser run. Responses arriving after a run stops must n
 | --- | --- |
 | [`src/types.ts`](../src/types.ts) and [`web/src/lib/bot-types.ts`](../web/src/lib/bot-types.ts) | Byte-identical inference contracts, including `TradeState`, `ModelDecision`, `JevRequest`, and `JevResponse`. No display, wallet, or account transport types. |
 | [`src/model.ts`](../src/model.ts) | Bun Jev questions and answer mapping through the `Model` interface. Provider credentials remain server-side. |
-| [`src/server.ts`](../src/server.ts) and [`src/index.ts`](../src/index.ts) | Bun inference HTTP handling and service composition after cutover, not trading lifecycle or order submission. |
-| Browser `SettingsProvider.tsx` | Local settings persistence and theme, with an injectable `BrowserTradingAdapter` for feed and lifecycle. No remote session bootstrap, polling, or automatic run start. |
-| Browser `networks.ts` | Explicit signing identity map separate from the HTTP and WebSocket transport endpoint map. |
+| [`src/server.ts`](../src/server.ts) and [`src/index.ts`](../src/index.ts) | Bun `/health` and `/decide`, with no trading lifecycle or order submission. |
+| [`SettingsProvider.tsx`](../web/src/lib/trading/SettingsProvider.tsx) | Persistent browser integration of wallet, session, feed store, settings, and theme across routes. No remote session bootstrap or automatic run start. |
+| [`networks.ts`](../web/src/lib/trading/networks.ts) | Explicit signing identity map separate from HTTP and WebSocket endpoints. |
 | [`web/src/lib/trading/types.ts`](../web/src/lib/trading/types.ts) | Browser-local display and trading types, separate from the inference contract. Account and wallet data must remain browser-local rather than extending shared inference types. |
-| Public feeds, books, indicators, and charts | Browser subscriptions, snapshots, feature construction, and bounded display buffers. |
-| Paper execution | Browser-owned simulated positions, orders, fills, fees, and totals. |
-| Wallet, provider, and ephemeral agent | Browser connection, approval, signing, and in-memory key lifetime. |
-| Account and live execution | Browser account reads, leverage changes, serialized order actions, fill reconciliation, and run lifecycle. |
+| [`feed.ts`](../web/src/lib/trading/feed.ts), [`market.ts`](../web/src/lib/trading/market.ts), and [`trader.ts`](../web/src/lib/trading/trader.ts) | Browser public subscriptions, features, decision ticks, bounded history, and paper execution. |
+| [`provider.ts`](../web/src/lib/wallet/provider.ts) and [`agent.ts`](../web/src/lib/wallet/agent.ts) | Direct Brave Wallet connection and ephemeral signing capability. |
+| [`account.ts`](../web/src/lib/trading/account.ts), [`exchange.ts`](../web/src/lib/trading/exchange.ts), and [`journal.ts`](../web/src/lib/trading/journal.ts) | Direct account reads, serialized order actions, exact-owned order reconciliation, and fills. |
+| [`session.ts`](../web/src/lib/trading/session.ts) and [`locks.ts`](../web/src/lib/trading/locks.ts) | Finite run lifecycle and owner/network exclusion. |
 
-The old server executor remains migration work, not the architecture to extend. Existing `src/market.ts`, `src/feed.ts`, `src/trader.ts`, and `src/execution-runtime.ts` contain responsibilities that belong in the browser. `src/paper-sessions.ts`, `src/paper-session-worker.ts`, and `src/paper-session-guard.ts` describe the old server visitor-session design; the cutover removes it rather than adding another browser-to-worker protocol. Do not introduce compatibility exports that put browser display types back into the shared inference files.
+The server executor, visitor Workers, operator listener, and Next session gateway are removed. Do not add compatibility routes or put browser display types back into the shared inference files. The browser modules above are the durable implementation references for #22 and #23.
 
 See [Jev provider](jev-provider.md) for provider configuration. Its credential is distinct from a trading signing key.
 

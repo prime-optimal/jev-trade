@@ -38,9 +38,9 @@ Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. 
 
 ## Feed and privacy boundaries
 
-The browser uses the #22 public feed and session APIs. Public market subscriptions and direct account subscriptions have different lifetimes; stopping execution does not hide the public market view. Feed reconnection only restores data delivery. It never starts trading.
+The browser uses [`feed.ts`](../web/src/lib/trading/feed.ts) and [`session.ts`](../web/src/lib/trading/session.ts), introduced in #22 and integrated by [`SettingsProvider.tsx`](../web/src/lib/trading/SettingsProvider.tsx) in #23. Public market subscriptions and direct account subscriptions have different lifetimes; stopping execution does not hide the public market view. Feed reconnection only restores data delivery. It never starts trading.
 
-Wallet, account, and order data travel only through direct wallet and Hyperliquid transports. They do not enter Next requests, Bun requests, server logs, an SSE session gateway, or a server-side visitor Worker. The only inference payload crossing the application boundary is `JevRequest` through [`web/src/lib/jev.ts`](../web/src/lib/jev.ts), with credentials omitted and no referrer. It must not carry wallet, account, or order data.
+Wallet identities, raw account snapshots, and order records travel only through direct wallet and Hyperliquid transports. They do not enter Next requests, Bun requests, server logs, an SSE session gateway, or a server-side visitor Worker. The only inference payload crossing the application boundary is `JevRequest` through [`web/src/lib/jev.ts`](../web/src/lib/jev.ts), with credentials omitted and no referrer. It contains market features and non-identifying position context, never raw account transport objects.
 
 There is no dashboard setting for a backend execution address or operator control listener. Bun and Next remain separate runtimes. Browser-local execution does not turn Next into an exchange proxy or Bun into a wallet custodian.
 
