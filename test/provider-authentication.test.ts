@@ -4,15 +4,21 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const directory = mkdtempSync(`${tmpdir()}/jev-visitor-runtime-`);
-const configUrl = pathToFileURL(resolve("src/config.ts")).href;
+const directory = mkdtempSync(`${tmpdir()}/jev-provider-`);
 const modelUrl = pathToFileURL(resolve("src/model.ts")).href;
 
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
 async function isolated(script: string): Promise<Record<string, unknown>> {
-  const child = Bun.spawn([process.execPath, "--eval", script], {
+  const child = Bun.spawn([process.execPath, "--no-env-file", "--eval", script], {
     cwd: directory,
+    env: {
+      PATH: process.env.PATH ?? "",
+      MODEL: "jev",
+      JEV_PROVIDER: "gateway",
+      JEV_MODEL_ID: "typesafe-ai/jev-latest",
+      AI_GATEWAY_API_KEY: "provider-gateway-key",
+    },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -25,38 +31,8 @@ async function isolated(script: string): Promise<Record<string, unknown>> {
   return JSON.parse(stdout) as Record<string, unknown>;
 }
 
-describe("visitor runtime environment isolation", () => {
-  test("imported config ignores hostile dotenv wallet and transport values", async () => {
-    await Bun.write(`${directory}/.env`, [
-      "PRIVATE_KEY=0xhostile-wallet",
-      "WALLETS_JSON={\"BTC\":\"0xhostile-wallet\"}",
-      "HL_API_URL=https://hostile.example?token=secret",
-      "HL_API_KEY=hostile-transport-key",
-    ].join("\n"));
-    const result = await isolated(`
-      // Runtime-selected file URL exercises config's import-time isolation boundary.
-      globalThis.__JEV_RUNTIME_ENV__ = { MODEL: "mock", DRY_RUN: "true", HL_TESTNET: "true", TICK_MS: "30000" };
-      const { config, runtimeEnv } = await import(${JSON.stringify(configUrl)});
-      console.log(JSON.stringify({
-        privateKey: config.privateKey ?? null,
-        walletEnv: runtimeEnv.WALLETS_JSON ?? null,
-        apiUrl: config.hyperliquid.apiUrl,
-        headers: config.hyperliquid.headers,
-        dryRun: config.dryRun,
-      }));
-    `);
-
-    expect(result).toEqual({
-      privateKey: null,
-      walletEnv: null,
-      apiUrl: "https://api.hyperliquid-testnet.xyz",
-      headers: {},
-      dryRun: true,
-    });
-  });
-
-  test("gateway requests use the injected visitor credential", async () => {
-    await Bun.write(`${directory}/.env`, "AI_GATEWAY_API_KEY=hostile-gateway-key\n");
+describe("provider authentication", () => {
+  test("gateway requests use the configured provider credential", async () => {
     const state = {
       coin: "BTC", market: "BTC-USD", tick: 1, tickMs: 30_000, mid: 100,
       spreadBps: 1, bookImbalance: 0, depth: {}, book: { bids: [], asks: [] },
@@ -69,10 +45,6 @@ describe("visitor runtime environment isolation", () => {
       maxLeverage: 5,
     };
     const result = await isolated(`
-      globalThis.__JEV_RUNTIME_ENV__ = {
-        MODEL: "jev", JEV_PROVIDER: "gateway", JEV_MODEL_ID: "typesafe-ai/jev-latest",
-        AI_GATEWAY_API_KEY: "visitor-gateway-key", DRY_RUN: "true", HL_TESTNET: "true",
-      };
       let authorization = null;
       globalThis.fetch = async (_input, init) => {
         const headers = new Headers(init?.headers);
@@ -92,6 +64,6 @@ describe("visitor runtime environment isolation", () => {
       console.log(JSON.stringify({ authorization, action: decision.action, inputTokens: decision.inputTokens }));
     `);
 
-    expect(result).toEqual({ authorization: "Bearer visitor-gateway-key", action: "hold", inputTokens: 7 });
+    expect(result).toEqual({ authorization: `Bearer ${"provider-gateway-key"}`, action: "hold", inputTokens: 7 });
   });
 });

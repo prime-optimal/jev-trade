@@ -63,10 +63,10 @@
 .notice, .warning { max-width: 1120px; margin: 0 auto 16px; padding: 12px 14px; border: 1px solid var(--border); background: var(--late-cell); color: var(--ink); }
 .error { color: var(--sell-ink) !important; margin-top: 12px; }
 .ok { color: var(--buy-ink); }
-.endpoints, .operator { margin-top: 18px; border-top: 1px solid var(--border-2); }
-.endpoints div, .operator div { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--grid); }
-.endpoints dt, .operator dt { color: var(--muted); }
-.endpoints dd, .operator dd { overflow-wrap: anywhere; }
+.endpoints { margin-top: 18px; border-top: 1px solid var(--border-2); }
+.endpoints div { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--grid); }
+.endpoints dt { color: var(--muted); }
+.endpoints dd { overflow-wrap: anywhere; }
 .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
 .advancedToggle { width: 100%; text-align: left; font-weight: 700; }
 .advanced { border: 0; padding: 20px 0 0; margin: 0; }
@@ -80,7 +80,7 @@
   .status { align-self: flex-start; }
   .grid { grid-template-columns: 1fr; }
   .section { padding: 16px; }
-  .endpoints div, .operator div { grid-template-columns: 1fr; gap: 3px; }
+  .endpoints div { grid-template-columns: 1fr; gap: 3px; }
   .footer { align-items: stretch; }
   .footer button { flex: 1; }
   .footer span { width: 100%; margin-left: 0; }
