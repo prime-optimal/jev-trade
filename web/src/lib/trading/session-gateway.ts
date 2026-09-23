@@ -27,14 +27,22 @@ export function backendBaseUrl(): URL {
 
   let url: URL;
   try {
-    url = new URL(configured);
+    if (configured.includes("://") && !/^https?:\/\//.test(configured)) throw new Error();
+    url = new URL(/^https?:\/\//.test(configured) ? configured : `https://${configured}`);
   } catch {
     throw new Error("The visitor session bot URL is invalid.");
   }
-  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || url.search || url.hash) {
-    throw new Error("The visitor session bot URL must be an HTTP(S) URL without credentials, query, or fragment.");
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:")
+    || url.username
+    || url.password
+    || (url.pathname !== "/" && url.pathname !== "")
+    || url.search
+    || url.hash
+  ) {
+    throw new Error("The visitor session bot URL must be an HTTP(S) host without credentials, path, query, or fragment.");
   }
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/`;
+  url.pathname = "/";
   return url;
 }
 

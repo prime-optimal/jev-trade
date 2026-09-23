@@ -38,7 +38,7 @@ The Bun process reads environment values at startup, then exposes two settings l
 | `CONTROL_HOST` | `127.0.0.1:<CONTROL_PORT>` | No | Exact accepted Host header. It must name a loopback host and the configured control port. |
 | `NEXT_PUBLIC_API_URL` | Page hostname on port `3000` | No | Browser-visible public bot API. A bare host gets `https://`. Set it before a production dashboard build. |
 | `NEXT_PUBLIC_OPERATOR_API_URL` | `http://127.0.0.1:3002` on localhost pages, otherwise disabled | No | Optional browser-visible operator base URL. Set it only for an explicitly arranged local channel. It does not add authentication or make remote exposure safe. |
-| `BOT_API_URL` | `NEXT_PUBLIC_API_URL` | No | Server-side bot base URL used by the Next visitor-session gateway. Prefer this runtime override when it differs from the browser-visible API URL. |
+| `BOT_API_URL` | `NEXT_PUBLIC_API_URL` | No | Server-side bot base URL used by the Next visitor-session gateway. A bare hostname gets `https://`. Prefer this runtime override when it differs from the browser-visible API URL. |
 
 Bun loads the root `.env` automatically. Copy [`.env.example`](../.env.example) for bot values and [`web/.env.example`](../web/.env.example) for browser build values. Do not commit live credentials.
 

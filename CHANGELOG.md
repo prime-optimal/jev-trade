@@ -29,7 +29,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Pinned Bun 1.3.14 in both package manifests and `railpack.json`.
 - Railpack builds both services: frozen `bun install`, bot starts with `bun run start`, dashboard builds with `bun run build` and starts with `bun run start`.
 - Changed the dashboard production start script to `next start`, which honors Railway's `PORT`.
-- Changed the dashboard API URL handling to add `https://` when `NEXT_PUBLIC_API_URL` is a bare Railway host.
+- Changed the dashboard and visitor gateway API URL handling to add `https://` when `NEXT_PUBLIC_API_URL` is a bare Railway host.
 - Updated `web/public/llms.txt` to name OpenRouter as the default Jev API.
 - The dashboard dev server now allows this machine's LAN IPv4 addresses in `allowedDevOrigins`, and with `NEXT_PUBLIC_API_URL` unset the dashboard reads the bot at the page's own host on port 3000. Opening it by LAN IP no longer needs a manual `next.config.ts` edit.
 - Added `railway` just recipes: `deploy-plan`, `deploy-infra`, `deploy-setup`, `deploy` and `deploy-status`.

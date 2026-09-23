@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  backendBaseUrl,
   bootstrapSession,
   closeSession,
   proxySession,
   readSessionCookie,
 } from "../web/src/lib/trading/session-gateway";
-
 const originalFetch = globalThis.fetch;
 const originalBotUrl = process.env.BOT_API_URL;
 
@@ -22,7 +22,7 @@ function withSession(request: Request, token = "visitor-a"): Request {
 }
 
 beforeEach(() => {
-  process.env.BOT_API_URL = "https://bot.example/base";
+  process.env.BOT_API_URL = "https://bot.example";
 });
 
 afterEach(() => {
@@ -46,6 +46,8 @@ describe("visitor session gateway", () => {
   });
 
   test("uses the public Host when Next exposes its internal listener URL", async () => {
+    process.env.BOT_API_URL = "bot-production-17bd.up.railway.app";
+    expect(backendBaseUrl().href).toBe("https://bot-production-17bd.up.railway.app/");
     const request = new Request("http://0.0.0.0:3101/api/session", {
       method: "POST",
       headers: {
