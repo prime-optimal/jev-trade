@@ -50,7 +50,7 @@ function clock(value: number): string {
 
 export default function Header({ connection, balance, unrealized, realized }: HeaderProps) {
   const pathname = usePathname();
-  const { settings, scope, sessionState, run, connection: venueConnection, start, stop, ready } = useSettings();
+  const { settings, run, connection: venueConnection, start, stop, ready } = useSettings();
   const [now, setNow] = useState(() => Date.now());
   const [actionError, setActionError] = useState<string | null>(null);
   const status = run.status;
@@ -77,11 +77,7 @@ export default function Header({ connection, balance, unrealized, realized }: He
   }, [clockOffset, now, run.deadlineAt, run.durationMs, run.startedAt, run.stoppedAt, settings.runDurationMinutes, status]);
 
   const statusText = (() => {
-    if (scope === "visitor" && !ready) {
-      if (sessionState === "expired") return "Session expired";
-      if (sessionState === "error") return "Session unavailable";
-      return "Session connecting";
-    }
+    if (!ready) return "Loading settings";
     const progress = `${clock(timing.elapsed)} / ${clock(timing.duration)}`;
     if (status === "running") return `Running ${progress}`;
     if (status === "starting") return `Starting ${progress}`;
@@ -93,18 +89,18 @@ export default function Header({ connection, balance, unrealized, realized }: He
   })();
 
   const connectionReady = venueConnection?.ok === true && (settings.mode !== "real" || venueConnection.realAllowed);
-  const canStart = ready && (scope === "visitor" || connectionReady) && settings.enabledCoins.length > 0 && (status === "off" || status === "expired");
+  const canStart = ready && connectionReady && settings.enabledCoins.length > 0 && (status === "off" || status === "expired");
   const canStop = ready && active && status !== "stopping";
   const switchDisabled = active ? !canStop : !canStart;
   const switchHint = !ready
-    ? scope === "visitor" && sessionState === "expired" ? "Reconnect your expired paper session in Settings." : "Trading control is connecting."
+    ? "Browser settings are loading."
     : settings.enabledCoins.length === 0
       ? "Enable at least one asset."
-      : scope === "operator" && !connectionReady
+      : !connectionReady
         ? "Validate a compatible connection before starting."
         : status === "attention-required"
           ? "Resolve the execution warning before starting another run."
-          : scope === "visitor" ? "Controls this visitor paper session only." : undefined;
+          : "Controls trading in this browser only.";
 
   async function toggleRun() {
     setActionError(null);
