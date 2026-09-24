@@ -33,11 +33,17 @@ The same bot process owns a registry of isolated visitor sessions. Creating a se
 | [`src/snapshot.ts`](../src/snapshot.ts) | History and tape clipping for API responses. |
 | [`src/account.ts`](../src/account.ts) | Clearinghouse state conversion and realized PnL and fee accounting. |
 | [`src/plan.ts`](../src/plan.ts) | Intent normalization, leverage rungs, and conversion to one order plan. |
-| [`src/model.ts`](../src/model.ts) | `TradeState`, Jev questions and answer mapping, plus real and mock models. |
-| [`src/decision-events.ts`](../src/decision-events.ts) | Typed decision, quote, fill, and markout events for the journal. |
-| [`src/decision-store.ts`](../src/decision-store.ts) | Optional PostgreSQL decision journal, serialized writes, and owner-scoped cursor queries. |
+| [`src/jev-evidence.ts`](../src/jev-evidence.ts) | Shared types for program captures, provider answers, evaluation evidence, and group results. |
+| [`src/jev-features.ts`](../src/jev-features.ts) | Code-owned allowlisted feature catalog and market-facing feature projection. |
+| [`src/jev-program.ts`](../src/jev-program.ts) | Program schema, validation, revision hashing, activation, and per-tick capture. |
+| [`src/jev-answers.ts`](../src/jev-answers.ts) | Typed provider-answer parsing and bounded raw response evidence. |
+| [`src/jev-provider.ts`](../src/jev-provider.ts) | Per-group provider calls, deadline handling, and sanitized failures. |
+| [`src/model.ts`](../src/model.ts) | `TradeState`, per-tick program capture, required-group decision handling, and real and mock models. |
+| [`src/decision-events.ts`](../src/decision-events.ts) | Typed evaluation, observation, quote, fill, and markout journal events. |
+| [`src/decision-store.ts`](../src/decision-store.ts) | Optional PostgreSQL decision and observation journal, serialized writes, and owner-scoped cursor queries. |
 | [`src/owner-token.ts`](../src/owner-token.ts) | Signed owner tokens used to restore durable visitor ownership. |
 | [`src/trader.ts`](../src/trader.ts) | Per-tick decision loop, order queue, simulated positions, totals, and events. |
+| [`src/trader-journal.ts`](../src/trader-journal.ts) | Decision and observation event creation, including delayed observations tied to their captured decision. |
 | [`src/server.ts`](../src/server.ts) | Bun HTTP server, snapshots, history, tape, and SSE broadcasts. |
 | [`src/index.ts`](../src/index.ts) | Process composition, sleeve lifecycle wiring, and logging. |
 | [`src/execution-runtime.ts`](../src/execution-runtime.ts) | Reusable executor assembly for the shared bot and isolated visitor Workers. |
@@ -51,26 +57,38 @@ The Jev provider is behind the `Model` interface in [`src/model.ts`](../src/mode
 
 ```mermaid
 flowchart LR
-  A[Hyperliquid book and tape] --> B[Immutable prompt snapshot]
-  B --> C[Overlapping Model.decide calls]
-  C --> D[Decision event with UUID]
-  D --> E{Newest and run still live}
-  E -->|Yes| F[Serialized quote work]
-  E -->|No| G[Record stale result only]
-  F --> H[Quote and correlated fills]
-  D --> I[Parent journal queue]
-  H --> I
-  A --> J[Markouts at later ticks]
-  J --> I
-  I --> K[PostgreSQL]
-  D --> L[SSE server]
-  H --> L
-  L --> M[Next dashboard]
+  A[Hyperliquid book and tape] --> B[Capture active program per tick]
+  B --> C[Start every group request]
+  C --> D[Await required group]
+  D --> E{Required result}
+  E -->|Answered| F[Decision and evidence]
+  E -->|Unreadable| G[Safe hold with invalid evidence]
+  E -->|Failed| H[Failed evaluation without decision]
+  F --> I{Newest and run still live}
+  G --> I
+  I -->|Yes| J[Serialized quote work]
+  I -->|No| K[Record stale evaluation only]
+  J --> L[Quote and correlated fills]
+  C --> M[Observational group completes later]
+  M --> N[Decision observation event]
+  F --> O[Parent journal queue]
+  G --> O
+  H --> O
+  K --> O
+  N --> O
+  L --> O
+  A --> P[Markouts at later ticks]
+  P --> O
+  F --> Q[SSE server]
+  G --> Q
+  J --> Q
+  Q --> R[Next dashboard]
+  O --> S[PostgreSQL]
 ```
 
-`Trader.onBlock()` reads the latest book, harvests fills, and creates one immutable prompt snapshot per scheduled tick. Model calls may overlap. Each successful result receives a UUID and is recorded, including stale results. Only the newest result from a live run may queue exchange work.
+`Trader.onBlock()` reads the latest book and harvests fills, then captures the active validated program once per scheduled tick before any provider call is awaited. It starts every group request and waits only for the required group. An answered required group produces a decision; an explicit hold is complete, while an unreadable required answer produces a safe hold with invalid evidence. Observational groups never change or suppress that decision, and their results are journaled when they finish. A required-group failure or timeout journals an evaluation without a decision.
 
-Exchange work and PostgreSQL writes use separate serialized queues, so neither venue latency nor journal I/O blocks the next model call. Quote and individual fill events retain the decision UUID; stable fill IDs make WebSocket, HTTP reconciliation, and retry delivery idempotent. Later observations add market return and returns signed to Jev's long or short bias at 1, 5, 20, and 100 ticks. Visitor Workers send journal events to the parent Bun process, which owns the PostgreSQL connection and write queue. Stop, rebuild, and shutdown drain model and exchange work, reconcile final Hyperliquid user fills, clean up owned orders, and wait for Worker journal acknowledgement or termination before closing that queue. See the full [Jev model contract](jev-model.md).
+Exchange work and PostgreSQL writes use separate serialized queues, so neither venue latency nor journal I/O blocks the next model call. Each evaluation gets a UUID before the model call, and the journal records failed evaluations as well as decisions. Quote and individual fill events retain that UUID; stable fill IDs make WebSocket, HTTP reconciliation, and retry delivery idempotent. Later observations add market return and returns signed to Jev's long or short bias at 1, 5, 20, and 100 ticks. Observational group completions also retain the decision UUID and captured program revision. Visitor Workers send journal events to the parent Bun process, which owns the PostgreSQL connection and write queue. Stop, rebuild, and shutdown drain model and exchange work, reconcile final Hyperliquid user fills, clean up owned orders, and wait for Worker journal acknowledgement or termination before closing that queue. See the full [Jev model contract](jev-model.md).
 
 ## Runtime cadences
 
@@ -88,6 +106,6 @@ Execution state stays in process memory: `Trader.history`, recent mids, pending 
 
 The visitor registry and every visitor runtime also live in process memory. Each visitor owns a separate Worker, execution runtime, market connections, settings, run lifecycle, and buffers. The default registry holds at most 8 sessions and expires a session after 10 minutes without a request. The bot service must stay at one replica because capabilities and Workers are not shared across processes.
 
-When `DATABASE_URL` is configured, PostgreSQL keeps successful decision history separately from transient execution state. Records include the exact revisioned prompt snapshot, normalized decision, correlated quote and fills, and later markouts. The active session capability authorizes visitor reads. A separate signed HttpOnly owner cookie can restore the same database owner after reconnect or restart. Query routes do not accept it directly; session creation exchanges it for a new short-lived capability.
+When `DATABASE_URL` is configured, PostgreSQL keeps evaluation history separately from transient execution state. New records include the captured program evidence, a decision when available, observational group results, correlated quotes and fills, and later markouts. The active session capability authorizes visitor reads. A separate signed HttpOnly owner cookie can restore the same database owner after reconnect or restart. Query routes do not accept it directly; session creation exchanges it for a new short-lived capability.
 
 A bot restart still loses active visitor capabilities, Workers, runs, settings, and in-memory history. Visitors must Reconnect to create a new Off Worker. With durable storage enabled, the new capability can be associated with the restored owner, so prior decision history remains queryable. The shared executor reloads venue candles, user fills, and clearinghouse state. For live sleeves it fetches existing open orders for the coin and cancels only its own orders. The optional `.wallets.json` file is configuration, not trading-state persistence.

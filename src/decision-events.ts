@@ -1,4 +1,5 @@
-import type { JevPrompt, ModelDecision } from "./model";
+import type { EvaluationEvidence, GroupResult, ProgramRecordType } from "./jev-evidence";
+import type { ModelDecision } from "./model";
 import type { Fill, Position, Quote, Totals } from "./types";
 
 type JournalBase = {
@@ -13,15 +14,22 @@ type JournalBase = {
 export type DecisionJournalEvent =
   | (JournalBase & {
     type: "decision";
+    recordType: ProgramRecordType;
     late: boolean;
     model: string;
     provider: string;
     modelId: string;
-    promptRevision: string;
-    prompt: JevPrompt;
-    decision: ModelDecision;
+    evidence: EvaluationEvidence;
+    decision: ModelDecision | null;
     position: Position;
     totals: Totals;
+  })
+  | (JournalBase & {
+    type: "decision-observation";
+    recordType: ProgramRecordType;
+    revision: string;
+    groupId: string;
+    completion: GroupResult;
   })
   | (JournalBase & {
     type: "quote";

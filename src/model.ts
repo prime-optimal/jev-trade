@@ -1,13 +1,21 @@
-import { createGateway } from "@ai-sdk/gateway";
-import { experimental_evaluate as evaluate } from "ai";
-import { TypeSafeClient } from "@typesafe-ai/sdk";
-import { assertJevCredentials, config, OPENROUTER_BASE_URL, runtimeEnv, type JevProvider } from "./config";
-import { leverageRungs, liveIntent, parseLeverage, quoteAction, type Bias, type Intent } from "./plan";
+import { assertJevCredentials, config, runtimeEnv } from "./config";
+import { marketFacing } from "./jev-features";
+import { boundedRaw } from "./jev-answers";
+import { activateProgram, captureProgram, DEFAULT_PROGRAM } from "./jev-program";
+import { callProviderGroup, failedGroupResult } from "./jev-provider";
+import type {
+  ActiveProgram,
+  EvaluationEvidence,
+  GroupResult,
+  GroupSnapshot,
+  ProgramCapture,
+  ProviderAnswer,
+  ProviderTarget,
+  QuestionEvidence,
+} from "./jev-evidence";
+import { liveIntent, parseLeverage, quoteAction, type Bias, type Intent } from "./plan";
 import type { Action, Side } from "./types";
 
-export const JEV_PROMPT_REVISION = "jev-trade-2026-09-23.1";
-
-/** What the model sees. Compact, relative, human-readable. */
 export interface TradeState {
   coin: string;
   market: string;
@@ -16,13 +24,10 @@ export interface TradeState {
   mid: number;
   spreadBps: number;
   bookImbalance: number;
-  /** Cumulative resting size within 10/25/50 bps of mid, per side. */
   depth: { [band: string]: { bid: number; ask: number } };
-  /** Top 5 levels each side, best first, as "price x size". */
   book: { bids: string[]; asks: string[] };
   returnsBps: { last1: number; last5: number; last20: number; last100: number };
   recentMids: string;
-  /** Taker prints in the lookback window. cvdSz = taker buy size minus taker sell size. */
   trades: { count: number; buySz: number; sellSz: number; cvdSz: number; vwap: number | null; lastPrice: number | null; lastSide: Side | null };
   recentTrades: string[];
   position: {
@@ -80,24 +85,10 @@ export interface ModelDecision {
   inputTokens: number;
 }
 
-export type MarketFacingState = Omit<TradeState, "position"> & {
-  position: Omit<TradeState["position"], "unrealizedUsd"> & { unrealizedUsd?: number };
-};
-
-export interface JevQuestion {
-  type: "choice";
-  instructions: { question: string; goal: string; timing: string; inputs: string };
-  criteria: Record<string, string>;
-}
-
-export interface JevPrompt {
-  revision: typeof JEV_PROMPT_REVISION;
-  state: MarketFacingState;
-  questions: { bias: JevQuestion; intent: JevQuestion; leverage: JevQuestion };
-}
 export interface ModelEvaluation {
-  decision: ModelDecision;
-  prompt: JevPrompt;
+  decision: ModelDecision | null;
+  evidence: EvaluationEvidence;
+  observations: Promise<readonly GroupResult[]>;
 }
 
 export interface Model {
@@ -105,123 +96,12 @@ export interface Model {
   decide(state: TradeState): Promise<ModelEvaluation>;
 }
 
-/** Book, tape, and the open position. Wallet fills and lifetime PnL stay off this object. */
-export function marketFacing(state: TradeState): MarketFacingState {
-  const pos = state.position;
-  return {
-    coin: state.coin,
-    market: state.market,
-    tick: state.tick,
-    tickMs: state.tickMs,
-    mid: state.mid,
-    spreadBps: state.spreadBps,
-    bookImbalance: state.bookImbalance,
-    depth: state.depth,
-    book: state.book,
-    returnsBps: state.returnsBps,
-    recentMids: state.recentMids,
-    trades: state.trades,
-    recentTrades: state.recentTrades,
-    position: {
-      coin: pos.coin,
-      side: pos.side,
-      size: pos.size,
-      notionalUsd: pos.notionalUsd,
-      entry: pos.entry,
-      leverage: pos.leverage,
-      liquidationPx: pos.liquidationPx,
-      distanceBps: pos.distanceBps,
-      ...(pos.side === "flat" ? {} : { unrealizedUsd: pos.unrealizedUsd }),
-    },
-    indicators: state.indicators,
-    asset: state.asset,
-    maxLeverage: state.maxLeverage,
-  };
-}
+export type CallGroup = (snapshot: GroupSnapshot, target: ProviderTarget) => Promise<GroupResult>;
 
-/** Labels and live fields only. No advice about when to pick an action. */
-export function jevQuestions(state: TradeState): JevPrompt["questions"] {
-  const asset = state.coin;
-  const pos = state.position;
-  const stance = pos.side === "flat"
-    ? `flat ${asset}`
-    : `${pos.side} ${pos.size} ${asset} @ ${pos.entry ?? "?"}`;
-  const levNow = pos.leverage != null ? `${pos.leverage}x` : "unset";
-  const rungs = leverageRungs(state.maxLeverage);
-  const levCriteria: Record<string, string> = {};
-  for (const n of rungs) {
-    levCriteria[String(n)] = `${n}x`;
-  }
-  const ctx = `${asset} ${state.market}. position has side/size/entry. indicators are 1m sma/ema/rsi/vol. asset is mark/oracle/funding/oi. trades and book are the tape.`;
-  const bias = {
-    type: "choice" as const,
-    instructions: {
-      question: `long or short ${asset}?`,
-      goal: `${state.market}`,
-      timing: `tickMs=${state.tickMs}. position=${stance}.`,
-      inputs: ctx,
-    },
-    criteria: {
-      long: "long",
-      short: "short",
-    },
-  };
-  const leverage = {
-    type: "choice" as const,
-    instructions: {
-      question: `cross leverage for ${asset}?`,
-      goal: `current ${levNow}. max ${state.maxLeverage}x.`,
-      timing: `rungs ${rungs.join(" ")}`,
-      inputs: ctx,
-    },
-    criteria: levCriteria,
-  };
-  if (pos.side === "flat") {
-    return {
-      bias,
-      intent: {
-        type: "choice" as const,
-        instructions: {
-          question: `open or hold ${asset}?`,
-          goal: `position=${stance}.`,
-          timing: `tickMs=${state.tickMs}`,
-          inputs: ctx,
-        },
-        criteria: {
-          open: "open",
-          hold: "hold",
-        } as Record<string, string>,
-      },
-      leverage,
-    };
-  }
-  return {
-    bias,
-    intent: {
-      type: "choice" as const,
-      instructions: {
-        question: `open, close, or hold ${asset}?`,
-        goal: `position=${stance}.`,
-        timing: `tickMs=${state.tickMs}`,
-        inputs: ctx,
-      },
-      criteria: {
-        open: "open",
-        close: "close",
-        hold: "hold",
-      } as Record<string, string>,
-    },
-    leverage,
-  };
-}
-
-/** Capture exactly what is submitted to Jev before inference can outlive mutable inputs. */
-export function buildJevPrompt(state: TradeState): JevPrompt {
-  return {
-    revision: JEV_PROMPT_REVISION,
-    state: structuredClone(marketFacing(state)),
-    questions: structuredClone(jevQuestions(state)),
-  };
+export interface JevModelOptions {
+  program?: ActiveProgram;
+  callGroup?: CallGroup;
+  target?: ProviderTarget;
 }
 
 interface Packed {
@@ -239,8 +119,6 @@ interface Packed {
 
 function pack(o: Packed): ModelDecision {
   const action = quoteAction(o.intent, o.bias);
-  // long/short and open/close/hold are each a distribution. buy/sell are the legacy
-  // pair: the mass behind the order actually being sent, discounted by the hold mass.
   const conviction = action === "buy"
     ? Math.max(o.longP, o.openP)
     : action === "sell"
@@ -281,7 +159,6 @@ function pickKnown<T extends string>(raw: unknown, allowed: readonly T[]): T | n
   return (allowed as readonly string[]).includes(n) ? n as T : null;
 }
 
-/** Normalize a choice answer over `keys`. Missing probabilities fall back to the pick. */
 function choiceProbs(answer: ChoiceAnswer | undefined, keys: readonly string[]): Record<string, number> {
   const choice = normChoice(answer?.choice);
   const p = answer?.probabilities ?? {};
@@ -304,7 +181,6 @@ function choiceProbs(answer: ChoiceAnswer | undefined, keys: readonly string[]):
 type ChoiceAnswer = { choice?: string; probabilities?: Record<string, number> };
 type JevAnswers = { bias?: ChoiceAnswer; intent?: ChoiceAnswer; leverage?: ChoiceAnswer };
 
-/** Map a Jev answer set onto one tick. A side we cannot read is a hold, not a long. */
 export function decideFromJevAnswers(
   answers: JevAnswers,
   positionSide: "long" | "short" | "flat",
@@ -333,123 +209,190 @@ export function decideFromJevAnswers(
   });
 }
 
-const gateway = createGateway({ apiKey: runtimeEnv.AI_GATEWAY_API_KEY });
-let typesafe: TypeSafeClient | undefined;
-let openrouter: TypeSafeClient | undefined;
-
-function sdkClient(provider: Exclude<JevProvider, "gateway">): TypeSafeClient {
-  if (provider === "openrouter") {
-    return (openrouter ??= new TypeSafeClient({
-      apiKey: runtimeEnv.OPENROUTER_API_KEY,
-      baseURL: OPENROUTER_BASE_URL,
-      defaultModel: config.jevModelId,
-      retry: { maxRetries: 0 },
-    }));
-  }
-  return (typesafe ??= new TypeSafeClient({
-    apiKey: runtimeEnv.TYPESAFE_API_KEY,
-    defaultModel: config.jevModelId,
-    retry: { maxRetries: 0 },
-  }));
-}
-
-const JEV_DEADLINE_MS = 4000;
-
-function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`jev timeout ${ms}ms`)), ms);
-    p.then(
-      (v) => { clearTimeout(t); resolve(v); },
-      (e) => { clearTimeout(t); reject(e); },
-    );
-  });
-}
-
-async function callJev(prompt: JevPrompt): Promise<{ answers: JevAnswers; inputTokens: number }> {
-  const run = async () => {
-    if (config.jevProvider === "gateway") {
-      const r = await evaluate({
-        model: gateway.evaluationModel(config.jevModelId),
-        state: prompt.state as never,
-        questions: prompt.questions,
-        maxRetries: 0,
-      });
-      return { answers: r.answers, inputTokens: r.usage?.inputTokens ?? 0 };
-    }
-    const r = await sdkClient(config.jevProvider).systemOne(
-      {
-        model: config.jevModelId,
-        state: prompt.state as never,
-        questions: prompt.questions,
-      },
-      { retry: { maxRetries: 0 } },
-    );
-    return { answers: r.answers, inputTokens: r.usage.input_tokens ?? 0 };
+function projectedChoice(answer: ProviderAnswer): ChoiceAnswer | undefined {
+  if (answer.type !== "choice") return undefined;
+  return {
+    choice: answer.choice,
+    ...(answer.probabilities ? { probabilities: answer.probabilities } : {}),
   };
-  return withDeadline(run(), JEV_DEADLINE_MS);
 }
 
-/** Real Jev. JEV_PROVIDER selects OpenRouter, official TypeSafe, or Vercel AI Gateway. */
+function projectRequiredAnswers(result: GroupResult): JevAnswers {
+  const projected: JevAnswers = {};
+  for (const row of result.answers) {
+    if (row.role !== "required" || row.status !== "answered" || !row.answer) continue;
+    const answer = projectedChoice(row.answer);
+    if (!answer) continue;
+    if (row.key === "bias" || row.key === "intent" || row.key === "leverage") projected[row.key] = answer;
+  }
+  return projected;
+}
+
 export class JevModel implements Model {
   readonly name = "jev";
+  private readonly target: ProviderTarget;
+  private readonly callGroup: CallGroup;
+  private program: ActiveProgram;
+
+  constructor(options: JevModelOptions = {}) {
+    this.target = options.target ?? { provider: config.jevProvider, modelId: config.jevModelId };
+    this.callGroup = options.callGroup ?? callProviderGroup;
+    this.program = activateProgram(
+      options.program?.definition ?? DEFAULT_PROGRAM,
+      this.target.provider,
+      options.program?.revision,
+    );
+  }
+
+  setProgram(program: ActiveProgram): void {
+    this.program = activateProgram(program.definition, this.target.provider, program.revision);
+  }
+
+  private startGroup(snapshot: GroupSnapshot): Promise<GroupResult> {
+    const startedAt = Date.now();
+    const startedPerf = performance.now();
+    try {
+      return this.callGroup(snapshot, this.target).catch(() =>
+        failedGroupResult(snapshot, this.target.provider, "provider_error", startedAt, startedPerf));
+    } catch {
+      return Promise.resolve(failedGroupResult(snapshot, this.target.provider, "provider_error", startedAt, startedPerf));
+    }
+  }
 
   async decide(state: TradeState): Promise<ModelEvaluation> {
-    const prompt = buildJevPrompt(state);
-    const t0 = performance.now();
-    const r = await callJev(prompt);
+    const program = this.program;
+    const capture = captureProgram(program, state, Date.now());
+    const side = state.position.side;
+    const maxLeverage = state.maxLeverage;
+    const currentLeverage = state.position.leverage;
+    const pending = capture.groups.map((snapshot) => ({ snapshot, result: this.startGroup(snapshot) }));
+    const requiredCall = pending.find(({ snapshot }) => snapshot.groupId === capture.requiredGroupId);
+    if (!requiredCall) throw new Error("required Jev group is missing from captured program");
+    const observations = Promise.all(
+      pending.filter(({ snapshot }) => snapshot.groupId !== capture.requiredGroupId).map(({ result }) => result),
+    );
+    const required = await requiredCall.result;
+    if (required.status === "failed" || required.status === "timeout") {
+      return {
+        decision: null,
+        evidence: { recordType: capture.recordType, capture, required, status: "failed" },
+        observations,
+      };
+    }
+    const decision = decideFromJevAnswers(
+      projectRequiredAnswers(required),
+      side,
+      maxLeverage,
+      currentLeverage,
+      required.timing.latencyMs,
+      required.provider.usage?.inputTokens ?? 0,
+    );
     return {
-      prompt,
-      decision: decideFromJevAnswers(
-        r.answers,
-        prompt.state.position.side,
-        prompt.state.maxLeverage,
-        prompt.state.position.leverage,
-        performance.now() - t0,
-        r.inputTokens,
-      ),
+      decision,
+      evidence: {
+        recordType: capture.recordType,
+        capture,
+        required,
+        status: required.status === "complete" ? "complete" : "invalid",
+      },
+      observations,
     };
   }
 }
 
-/** Deterministic stand-in: momentum + imbalance. Jev-shaped open/close/hold/long/short/leverage. */
+function mockEvidence(
+  capture: ProgramCapture,
+  answers: Record<string, { choice: string; probabilities: Record<string, number> }>,
+  inputTokens: number,
+  startedAt: number,
+  startedPerf: number,
+): EvaluationEvidence {
+  const trade = capture.groups.find(({ groupId }) => groupId === capture.requiredGroupId)!;
+  const rows: QuestionEvidence[] = trade.questions.map((question) => {
+    const answer = { type: "choice" as const, ...answers[question.key]! };
+    return {
+      key: question.key,
+      declaredType: question.type,
+      groupId: trade.groupId,
+      role: question.role,
+      status: "answered",
+      raw: boundedRaw(answer),
+      answer,
+    };
+  });
+  const completedAt = Date.now();
+  const required: GroupResult = {
+    groupId: trade.groupId,
+    status: "complete",
+    answers: rows,
+    unexpected: [],
+    provider: { name: "local", model: "mock", usage: { inputTokens } },
+    timing: { startedAt, completedAt, latencyMs: performance.now() - startedPerf },
+  };
+  return { recordType: capture.recordType, capture, required, status: "complete" };
+}
+
 export class MockModel implements Model {
   readonly name = "mock";
+  private readonly program = activateProgram(DEFAULT_PROGRAM, "local");
 
   async decide(state: TradeState): Promise<ModelEvaluation> {
-    const prompt = buildJevPrompt(state);
-    const seen = prompt.state;
-    const t0 = performance.now();
+    const capture = captureProgram(this.program, state, Date.now());
+    const trade = capture.groups.find(({ groupId }) => groupId === capture.requiredGroupId)!;
+    const seen = marketFacing(state);
+    const startedAt = Date.now();
+    const startedPerf = performance.now();
     const flow = seen.trades.buySz + seen.trades.sellSz ? seen.trades.cvdSz / (seen.trades.buySz + seen.trades.sellSz) : 0;
     const signal = seen.returnsBps.last20 / 8 + seen.bookImbalance * 1.5 + flow * 2 + this.noise(seen.tick);
     const longP = 1 / (1 + Math.exp(-signal));
     const bias: Bias = longP >= 0.5 ? "long" : "short";
     const against = (bias === "long" && seen.position.side === "short") || (bias === "short" && seen.position.side === "long");
-    // A weak signal is not worth a round trip, so stand down instead of forcing a side.
     const weak = Math.abs(signal) < 0.35;
     const picked: Intent = against ? "close" : weak ? "hold" : "open";
     const intent = liveIntent(seen.position.side, picked);
     const holdP = intent === "hold" ? 0.7 : 0.15;
     const closeP = intent === "close" ? 0.7 : 0.15;
     const leverage = parseLeverage(1 + Math.abs(signal) * 8, seen.maxLeverage, seen.position.leverage ?? 1);
+    const longProbabilities = { long: longP, short: 1 - longP };
+    const intentProbabilities: Record<string, number> = {
+      open: Math.max(0, 1 - holdP - closeP),
+      hold: holdP,
+    };
+    const intentQuestion = trade.questions.find(({ key }) => key === "intent");
+    if (intentQuestion?.criteria && !Array.isArray(intentQuestion.criteria) && "close" in intentQuestion.criteria) {
+      intentProbabilities.close = closeP;
+    }
+    const leverageQuestion = trade.questions.find(({ key }) => key === "leverage")!;
+    const leverageProbabilities = Object.fromEntries(
+      Object.keys(leverageQuestion.criteria ?? {}).map((key) => [key, key === String(leverage) ? 1 : 0]),
+    );
+    const answers = {
+      bias: { choice: bias, probabilities: longProbabilities },
+      intent: { choice: intent, probabilities: intentProbabilities },
+      leverage: { choice: String(leverage), probabilities: leverageProbabilities },
+    };
+    const inputTokens = Math.round(JSON.stringify(trade.state).length / 4);
     await Bun.sleep(80);
+    const decision = pack({
+      intent,
+      bias,
+      leverage,
+      longP,
+      shortP: 1 - longP,
+      openP: Math.max(0, 1 - holdP - closeP),
+      closeP,
+      holdP,
+      latencyMs: performance.now() - startedPerf,
+      inputTokens,
+    });
     return {
-      prompt,
-      decision: pack({
-        intent,
-        bias,
-        leverage,
-        longP,
-        shortP: 1 - longP,
-        openP: Math.max(0, 1 - holdP - closeP),
-        closeP,
-        holdP,
-        latencyMs: performance.now() - t0,
-        inputTokens: Math.round(JSON.stringify(prompt.state).length / 4),
-      }),
+      decision,
+      evidence: mockEvidence(capture, answers, inputTokens, startedAt, startedPerf),
+      observations: Promise.resolve([]),
     };
   }
 
-  private noise(tick: number) {
+  private noise(tick: number): number {
     let h = tick * 2654435761 >>> 0;
     h ^= h >>> 15; h = (h * 2246822519) >>> 0; h ^= h >>> 13;
     return ((h % 1000) / 1000 - 0.5) * 3;

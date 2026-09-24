@@ -1,13 +1,14 @@
 import { config } from "./config";
 import { safeTransportMessage } from "./hyperliquid";
 import { bpsBetween, snapshotIndicators, venueFeatures } from "./indicators";
-import type { DecisionJournal, DecisionJournalEvent } from "./decision-events";
-import { type JevPrompt, type Model, type ModelDecision, type TradeState } from "./model";
+import type { DecisionJournal } from "./decision-events";
+import { type Model, type ModelDecision, type ModelEvaluation, type TradeState } from "./model";
 import type { Market } from "./market";
 import { planQuote, type QuotePlan } from "./plan";
 import { aggregateFills, emptySummary, liveFillId, takeLiveFills, takeSimFills, type MakerFill, type Resting, type TradeFeed } from "./trades";
 import type { RunGuard } from "./run-lifecycle";
 import type { BlockEvent, Book, Fill, PricePoint, Quote, Side, Timing, Totals } from "./types";
+import { emitMarkouts, enqueueJournal, recordDecision, recordObservations, scheduleMarkout, type ScheduledMarkout } from "./trader-journal";
 
 const emptyTotals = (): Totals => ({
   blocks: 0, decisions: 0, quotes: 0, fills: 0, reverted: 0, lateBlocks: 0,
@@ -40,14 +41,9 @@ export class Trader {
   private totals: Totals = emptyTotals();
   private runGuard: RunGuard | null = null;
   private invalidated = false;
-  private markouts = new Map<string, {
-    block: number;
-    mid: number;
-    runId: string | null;
-    direction: -1 | 0 | 1;
-    pending: Set<1 | 5 | 20 | 100>;
-  }>();
+  private markouts = new Map<string, ScheduledMarkout>();
   private observations = new Map<number, { mid: number; ts: number }>();
+  private pendingObservations = new Set<Promise<void>>();
 
   constructor(
     private market: Market,
@@ -90,27 +86,50 @@ export class Trader {
       const readMs = performance.now() - t0;
       this.mids.push(book.mid);
       if (this.mids.length > 400) this.mids.shift();
-      this.observations.set(block, { mid: book.mid, ts: Date.now() });
+      const timestamp = Date.now();
+      this.observations.set(block, { mid: book.mid, ts: timestamp });
       if (this.observations.size > 500) this.observations.delete(this.observations.keys().next().value!);
-      this.emitMarkouts();
+      emitMarkouts(this.journal, this.market.label, this.market.coin, this.market.pair, this.markouts, this.observations);
       this.harvest();
       this.syncFromVenue();
       const timing = { readMs: Math.round(readMs), loopMs: 0 };
       try {
         if (!this.isRunLive()) return;
         const state = this.buildState(block, book);
-        const evaluation = await this.model.decide(state);
-        const live = this.isRunLive();
-        const decision = evaluation.decision;
         const decisionId = crypto.randomUUID();
+        const runId = this.runGuard?.runId ?? null;
+        const evaluation = await this.model.decide(state);
+        const decision = evaluation.decision;
+        if (decision === null) {
+          recordDecision(this.journal, this.market.label, {
+            decisionId, runId, coin: this.market.coin, market: this.market.pair,
+            timestamp, block, late: true, model: this.model.name,
+            provider: this.model.name === "jev" ? config.jevProvider : "local",
+            modelId: this.model.name === "jev" ? config.jevModelId : this.model.name,
+            evidence: evaluation.evidence, decision, position: this.currentPosition(book.mid), totals: { ...this.totals },
+          });
+          this.trackObservations(evaluation, decisionId, runId, timestamp, block);
+          const message = evaluation.evidence.required.failure?.message ?? evaluation.evidence.required.status;
+          console.error(`tick ${block}: jev unavailable, retrying next tick: ${message}`);
+          this.markLate(block, book, timing);
+          return;
+        }
+        const live = this.isRunLive();
         this.totals.decisions++;
         this.totals.jevUsd += (decision.inputTokens / 1e6) * config.jevUsdPerMTok;
         timing.loopMs = Math.round(performance.now() - t0);
         const stale = !live || block < this.latestScheduledBlock;
         const event = this.emit(block, book, decisionId, decision, null, stale, timing);
-        this.recordDecision(event, decision, evaluation.prompt);
-        this.scheduleMarkouts(decisionId, block, book.mid, decision.bias);
-        this.emitMarkouts();
+        recordDecision(this.journal, this.market.label, {
+          decisionId, runId, coin: event.coin, market: this.market.pair,
+          timestamp: event.ts, block: event.block, late: event.decision!.late,
+          model: this.model.name, provider: this.model.name === "jev" ? config.jevProvider : "local",
+          modelId: this.model.name === "jev" ? config.jevModelId : this.model.name,
+          evidence: evaluation.evidence, decision, position: event.position, totals: event.totals,
+        });
+        this.trackObservations(evaluation, decisionId, runId, event.ts, event.block);
+        scheduleMarkout(this.markouts, decisionId, block, book.mid, decision.bias, this.runGuard?.runId ?? null);
+        emitMarkouts(this.journal, this.market.label, this.market.coin, this.market.pair, this.markouts, this.observations);
         if (stale || !this.isRunLive()) return;
         const plan = planQuote({
           intent: decision.intent,
@@ -133,6 +152,7 @@ export class Trader {
 
   /** Finish queued exchange work, reconcile venue fills, and journal each one once. */
   async drain() {
+    while (this.pendingObservations.size) await Promise.all([...this.pendingObservations]);
     try {
       await this.exchangeTail;
     } catch (error) {
@@ -225,7 +245,7 @@ export class Trader {
       this.orders.set(quote.orderId, { decisionId: quote.decisionId, side: quote.side, price: quote.price, size: quote.size, block });
     }
     this.onQuote(block, quote);
-    this.enqueueJournal({
+    enqueueJournal(this.journal, this.market.label, {
       type: "quote", decisionId: quote.decisionId, runId: this.runGuard?.runId ?? null,
       coin: this.market.coin, market: this.market.pair, block, timestamp: Date.now(), quote,
     });
@@ -296,7 +316,7 @@ export class Trader {
   }
 
   private recordFill(block: number, fill: Fill, fillId: string) {
-    this.enqueueJournal({
+    enqueueJournal(this.journal, this.market.label, {
       type: "fill", fillId, decisionId: fill.decisionId, runId: this.runGuard?.runId ?? null,
       coin: this.market.coin, market: this.market.pair, block, timestamp: Date.now(), fill,
       position: this.currentPosition(fill.price),
@@ -402,72 +422,21 @@ export class Trader {
     };
   }
 
-  private recordDecision(event: BlockEvent, decision: ModelDecision, prompt: JevPrompt) {
-    const id = event.decision!.id;
-    this.enqueueJournal({
-      type: "decision",
-      late: event.decision!.late,
-      decisionId: id,
-      runId: this.runGuard?.runId ?? null,
-      coin: event.coin,
-      market: this.market.pair,
-      block: event.block,
-      timestamp: event.ts,
-      model: this.model.name,
-      provider: this.model.name === "jev" ? config.jevProvider : "local",
-      modelId: this.model.name === "jev" ? config.jevModelId : this.model.name,
-      promptRevision: prompt.revision,
-      prompt,
-      decision,
-      position: event.position,
-      totals: event.totals,
-    });
-  }
-
-  private scheduleMarkouts(decisionId: string, block: number, mid: number, bias: ModelDecision["bias"]) {
-    this.markouts.set(decisionId, {
-      block,
-      runId: this.runGuard?.runId ?? null,
-      mid,
-      direction: bias === "long" ? 1 : -1,
-      pending: new Set([1, 5, 20, 100]),
-    });
-  }
-
-  private emitMarkouts() {
-    for (const [decisionId, markout] of this.markouts) {
-      for (const horizon of markout.pending) {
-        const observedBlock = markout.block + horizon;
-        const observed = this.observations.get(observedBlock);
-        if (!observed) continue;
-        const marketReturnBps = ((observed.mid - markout.mid) / markout.mid) * 10_000;
-        this.enqueueJournal({
-          type: "markout",
-          decisionId,
-          runId: markout.runId,
-          coin: this.market.coin,
-          market: this.market.pair,
-          block: markout.block,
-          timestamp: observed.ts,
-          horizonTicks: horizon,
-          observedBlock,
-          observedTimestamp: observed.ts,
-          observedMid: observed.mid,
-          signedReturnBps: marketReturnBps * markout.direction,
-          marketReturnBps,
-        });
-        markout.pending.delete(horizon);
-      }
-      if (markout.pending.size === 0) this.markouts.delete(decisionId);
-    }
-  }
-
-  private enqueueJournal(event: DecisionJournalEvent) {
-    try {
-      this.journal?.enqueue(event);
-    } catch (error) {
-      console.error(`${this.market.label} decision journal:`, safeTransportMessage(error));
-    }
+  private trackObservations(
+    evaluation: ModelEvaluation,
+    decisionId: string,
+    runId: string | null,
+    timestamp: number,
+    block: number,
+  ) {
+    if (!this.journal) return;
+    let pending: Promise<void>;
+    pending = recordObservations(this.journal, this.market.label, {
+      decisionId, runId, coin: this.market.coin, market: this.market.pair,
+      timestamp, block, revision: evaluation.evidence.capture.revision,
+      observations: evaluation.observations,
+    }).finally(() => this.pendingObservations.delete(pending));
+    this.pendingObservations.add(pending);
   }
 
   private emit(block: number, book: Book, decisionId: string | null, decision: ModelDecision | null, quote: Quote | null, late: boolean, timing?: Timing): BlockEvent {

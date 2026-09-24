@@ -1,11 +1,13 @@
 import { expect, spyOn, test } from "bun:test";
 import type { DecisionJournalEvent } from "../src/decision-events";
+import { PROGRAM_RECORD_TYPE, type GroupResult } from "../src/jev-evidence";
 import type { Market } from "../src/market";
-import { buildJevPrompt, type Model, type ModelDecision, type ModelEvaluation, type TradeState } from "../src/model";
+import { type Model, type ModelEvaluation, type TradeState } from "../src/model";
 import { leverageRungs, liveIntent, parseLeverage, planQuote, quoteAction } from "../src/plan";
 import { jevUnavailable, Trader } from "../src/trader";
 import { TradeFeed, type MakerFill } from "../src/trades";
-import type { BlockEvent, Book, Quote, Side } from "../src/types";
+import type { BlockEvent, Quote, Side } from "../src/types";
+import { book, desk, evaluationFor, FakeMarket, observationResult, packed, ScriptModel } from "./trader-fixtures";
 
 const unavailableCreditDiagnostics = [
   ["OpenRouter", "402 Insufficient credits. Add more using https://openrouter.ai/settings/credits"],
@@ -73,88 +75,6 @@ test("leverage rungs follow the coin max", () => {
   expect(parseLeverage("50", 10, 1)).toBe(10);
 });
 
-const book: Book = {
-  block: 1,
-  bid: 99.9,
-  ask: 100.1,
-  mid: 100,
-  spreadBps: 20,
-  imbalance: 0,
-  levels: { bids: [[99.9, 1]], asks: [[100.1, 1]] },
-  depthBps: { "10": { bid: 1, ask: 1 } },
-};
-
-function packed(partial: Partial<ModelDecision> & Pick<ModelDecision, "intent" | "bias" | "action">): ModelDecision {
-  return {
-    leverage: 1,
-    probabilities: { buy: 0, sell: 0, hold: 1, long: 0.5, short: 0.5, open: 0, close: 0 },
-    upIn10: 0.5,
-    latencyMs: 1,
-    inputTokens: 0,
-    ...partial,
-  };
-}
-
-class ScriptModel implements Model {
-  readonly name = "script";
-  next: ModelDecision | Error = packed({ intent: "hold", bias: "long", action: "hold" });
-  delayMs = 0;
-  async decide(state: TradeState): Promise<ModelEvaluation> {
-    if (this.delayMs) await Bun.sleep(this.delayMs);
-    if (this.next instanceof Error) throw this.next;
-    return { decision: this.next, prompt: buildJevPrompt(state) };
-  }
-}
-
-class FakeMarket {
-  readonly coin = "BTC";
-  readonly pair = "BTC-USD";
-  readonly wallet = null;
-  readonly account = null;
-  readonly szDecimals = 5;
-  readonly maxLeverage = 40;
-  readonly fillPrints: [] = [];
-  assetCtx = null;
-  lastOid: number | null = null;
-  cancels = 0;
-  sendDelayMs = 0;
-  sentSides: Side[] = [];
-  onSend: (() => void) | null = null;
-  cleanupCalls = 0;
-  reconciledFills: MakerFill[] = [];
-  candleCloses() { return []; }
-  refresh() { return Promise.resolve(); }
-  reconcileUserFills() { return Promise.resolve(this.reconciledFills); }
-  readBook() { return book; }
-  quoteSize() { return 0.01; }
-  setLeverage(n: number) { return Promise.resolve(n); }
-  setRunGuard() {}
-  async send(side: Side, size: number, _book: Book, cancel: number[], decisionId: string): Promise<Quote> {
-    this.sentSides.push(side);
-    this.onSend?.();
-    if (this.sendDelayMs) await Bun.sleep(this.sendDelayMs);
-    this.lastOid = 4242;
-    return {
-      decisionId, side, price: 99.9, size, txHash: null, cancel, status: "placed",
-      orderId: 4242, capped: false, reduceOnly: false, taker: false,
-    };
-  }
-  cleanupOwned() { this.cleanupCalls++; return Promise.resolve([]); }
-  async cancelResting() {
-    this.cancels++;
-    const oid = this.lastOid;
-    this.lastOid = null;
-    return oid == null ? [] : [oid];
-  }
-}
-
-function desk(model: Model, market = new FakeMarket()) {
-  const events: BlockEvent[] = [];
-  const trader = new Trader(market as unknown as Market, model, (e) => events.push(e));
-  return { trader, market, events };
-}
-
-
 test("overlapping ticks both ask Jev and an older answer cannot replace the newer order", async () => {
   let calls = 0;
   let startFirst!: () => void;
@@ -168,12 +88,13 @@ test("overlapping ticks both ask Jev and an older answer cannot replace the newe
       if (state.tick === 1) {
         startFirst();
         await firstGate;
-        return { decision: packed({ intent: "open", bias: "short", action: "sell" }), prompt: buildJevPrompt(state) };
+        return evaluationFor(state, packed({ intent: "open", bias: "short", action: "sell" }));
       }
-      return { decision: packed({ intent: "open", bias: "long", action: "buy" }), prompt: buildJevPrompt(state) };
+      return evaluationFor(state, packed({ intent: "open", bias: "long", action: "buy" }));
     },
   };
-  const { trader, market, events } = desk(model);
+  const journal: DecisionJournalEvent[] = [];
+  const { trader, market, events } = desk(model, new FakeMarket(), { enqueue: (event) => journal.push(event) });
   const newerSent = new Promise<void>((resolve) => { market.onSend = resolve; });
   const first = trader.onBlock(1);
   await firstStarted;
@@ -185,6 +106,11 @@ test("overlapping ticks both ask Jev and an older answer cannot replace the newe
   expect(events.find((event) => event.block === 1)?.decision?.late).toBe(true);
   expect(events.find((event) => event.block === 2)?.decision?.action).toBe("buy");
   expect(market.sentSides).toEqual(["buy"]);
+  const staleDecision = journal.find((event) => event.type === "decision" && event.block === 1);
+  expect(staleDecision).toMatchObject({
+    type: "decision", late: true,
+    evidence: { recordType: PROGRAM_RECORD_TYPE, status: "complete" },
+  });
 });
 
 test("a failed Jev call reports no fabricated Jev decision", async () => {
@@ -200,6 +126,44 @@ test("a failed Jev call reports no fabricated Jev decision", async () => {
   } finally {
     log.mockRestore();
   }
+});
+
+test("failed evaluations journal evidence and drain observations without placing orders", async () => {
+  const model = new ScriptModel();
+  model.next = null;
+  const observation = Promise.withResolvers<readonly GroupResult[]>();
+  model.observations = observation.promise;
+  const events: BlockEvent[] = [];
+  const journal: DecisionJournalEvent[] = [];
+  const market = new FakeMarket();
+  const trader = new Trader(market as unknown as Market, model, (event) => events.push(event), undefined, undefined, {
+    enqueue: (event) => journal.push(event),
+  });
+  trader.setRunGuard({ runId: "run-1", isLive: () => true, assertLive() {} });
+  await trader.onBlock(1);
+  const failed = journal.find((event): event is Extract<DecisionJournalEvent, { type: "decision" }> => event.type === "decision")!;
+  expect(failed).toMatchObject({
+    recordType: PROGRAM_RECORD_TYPE, decision: null,
+    evidence: { recordType: PROGRAM_RECORD_TYPE, status: "failed" },
+  });
+  expect(events[0]?.decision).toBeNull();
+  expect(events[0]?.totals.decisions).toBe(0);
+  expect(failed.decisionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  let drained = false;
+  const draining = trader.drain().then(() => { drained = true; });
+  await Promise.resolve();
+  expect(drained).toBe(false);
+  observation.resolve([observationResult()]);
+  await draining;
+  const completed = journal.find((event): event is Extract<DecisionJournalEvent, { type: "decision-observation" }> =>
+    event.type === "decision-observation");
+  expect(journal.indexOf(completed!)).toBeGreaterThan(journal.indexOf(failed));
+  expect(completed).toMatchObject({
+    decisionId: failed.decisionId, runId: "run-1", coin: "BTC", market: "BTC-USD", block: 1,
+    revision: failed.evidence.capture.revision, groupId: "watch",
+    completion: observationResult(),
+  });
+  expect(market.sentSides).toEqual([]);
 });
 
 test.each(unavailableCreditDiagnostics)("Jev retries the next tick after unavailable %s credits", async (_provider, message) => {
@@ -226,11 +190,11 @@ test.each(unavailableCreditDiagnostics)("Jev retries the next tick after unavail
 
 test.each(["Stop", "expiry"] as const)("a successful response after %s is journaled exactly but cannot submit or cancel", async (reason) => {
   const { promise, resolve: release } = Promise.withResolvers<ModelEvaluation>();
-  let prompt!: ModelEvaluation["prompt"];
+  let state!: TradeState;
   const model: Model = {
     name: "deferred",
-    decide(state) {
-      prompt = buildJevPrompt(state);
+    decide(input) {
+      state = input;
       return promise;
     },
   };
@@ -248,10 +212,13 @@ test.each(["Stop", "expiry"] as const)("a successful response after %s is journa
   if (reason === "Stop") trader.invalidate();
   else live = false;
   const decision = packed({ intent: reason === "Stop" ? "open" : "hold", bias: "long", action: reason === "Stop" ? "buy" : "hold" });
-  release({ decision, prompt });
+  const evaluation = evaluationFor(state, decision);
+  release(evaluation);
   await pending;
   const recorded = journal.find((event) => event.type === "decision");
-  expect(recorded).toMatchObject({ type: "decision", late: true, decision, prompt });
+  expect(recorded).toMatchObject({
+    type: "decision", recordType: PROGRAM_RECORD_TYPE, late: true, decision, evidence: evaluation.evidence,
+  });
   expect(recorded?.decisionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   expect(events[0]?.decision).toMatchObject({ id: recorded?.decisionId, late: true });
   expect(market.sentSides).toEqual([]);

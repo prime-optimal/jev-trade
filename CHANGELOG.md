@@ -28,6 +28,8 @@ All notable changes to this project are documented here. This changelog starts f
 - Added PostgreSQL decision history with queued parent-process writes, exact revisioned Jev prompt snapshots, decision UUID correlation, individually retained fills with idempotent retry identities, bias-signed 1, 5, 20, and 100 tick markouts, and shutdown draining.
 - Added signed anonymous owner continuity plus capability-scoped visitor decision reads and a loopback-only operator decision endpoint. The owner credential expires after one year, is not accepted by query routes, and must first be exchanged for a short-lived session capability.
 - Added the Jev model contract guide covering every prompt field, exclusion, question, outcome, privacy boundary, and prompt-refinement workflow.
+- Added a validated, immutable versioned Jev question program with an allowlisted feature catalog, per-tick group captures, typed answers, and evidence records.
+- Added journaling for failed evaluations and observational group results tied to the captured program revision.
 
 ### Changed
 
@@ -57,10 +59,12 @@ All notable changes to this project are documented here. This changelog starts f
 - Visitor Workers receive an explicit allowlisted runtime environment before importing bot modules. This prevents Bun's parent dotenv values from being compiled into `process.env.NAME` reads inside the Worker.
 - Reorganized Settings into Trading, Jev model, and Connections tabs. The model tab exposes cadence and lookback controls, the current prompt revision and questions, and the full input catalog with explanations.
 - Changed `Model.decide` to return the normalized answer with the exact immutable prompt snapshot used for that evaluation. Successful decisions now retain one ID through quotes and correlated fills.
+- Replaced the earlier snapshot-based `Model.decide` result with `{ decision: ModelDecision | null, evidence, observations }`. Each tick captures the program, starts all group calls, and awaits only the required group; failed required evaluations are journaled without a decision.
 
 ### Removed
 
 - Removed the Dockerfile and `.dockerignore`; Railway now builds both services with Railpack.
+- Removed the hard-coded Jev prompt API, including `JEV_PROMPT_REVISION`, `JevPrompt`, `buildJevPrompt`, `jevQuestions`, and `ModelEvaluation.prompt`.
 
 ### Fixed
 
@@ -71,4 +75,5 @@ All notable changes to this project are documented here. This changelog starts f
 - `DRY_RUN=false` with no wallet key no longer fails every sleeve at startup with "real trading requires a wallet private key". Keyless sleeves run in paper mode again, as they did before the settings page, while keyed sleeves keep real execution.
 - Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
 - Fixed the Settings page hydration mismatch by resolving local operator scope after mount, and moved the theme bootstrap to Next's managed pre-interactive script path.
+- Fixed the markout upsert by casting the horizon key as `$5::text`, preventing a PostgreSQL parameter type error from stalling the journal queue.
 
