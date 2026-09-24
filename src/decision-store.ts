@@ -119,7 +119,7 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
     if (event.type === "markout") {
       await sql.unsafe(
         `INSERT INTO decision_journal (owner_id, decision_id, created_at, updated_at, markouts)
-         VALUES ($1, $2, $3, $3, jsonb_build_object($5, $4::jsonb))
+         VALUES ($1, $2, $3, $3, jsonb_build_object($5::text, $4::jsonb))
          ON CONFLICT (owner_id, decision_id) DO UPDATE
          SET markouts = decision_journal.markouts || EXCLUDED.markouts, updated_at = EXCLUDED.updated_at
          WHERE decision_journal.owner_id = $1`,
