@@ -4,23 +4,19 @@ This document describes the complete boundary between market data and Jev. It is
 
 ## One evaluation per tick
 
-While a sleeve is Running, each decision tick creates one immutable prompt snapshot. Jev receives its exact `state` and `questions`; the stored `revision` identifies that contract for later comparison. The snapshot contains:
+While a sleeve is Running, each decision tick captures the active Jev program and its market-facing inputs once, before any provider request can await. The capture records the program revision and a state and resolved question set for every group. All groups start from that capture, so a program swap affects later ticks, not a tick already in progress.
 
-- `revision`: the prompt contract version
-- `state`: the market-facing state described below
-- `questions`: the exact bias, intent, and leverage questions
-
-A successful response becomes one normalized decision with a UUID. Its quote, fills, and later price markouts keep that UUID. This is the durable join key for reviewing what Jev saw, what it answered, what the executor did, and what happened afterward.
+A required group that returns answers produces a normalized decision and a UUID, including a safe hold when its answers are invalid. A failed required group still produces a journaled evaluation with evidence, but no decision or order. Quotes, fills, and later price markouts keep the decision UUID. It is the durable join key for reviewing what Jev saw, what it answered, what the executor did, and what happened afterward.
 
 Overlapping evaluations are allowed because a slow request must not skip the next tick. Only the newest still-live result can submit exchange work. A stale response is still a real Jev evaluation and is recorded as such, but it cannot trade.
 
-## Prompt revision
+## Program revision
 
-The current revision is `jev-trade-2026-09-23.1`.
+The current code sets `PROGRAM_SCHEMA` to `jev-program-2026-09-24.1`, `FEATURE_CATALOG_VERSION` to `jev-features-2026-09-24.1`, and `PROJECTION_VERSION` to `jev-trade-projection-1`. A program definition pins the catalog version in `catalogVersion` and the projection version in `projection.version`. Validation checks the definition against the schema and the selected provider's supported question types. The activated definition is immutable.
 
-A prompt revision names the semantics of both the state and the questions. Change it whenever a field changes meaning, a field is added or removed, criteria change, or instructional text changes. Presentation-only dashboard edits do not require a new revision.
+`programRevision()` returns `sha256:` followed by the hash of canonical JSON containing the schema, catalog version, metadata for selected features, questions with their defaulted roles, groups, and projection. Changing any of those inputs changes the revision. The revision therefore identifies both the state Jev receives and how its required answers can become a decision. Presentation-only dashboard edits do not change it. See [`src/jev-program.ts`](../src/jev-program.ts) and [`src/jev-features.ts`](../src/jev-features.ts).
 
-Decision history stores the revision, exact state, and exact questions together. A reviewer must group comparisons by revision unless it is explicitly evaluating a prompt migration.
+Each group carries its own selected feature values and resolved questions. The `DEFAULT_PROGRAM` has one `trade` group and three required choice questions, resolved by the code-owned `jev.bias`, `jev.intent`, and `jev.leverage` resolvers. Question roles are `required` or `observational`; an omitted role defaults to `observational`. The projection consumes only the required answers in the required group. Groups and role defaults are part of the hashed definition.
 
 ## State sent to Jev
 
@@ -112,33 +108,46 @@ Decision history stores the revision, exact state, and exact questions together.
 
 ## Questions Jev answers
 
-The evaluator receives three independent choice questions over the same state.
+The default program asks three independent required choice questions over the same captured state:
 
 1. **Bias:** choose `long` or `short` for the asset.
 2. **Intent:** choose `open` or `hold` while flat. With an open position, choose `open`, `close`, or `hold`.
 3. **Leverage:** choose one cross-leverage rung from the values allowed by the venue maximum.
 
-The normalized result derives the wire `action` from bias and intent. Hold is a first-class Jev answer, not a code-side decision to skip a tick.
+The projection derives the wire `action` from bias and intent. Hold is a first-class Jev answer, not a code-side decision to skip a tick. Additional questions can be assigned to observational groups. Their answers are recorded separately and cannot change or suppress the required decision.
+
+## Evidence and evaluation outcomes
+
+`ModelEvaluation` contains `decision`, `evidence`, and an `observations` promise. The evidence records the program capture, required group result, record type, and evaluation status. Each group result records its answers, unexpected answer keys, provider identity and usage, timing, and any failure. Each answer records its declared type, role, status, bounded raw value, and parsed answer when available. Raw answer JSON is capped at 4,096 bytes.
+
+Evaluation status is `complete`, `invalid`, or `failed`. `complete` means the required answers were readable and valid. A valid `hold` answer is complete, not invalid. `invalid` means at least one required answer is missing or invalid; the model returns a safe hold and marks the evidence invalid. `failed` means the required provider group failed or timed out; the evaluation has no decision. A stale result is a separate trading condition, not a hold or evaluation status.
+
+Choice and score confidence is recorded only when the provider supplied a valid finite value from 0 through 1. The parser does not derive confidence from probabilities. Optional probabilities must use declared labels and finite values from 0 through 1. For a gateway boolean answer, `probability` means P(true), not confidence. See [`src/jev-answers.ts`](../src/jev-answers.ts) and [`src/jev-evidence.ts`](../src/jev-evidence.ts).
+
+Observational group completions are journaled later as `decision-observation` events with the same decision UUID and captured program revision. They do not alter the decision evidence or trading outcome. [`src/trader-journal.ts`](../src/trader-journal.ts) handles those events.
 
 ## Deliberately excluded data
 
-The prompt does not contain wallet addresses, private keys, provider credentials, account equity, withdrawable balance, lifetime realized PnL, lifetime fees, or raw private fill history. The model receives the current sleeve position and public market evidence needed for the next decision.
+The program capture does not contain wallet addresses, private keys, provider credentials, account equity, withdrawable balance, lifetime realized PnL, lifetime fees, or raw private fill history. It contains the current sleeve position and public market evidence needed for the next decision. The feature catalog bounds collections such as book levels and recent trades. Flat positions omit `unrealizedUsd`; wallet and lifetime fields never leave the bot.
 
-Hyperliquid exposes more raw data than this contract currently uses, including deeper book levels, raw candle arrays, trade IDs, order rejection details, account summaries, and private fee history. Adding one of those fields is a model-contract change. It requires a prompt revision, a documented reason, and review of token cost and decision value.
+Hyperliquid exposes more raw data than this catalog currently uses, including deeper book levels, raw candle arrays, trade IDs, order rejection details, account summaries, and private fee history. Adding a field requires a program change and revision, a documented reason, and review of token cost and decision value.
 
 ## Durable decision history
 
-PostgreSQL stores every successful decision under its owner, along with its exact prompt and later execution evidence. The parent Bun process owns the database connection and serial write queue. Visitor Workers send typed journal events to that parent, so model cadence never waits for database I/O.
+PostgreSQL stores every evaluation under its owner, along with its program capture, evidence, and later execution evidence. The parent Bun process owns the database connection and serial write queue. Visitor Workers send typed journal events to that parent, so model cadence never waits for database I/O.
 
 Each decision record can accumulate:
 
 - the normalized Jev answer and probability distributions
+- the required group evidence and the captured program definition
 - the planned or submitted quote
 - every correlated fill as an individual event, including stable fill identity, price, fees, and closed PnL
 - the observed position and run totals after each fill
 - market return and return signed to Jev's long or short bias after 1, 5, 20, and 100 ticks
 
 A reviewer can therefore compare a decision against both execution quality and later market direction. Quote and fill outcomes must not be confused with markouts: a good market call can have poor execution, and a well-executed trade can still have a poor market outcome.
+
+Rows written before the versioned program format keep their original decision JSON, including its former prompt fields. They are returned as `recordType: "legacy"` with `programMetadata: "unavailable"`, `evidence: null`, and empty observations. Legacy rows are never reconstructed into program captures. This includes rows labeled `jev-trade-2026-09-23.1`; that label is not the current program revision.
 
 ## Privacy and query access
 
@@ -148,11 +157,12 @@ The owner token and cookie expire after one year on both server and browser. Tre
 
 Shared operator rows use a separate internal owner. Their query route exists only on the loopback operator listener. Never expose an endpoint that accepts an owner UUID from a browser or lets a caller remove the owner predicate.
 
-## Prompt refinement workflow
+## Program refinement workflow
 
 1. Export a bounded owner-scoped decision window through the authenticated decisions endpoint or query the database with an internal reviewer role.
-2. Group records by prompt revision, model provider, model ID, asset, and market regime.
+2. Group records by program revision, model provider, model ID, asset, and market regime.
 3. Compare intent and directional probabilities with fills, closed PnL, and fixed-horizon markouts.
-4. Write a proposed prompt change and state the failure mode it addresses.
-5. Assign a new prompt revision and evaluate it without rewriting old records.
-6. Promote the revision only after it improves the intended metric without weakening privacy, latency, or the every-tick Jev contract.
+4. Write a proposed program change and state the failure mode it addresses.
+5. Validate and activate the changed definition to obtain its new revision. Keep old records unchanged.
+6. Add exploratory questions to an observational group when they should not affect trading. Their results are journaled separately and cannot change or suppress the required decision.
+7. Promote a revision only after it improves the intended metric without weakening privacy, latency, or the every-tick Jev contract.

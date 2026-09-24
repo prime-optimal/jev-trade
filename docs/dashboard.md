@@ -40,7 +40,7 @@ The switch shows the configured limit while Off, 30 minutes by default. A runnin
 The page has three tabs:
 
 - Trading contains network, mode, assets, execution-only controls, and run limits.
-- Jev model shows prompt revision `jev-trade-2026-09-23.1`, the exact questions and input catalog, and edits `tickMs` and `horizonBlocks`. See the [Jev model contract](jev-model.md) for detailed field definitions.
+- Jev model shows the legacy prompt label `jev-trade-2026-09-23.1`, its questions and input catalog, and edits `tickMs` and `horizonBlocks`. The active versioned program revision is recorded in decision history. See the [Jev model contract](jev-model.md) for detailed field definitions.
 - Connections contains official visitor connection checks or the local operator transport controls.
 
 Execution-only values remain labeled as execution controls. They are not presented as Jev inputs.
@@ -49,7 +49,7 @@ The form separates drafts from applied settings. Save validates and applies one 
 
 Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. An explicit light or dark choice updates the whole app and browser theme color. Browser settings are network-scoped preferences, not durable visitor execution state. API keys, RPC URLs, and credential-bearing endpoint paths or queries remain memory-only in local operator scope.
 
-Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=`. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages are newest first and contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `quote`, `fills`, and `markouts`.
+Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=`. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages are newest first and contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `recordType`, `evidence`, `observations`, `programMetadata`, `quote`, `fills`, and `markouts`.
 
 ## Feed lifecycle
 

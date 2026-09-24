@@ -33,6 +33,10 @@ interface DecisionPage {
     createdAt: number;
     updatedAt: number;
     decision: unknown;
+    recordType: ProgramRecordType | "legacy";
+    evidence: EvaluationEvidence | null;
+    observations: { readonly [groupId: string]: GroupResult };
+    programMetadata: "available" | "unavailable";
     quote: unknown | null;
     fills: unknown[];
     markouts: Record<string, unknown>;
@@ -41,7 +45,9 @@ interface DecisionPage {
 }
 ```
 
-Each row joins the successful decision to its quote, correlated fills, and available 1, 5, 20, and 100 tick markouts. The stored decision contains the exact revisioned prompt snapshot described in the [Jev model contract](jev-model.md).
+Each row joins an evaluation to its quote, correlated fills, and available 1, 5, 20, and 100 tick markouts. A failed required-group evaluation has `decision: null`; it is recorded with evidence but does not produce a dashboard decision. New rows use `recordType: "jev-program-v1"` and include evidence and observational results.
+
+Legacy rows retain their original `decision` JSON, including its old `prompt` and `promptRevision`. They use `recordType: "legacy"`, `programMetadata: "unavailable"`, `evidence: null`, and `observations: {}`. The server does not reconstruct program metadata or evidence for these rows.
 
 ## Run payload
 

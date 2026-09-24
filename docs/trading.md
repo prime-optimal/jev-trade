@@ -36,11 +36,11 @@ Each sleeve has its own `Market`, `Feed`, `Trader`, position, order state, and o
 
 ## What Jev answers
 
-On every scheduled decision tick while Running, [`Trader.onBlock()`](../src/trader.ts) creates an immutable prompt snapshot and asks Jev for bias, intent, and cross leverage. The snapshot stores revision `jev-trade-2026-09-23.1`, the exact market-facing state, and the exact questions used for that evaluation. Intent is `open` or `hold` while flat, and `open`, `close`, or `hold` with a position. The complete input catalog and question wording live in the [Jev model contract](jev-model.md).
+On every scheduled decision tick while Running, [`Trader.onBlock()`](../src/trader.ts) captures the active validated Jev program once, including its revision, group inputs, and resolved questions. The allowlisted market-facing feature projection excludes wallet and lifetime fields. The capture is made before provider calls are awaited, and it records the inputs used for that evaluation. The complete feature catalog and question wording live in the [Jev model contract](jev-model.md).
 
-Model calls may overlap, so a slow evaluation does not cause the next scheduled tick to be skipped. Every successful decision receives a UUID. Its planned or submitted quote, correlated fills, and later markouts retain that UUID.
+Model calls may overlap, so a slow evaluation does not cause the next scheduled tick to be skipped. Each evaluation gets a UUID before its model call. The required group determines the decision; observational groups are journaled when they finish and never alter or suppress it. Explicit hold is complete. An unreadable required answer becomes a safe hold with invalid evidence.
 
-Only the newest still-live result may execute. A result that returns after a newer tick or after Stop or expiry is stale, so its exchange work is suppressed. It remains a recorded Jev evaluation and is not rewritten as a hold. Provider failures are recorded as failures and do not fabricate decisions.
+Only the newest still-live result may execute. A result that returns after a newer tick or after Stop or expiry is stale, so its exchange work is suppressed. It remains a recorded evaluation and is not rewritten as a hold. A required provider failure or timeout is journaled without a decision, order, or dashboard decision.
 
 At 1, 5, 20, and 100 later ticks, the journal adds both the market return and the return signed to Jev's long or short bias. This includes hold and close decisions, so reviewers can measure the directional answer separately from quote and fill execution.
 

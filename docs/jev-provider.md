@@ -36,19 +36,36 @@ The bot sends the model id `jev-latest` by default ([`resolveJevModelId()`](../s
 
 ## Request and response contract
 
-[`callJev()`](../src/model.ts) sends one immutable prompt snapshot with revision `jev-trade-2026-09-23.1`, the market-facing state, and independent choice questions for bias, intent, and leverage. The journal stores that exact snapshot with every successful decision. The full input and question contract is in [Jev model contract](jev-model.md).
+[`callProviderGroup()`](../src/jev-provider.ts) sends one captured group per provider request. `JevModel` starts every captured group's request without waiting for another, then awaits the required group for the trading decision. Question types are validated against the provider allowlist:
 
-OpenRouter and TypeSafe use `TypeSafeClient.systemOne()`. Gateway uses AI SDK `experimental_evaluate()`. Both paths return answer choices and probability distributions. The adapter also reads input usage as `usage.input_tokens` from the TypeSafe SDK or `usage.inputTokens` from AI SDK, then returns the normalized decision and `inputTokens`.
+| Provider | Supported question types |
+| --- | --- |
+| `openrouter` | `choice`, `score`, `noul` |
+| `typesafe` | `choice`, `score`, `noul` |
+| `gateway` | `choice`, `score`, `boolean` |
+| `local` | `choice` |
 
-Every provider call has a 4,000 ms deadline. SDK request retries are disabled with `maxRetries: 0`, including both the client and call settings for OpenRouter and TypeSafe. The AI SDK gateway call also sets `maxRetries: 0`.
+Each group request has a 4,000 ms deadline (`JEV_DEADLINE_MS`) and aborts when it expires. Failure evidence uses fixed messages rather than provider error text:
+
+| Failure code | Message |
+| --- | --- |
+| `timeout` | `jev timeout 4000ms` |
+| `provider_error` | `provider request failed` |
+| `invalid_response` | `provider response invalid` |
+
+Failure handling never persists provider response bodies or raw error text. The adapter also does not persist headers or credentials. Parsed answer values are separate bounded evidence; see [`src/jev-answers.ts`](../src/jev-answers.ts).
+
+OpenRouter and TypeSafe use `TypeSafeClient.systemOne()`. Gateway uses AI SDK `experimental_evaluate()`. The adapter records the model identity returned by the provider. It maps TypeSafe usage fields `input_tokens` and `output_tokens`, and AI SDK fields `inputTokens`, `outputTokens`, and `totalTokens`, into the normalized usage shape. See [`src/jev-provider.ts`](../src/jev-provider.ts) and [`src/jev-program.ts`](../src/jev-program.ts).
+
+SDK request retries are disabled with `maxRetries: 0`, including both the client and call settings for OpenRouter and TypeSafe. The AI SDK gateway call also sets `maxRetries: 0`.
 
 ## Errors, overlap, and stale results
 
-[`Trader.onBlock()`](../src/trader.ts) starts one Jev evaluation on every scheduled tick while the sleeve is Running, even when an earlier evaluation is pending. Successful decisions receive UUIDs that carry through quotes, fills, and 1, 5, 20, and 100 tick markouts.
+[`Trader.onBlock()`](../src/trader.ts) starts one Jev evaluation on every scheduled tick while the sleeve is Running, even when an earlier evaluation is pending. It creates the decision UUID before the model call. Successful decisions carry that UUID through quotes, fills, and 1, 5, 20, and 100 tick markouts.
 
 Only the newest result from a still-live run may submit exchange work. A response that arrives after a newer tick or after Stop or expiry remains a recorded Jev evaluation, but it is stale and cannot trade. The bot never rewrites a stale response as hold.
 
-A model timeout or other provider error logs and records the failure. It does not fabricate a decision or enqueue order work. The next tick calls Jev again, including after HTTP 402, `no available TypeSafe API credits`, or `insufficient credits`, which `jevUnavailable()` labels in the log.
+Trader journals every evaluation, including failures, with its evidence. A failed required group has no decision and never enqueues order work. The bot logs the fixed failure message and optional HTTP status, then retries Jev on the next tick. It never fabricates a hold or other decision.
 
 A successful Jev `hold` is different: it increments the decision count, has `late: false`, and cancels the standing quote. See [Trading behavior](trading.md) for order semantics.
 
