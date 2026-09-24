@@ -1,4 +1,5 @@
 import { SQL } from "bun";
+import { deepFreeze, type EvaluationEvidence, type ProgramRecordType, type GroupResult } from "./jev-evidence";
 import type { DecisionJournalEvent } from "./decision-events";
 
 const DEFAULT_LIMIT = 50;
@@ -19,6 +20,10 @@ export interface DecisionRow {
   createdAt: number;
   updatedAt: number;
   decision: unknown;
+  recordType: ProgramRecordType | "legacy";
+  evidence: EvaluationEvidence | null;
+  observations: { readonly [groupId: string]: GroupResult };
+  programMetadata: "available" | "unavailable";
   quote: unknown | null;
   fills: unknown[];
   markouts: Record<string, unknown>;
@@ -93,11 +98,22 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
       updated_at BIGINT NOT NULL,
       decision JSONB,
       quote JSONB,
-      fills JSONB NOT NULL DEFAULT '[]'::jsonb,
       markouts JSONB NOT NULL DEFAULT '{}'::jsonb,
       PRIMARY KEY (owner_id, decision_id)
     )`);
     await sql.unsafe("ALTER TABLE decision_journal ADD COLUMN IF NOT EXISTS fills JSONB NOT NULL DEFAULT '[]'::jsonb");
+    await sql.unsafe("ALTER TABLE decision_journal ADD COLUMN IF NOT EXISTS record_type TEXT");
+    await sql.unsafe("ALTER TABLE decision_journal ADD COLUMN IF NOT EXISTS evidence JSONB");
+    await sql.unsafe("ALTER TABLE decision_journal ADD COLUMN IF NOT EXISTS observations JSONB NOT NULL DEFAULT '{}'::jsonb");
+    await sql.unsafe(`CREATE TABLE IF NOT EXISTS decision_journal_pending_observations (
+      owner_id TEXT NOT NULL,
+      decision_id TEXT NOT NULL,
+      group_id TEXT NOT NULL,
+      revision TEXT NOT NULL,
+      completion JSONB NOT NULL,
+      created_at BIGINT NOT NULL,
+      PRIMARY KEY (owner_id, decision_id, group_id)
+    )`);
     await sql.unsafe("CREATE INDEX IF NOT EXISTS decision_journal_owner_newest ON decision_journal (owner_id, created_at DESC, decision_id DESC)");
   })();
 
@@ -107,12 +123,73 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
     const payload = event;
     if (event.type === "decision") {
       await sql.unsafe(
-        `INSERT INTO decision_journal (owner_id, decision_id, created_at, updated_at, decision)
-         VALUES ($1, $2, $3, $3, $4::jsonb)
+        `INSERT INTO decision_journal (owner_id, decision_id, created_at, updated_at, decision, record_type, evidence)
+         VALUES ($1, $2, $3, $3, $4::jsonb, $5, $6::jsonb)
          ON CONFLICT (owner_id, decision_id) DO UPDATE
-         SET decision = EXCLUDED.decision, updated_at = EXCLUDED.updated_at
-         WHERE decision_journal.owner_id = $1`,
-        [ownerId, event.decisionId, timestamp, payload],
+         SET decision = EXCLUDED.decision, record_type = EXCLUDED.record_type,
+             evidence = EXCLUDED.evidence, updated_at = EXCLUDED.updated_at
+         WHERE decision_journal.owner_id = $1
+           AND decision_journal.decision IS NULL
+           AND decision_journal.record_type IS NULL`,
+        [ownerId, event.decisionId, timestamp, payload, event.recordType, event.evidence],
+      );
+      await sql.unsafe(
+        `UPDATE decision_journal AS journal
+         SET observations = journal.observations || COALESCE((
+           SELECT jsonb_object_agg(pending.group_id, pending.completion)
+           FROM decision_journal_pending_observations AS pending
+           WHERE pending.owner_id = $1
+             AND pending.decision_id = $2
+             AND pending.revision = journal.evidence->'capture'->>'revision'
+             AND pending.group_id <> journal.evidence->'capture'->>'requiredGroupId'
+             AND EXISTS (
+               SELECT 1 FROM jsonb_array_elements(journal.evidence->'capture'->'groups') AS captured_group
+               WHERE captured_group->>'groupId' = pending.group_id
+             )
+             AND NOT (journal.observations ? pending.group_id)
+         ), '{}'::jsonb), updated_at = $4
+         WHERE journal.owner_id = $1 AND journal.decision_id = $2 AND journal.record_type = $3`,
+        [ownerId, event.decisionId, event.recordType, timestamp],
+      );
+      await sql.unsafe(
+        `DELETE FROM decision_journal_pending_observations AS pending
+         WHERE pending.owner_id = $1 AND pending.decision_id = $2
+           AND EXISTS (
+             SELECT 1 FROM decision_journal
+             WHERE owner_id = $1 AND decision_id = $2 AND record_type IS NOT NULL
+           )`,
+        [ownerId, event.decisionId],
+      );
+      return;
+    }
+    if (event.type === "decision-observation") {
+      await sql.unsafe(
+        `UPDATE decision_journal
+         SET observations = observations || jsonb_build_object($4, $5::jsonb), updated_at = $3
+         WHERE owner_id = $1 AND decision_id = $2
+           AND record_type = $6
+           AND evidence->'capture'->>'revision' = $7
+           AND evidence->'capture'->>'requiredGroupId' <> $4
+           AND $4 = $5::jsonb->>'groupId'
+           AND EXISTS (
+             SELECT 1 FROM jsonb_array_elements(evidence->'capture'->'groups') AS captured_group
+             WHERE captured_group->>'groupId' = $4
+           )
+           AND NOT (observations ? $4)`,
+        [ownerId, event.decisionId, timestamp, event.groupId, event.completion, event.recordType, event.revision],
+      );
+      await sql.unsafe(
+        `INSERT INTO decision_journal_pending_observations
+           (owner_id, decision_id, group_id, revision, completion, created_at)
+         SELECT $1, $2, $3, $4, $5::jsonb, $6
+         WHERE $3 = $5::jsonb->>'groupId'
+           AND NOT EXISTS (
+             SELECT 1 FROM decision_journal
+             WHERE owner_id = $1 AND decision_id = $2
+               AND (record_type IS NOT NULL OR decision IS NOT NULL)
+           )
+         ON CONFLICT (owner_id, decision_id, group_id) DO NOTHING`,
+        [ownerId, event.decisionId, event.groupId, event.revision, event.completion, timestamp],
       );
       return;
     }
@@ -173,7 +250,8 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
     ready: () => initialized,
     enqueue(ownerId, event) {
       if (closing || !ownerId) return;
-      queue = queue.then(() => writeWithRetry(ownerId, event)).catch(report);
+      const snapshot = deepFreeze(structuredClone(event));
+      queue = queue.then(() => writeWithRetry(ownerId, snapshot)).catch(report);
     },
     async list(ownerId, listOptions = {}) {
       await initialized;
@@ -188,24 +266,33 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
         cursorClause = " AND (created_at, decision_id) < ($3, $4)";
       }
       const result = await sql.unsafe(
-        `SELECT decision_id, created_at, updated_at, decision, quote, fills, markouts
+        `SELECT decision_id, created_at, updated_at, decision, record_type, evidence, observations, quote, fills, markouts
          FROM decision_journal WHERE owner_id = $1${cursorClause}
          ORDER BY created_at DESC, decision_id DESC LIMIT $2`,
         parameters,
       ) as Record<string, unknown>[];
       const more = result.length > limit;
       const selected = more ? result.slice(0, limit) : result;
-      const rows = selected.map((row) => ({
-        decisionId: String(row.decision_id),
-        createdAt: Number(row.created_at),
-        updatedAt: Number(row.updated_at),
-        decision: row.decision,
-        quote: row.quote ?? null,
-        fills: Array.isArray(row.fills) ? row.fills : [],
-        markouts: row.markouts && typeof row.markouts === "object" && !Array.isArray(row.markouts)
-          ? row.markouts as Record<string, unknown>
-          : {},
-      }));
+      const rows = selected.map((row): DecisionRow => {
+        const legacy = row.record_type == null;
+        return {
+          decisionId: String(row.decision_id),
+          createdAt: Number(row.created_at),
+          updatedAt: Number(row.updated_at),
+          decision: row.decision,
+          recordType: legacy ? "legacy" : row.record_type as ProgramRecordType,
+          evidence: legacy ? null : row.evidence as EvaluationEvidence | null,
+          observations: !legacy && row.observations && typeof row.observations === "object" && !Array.isArray(row.observations)
+            ? row.observations as { readonly [groupId: string]: GroupResult }
+            : {},
+          programMetadata: legacy ? "unavailable" : "available",
+          quote: row.quote ?? null,
+          fills: Array.isArray(row.fills) ? row.fills : [],
+          markouts: row.markouts && typeof row.markouts === "object" && !Array.isArray(row.markouts)
+            ? row.markouts as Record<string, unknown>
+            : {},
+        };
+      });
       const last = rows.at(-1);
       return { rows, nextBefore: more && last ? encodeCursor(last.createdAt, last.decisionId) : null };
     },
