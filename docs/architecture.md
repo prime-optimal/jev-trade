@@ -7,6 +7,7 @@ The repository contains two processes:
 - The bot runs on Bun from the repository root. It owns credentials, market data, Jev calls, account state, and Hyperliquid orders.
 - The dashboard runs on Next.js from [`web/`](../web/). It receives public JSON and SSE data from the bot. It does not import bot runtime code or hold trading credentials.
 
+The dashboard `/model` route is a read-only consumer of the owner-scoped journal through the visitor history gateway. These history reads stay off the every-tick evaluation path.
 This boundary is intentional. Trading and secrets stay in the Bun process, while the dashboard remains a live Next app.
 
 ## Startup

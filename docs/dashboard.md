@@ -48,8 +48,21 @@ Execution-only values remain labeled as execution controls. They are not present
 The form separates drafts from applied settings. Save validates and applies one complete snapshot to the selected executor. Cancel restores applied values without making a request. Reset changes the draft to defaults, and Save is still required. Trading and connection fields are disabled during Starting, Running, Paused, Stopping, and Attention required. Theme remains editable.
 
 Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. An explicit light or dark choice updates the whole app and browser theme color. Browser settings are network-scoped preferences, not durable visitor execution state. API keys, RPC URLs, and credential-bearing endpoint paths or queries remain memory-only in local operator scope.
+Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=`. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages are newest first and contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `recordType`, `evidence`, `observations`, `programMetadata`, `quote`, `fills`, and `markouts`. The `/model` page presents this history; see [Model page](#model-page).
 
-Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=`. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages are newest first and contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `recordType`, `evidence`, `observations`, `programMetadata`, `quote`, `fills`, and `markouts`.
+## Model page
+
+The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads only through same-origin `GET /api/session/decisions?limit=&before=`; the server resolves the owner from the session capability. It does not use the live feed reducer or SSE and creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
+
+The page loads newest-first bounded pages of 50 rows and uses the opaque `before` cursor to load older history. Refresh reloads history. Loading, empty, error, expired-session, and end-of-history states are shown. Appending older pages preserves the selected decision.
+
+The detail panel has three sections:
+
+- Model evidence groups questions by stable question key under each evaluation group, with required-role questions separated from observational questions. Typed answers show their recorded confidence and probability distributions. Each evaluation group has one immutable input snapshot with feature freshness, stale, or missing metadata.
+- Execution shows the recorded quote and correlated fills. Missing data is shown as unavailable, never inferred.
+- Outcome shows closed PnL and 1, 5, 20, and 100 tick markouts with market return and bias-signed return. A hold with no order is still a completed decision.
+
+Legacy rows remain readable. When program fields were not persisted, the page shows `Program metadata unavailable for this record.`
 
 ## Feed lifecycle
 

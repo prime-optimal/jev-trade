@@ -24,6 +24,8 @@ The public API has no settings, validation, Start, Stop, or reconcile mutation. 
 
 The Next gateway exposes the same operation as same-origin `GET /api/session/decisions?limit=&before=`. Browser code never receives the capability. `limit` defaults to 50 and is capped at 200. `before` is the opaque cursor returned by the preceding page.
 
+The dashboard `/model` Decisions view consumes this endpoint. No additional history routes exist.
+
 Pages are newest first:
 
 ```ts
