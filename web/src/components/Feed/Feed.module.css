@@ -236,3 +236,100 @@
 .filled .detail {
   font-weight: 700;
 }
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover,
+.clickable:focus-visible {
+  background: var(--track);
+  outline: none;
+}
+
+.detailBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detailHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.detailWord {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 3px 10px;
+  margin: 0;
+}
+
+.detailGrid dt {
+  color: var(--muted);
+}
+
+.detailGrid dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.detailSection {
+  margin-top: 12px;
+}
+
+.detailTitle {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.probRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.probLabel {
+  width: 44px;
+  flex: none;
+  color: var(--ink-2);
+}
+
+.probTrack {
+  flex: 1;
+  height: 8px;
+  background: var(--track);
+}
+
+.probFill {
+  height: 100%;
+}
+
+.probPct {
+  width: 36px;
+  flex: none;
+  text-align: right;
+}
+
+.detailLink {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}

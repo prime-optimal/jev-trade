@@ -1,51 +1,58 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { BlockEvent, Meta } from "@/lib/types";
-import { fmtCall, fmtPct } from "@/lib/format";
+import { fmtCall } from "@/lib/format";
+import { CATEGORIES, fmtSpan, summarizeDecisions, wholePercents, type DecisionCategory } from "@/lib/decision-summary";
 import { Bone } from "@/components/Skeleton/Skeleton";
 import styles from "./DecisionPanel.module.css";
 
 export interface DecisionPanelProps {
+  events: BlockEvent[];
   latest: BlockEvent | null;
   meta?: Meta | null;
   waiting?: boolean;
 }
 
-interface BarRowProps {
-  label: string;
-  labelColor: string;
-  active: boolean;
-  value: number;
-  fill: string;
-  pct: string;
-}
-
-function BarRow({ label, labelColor, active, value, fill, pct }: BarRowProps) {
+function Pie({ shares }: { shares: Record<DecisionCategory, number> }) {
+  const r = 15.9155; // circumference 100
+  let offset = 25;
   return (
-    <div className={styles.row}>
-      <span className={styles.label} style={{ color: labelColor, opacity: active ? 1 : 0.38 }}>
-        {label}
-      </span>
-      <div className={styles.track}>
-        <div
-          className={styles.fill}
-          style={{
-            width: `${Math.max(0, Math.min(1, value)) * 100}%`,
-            background: fill,
-          }}
-        />
-      </div>
-      <span className={styles.pct}>{pct}</span>
-    </div>
+    <svg className={styles.pie} viewBox="0 0 42 42" role="img" aria-label="Decision share pie chart">
+      <circle cx="21" cy="21" r={r} fill="none" stroke="var(--track)" strokeWidth="10" />
+      {CATEGORIES.map((c) => {
+        const pct = shares[c.key] * 100;
+        if (pct <= 0) return null;
+        const el = (
+          <circle
+            key={c.key}
+            cx="21"
+            cy="21"
+            r={r}
+            fill="none"
+            stroke={c.color}
+            strokeWidth="10"
+            strokeDasharray={`${pct} ${100 - pct}`}
+            strokeDashoffset={offset}
+          />
+        );
+        offset -= pct;
+        return el;
+      })}
+    </svg>
   );
 }
 
-export default function DecisionPanel({ latest, waiting = false }: DecisionPanelProps) {
+export default function DecisionPanel({ events, latest, waiting = false }: DecisionPanelProps) {
+  const [pie, setPie] = useState(false);
+  const [info, setInfo] = useState<DecisionCategory | null>(null);
+  const summary = useMemo(() => summarizeDecisions(latest && events.at(-1) !== latest ? [...events, latest] : events), [events, latest]);
+
   if (waiting && !latest) {
     return (
-      <div className={styles.panel} aria-busy="true" aria-label="Loading call">
+      <div className={styles.panel} aria-busy="true" aria-label="Loading recent decisions">
         <section className={styles.section}>
-          <div className={styles.railHead}>CALL</div>
+          <div className={styles.railHead}>RECENT DECISIONS</div>
           <div className={styles.body}>
             <div className={styles.headline}>
               <Bone w={72} h={22} />
@@ -54,10 +61,10 @@ export default function DecisionPanel({ latest, waiting = false }: DecisionPanel
               </span>
             </div>
             <div className={styles.bars}>
-              {["long", "short", "open", "close", "hold"].map((label) => (
-                <div key={label} className={styles.row}>
+              {CATEGORIES.map((c) => (
+                <div key={c.key} className={styles.row}>
                   <span className={styles.label} style={{ opacity: 0.38 }}>
-                    {label}
+                    {c.label}
                   </span>
                   <div className={styles.track} />
                   <span className={styles.pct}>
@@ -73,83 +80,78 @@ export default function DecisionPanel({ latest, waiting = false }: DecisionPanel
   }
 
   const decision = latest?.decision ?? null;
-  const late = decision ? decision.late : true;
+  const decided = decision !== null && !decision.late;
   const held = decision?.intent === "hold";
-  const chosen =
-    decision && !decision.late && !held && decision.action !== "hold"
-      ? (decision.bias ?? decision.action)
-      : null;
-
-  const probs = decision?.probabilities ?? { buy: 0, sell: 0, hold: 0 };
-  // A hold is a real answer, so its bars stay readable instead of greying out.
-  const decided = decision !== null && !late && (chosen !== null || held);
-  const pctOf = (p: number | undefined) => (decided ? fmtPct(p ?? 0) : "-");
-
   const headline = decided ? fmtCall(decision) || "LATE" : "LATE";
-  const headlineColor = held
-    ? "var(--ink-2)"
-    : chosen
-      ? (decision?.bias ?? decision?.action) === "short" || decision?.action === "sell"
+  const headlineColor = !decided
+    ? "var(--late-ink)"
+    : held
+      ? "var(--ink-2)"
+      : decision?.bias === "short" || decision?.action === "sell"
         ? "var(--sell-ink)"
-        : "var(--buy-ink)"
-      : "var(--late-ink)";
+        : "var(--buy-ink)";
+
+  const { total, counts, shares, spanMs } = summary;
+  const percents = wholePercents(counts);
+  const infoCat = CATEGORIES.find((c) => c.key === info) ?? null;
 
   return (
     <div className={styles.panel}>
       <section className={styles.section}>
-        <div className={styles.railHead}>CALL</div>
+        <div className={styles.railHead}>
+          <span>RECENT DECISIONS</span>
+          <span className={styles.railMeta}>
+            {total ? `last ${total}${spanMs ? ` over ${fmtSpan(spanMs)}` : ""}` : ""}
+          </span>
+        </div>
         <div className={styles.body}>
           <div className={styles.headline}>
-            <span className={styles.headlineWord} style={{ color: headlineColor }}>
+            <span className={styles.headlineWord} style={{ color: headlineColor }} title="Jev's latest call">
               {headline}
             </span>
-            {decided && decision ? (
-              <span className={styles.metaLine}>{decision.latencyMs} ms</span>
-            ) : null}
+            {decided && decision ? <span className={styles.metaLine}>{decision.latencyMs} ms</span> : null}
           </div>
 
-          <div className={styles.bars}>
-            <BarRow
-              label="long"
-              labelColor="var(--buy-ink)"
-              active={!held && decision?.bias === "long"}
-              value={probs.long ?? probs.buy}
-              fill={!held && decision?.bias === "long" ? "var(--buy-bar)" : "var(--buy-bar-dim)"}
-              pct={pctOf(probs.long ?? probs.buy)}
-            />
-            <BarRow
-              label="short"
-              labelColor="var(--sell-ink)"
-              active={!held && decision?.bias === "short"}
-              value={probs.short ?? probs.sell}
-              fill={!held && decision?.bias === "short" ? "var(--sell-bar)" : "var(--sell-bar-dim)"}
-              pct={pctOf(probs.short ?? probs.sell)}
-            />
-            <BarRow
-              label="open"
-              labelColor="var(--ink)"
-              active={decision?.intent === "open"}
-              value={probs.open ?? 0}
-              fill={decision?.intent === "open" ? "var(--buy-bar)" : "var(--buy-bar-dim)"}
-              pct={pctOf(probs.open)}
-            />
-            <BarRow
-              label="close"
-              labelColor="var(--ink)"
-              active={decision?.intent === "close"}
-              value={probs.close ?? 0}
-              fill={decision?.intent === "close" ? "var(--sell-bar)" : "var(--sell-bar-dim)"}
-              pct={pctOf(probs.close)}
-            />
-            <BarRow
-              label="hold"
-              labelColor="var(--ink)"
-              active={held}
-              value={probs.hold ?? 0}
-              fill={held ? "var(--ink-2)" : "var(--hold-cell)"}
-              pct={pctOf(probs.hold)}
-            />
+          <button
+            type="button"
+            className={`${styles.bars} ${styles.chartButton}`}
+            onClick={() => setPie((p) => !p)}
+            title={pie ? "Show as bars" : "Show as pie"}
+            aria-label={pie ? "Switch to bar chart" : "Switch to pie chart"}
+          >
+            {pie ? (
+              <div className={styles.pieWrap}>
+                <Pie shares={shares} />
+              </div>
+            ) : (
+              CATEGORIES.map((c) => (
+                <div key={c.key} className={styles.row}>
+                  <span className={styles.label}>{c.label}</span>
+                  <div className={styles.track}>
+                    <div className={styles.fill} style={{ width: `${shares[c.key] * 100}%`, background: c.color }} />
+                  </div>
+                  <span className={styles.pct}>{total ? `${percents[c.key]}%` : "-"}</span>
+                </div>
+              ))
+            )}
+          </button>
+
+          <div className={styles.legend}>
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                className={`${styles.legendItem}${info === c.key ? ` ${styles.legendOn}` : ""}`}
+                title={c.info}
+                aria-expanded={info === c.key}
+                onClick={() => setInfo((k) => (k === c.key ? null : c.key))}
+              >
+                <span className={styles.swatch} style={{ background: c.color }} />
+                {c.label} {counts[c.key]}
+              </button>
+            ))}
           </div>
+          {infoCat ? <p className={styles.info}>{infoCat.info}</p> : null}
         </div>
       </section>
     </div>
