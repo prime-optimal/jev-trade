@@ -17,6 +17,7 @@ const ROUTES: Readonly<Record<string, readonly string[]>> = {
   history: ["GET"],
   tape: ["GET"],
   events: ["GET"],
+  logs: ["GET"],
   decisions: ["GET"],
 };
 
@@ -287,22 +288,28 @@ export async function proxySession(request: Request, path: readonly string[]): P
     if (parsed instanceof Response) return parsed;
     body = parsed.buffer.slice(parsed.byteOffset, parsed.byteOffset + parsed.byteLength) as ArrayBuffer;
   }
+  const upstreamHeaders = authorizedHeaders(token, body ? "application/json" : undefined);
+  if (route === "logs") {
+    const lastEventId = request.headers.get("Last-Event-ID");
+    if (lastEventId && /^\d+$/.test(lastEventId)) upstreamHeaders.set("Last-Event-ID", lastEventId);
+  }
   const upstream = await fetch(backendUrl(`sessions/${route}${suffix}`), {
     method: request.method,
-    headers: authorizedHeaders(token, body ? "application/json" : undefined),
+    headers: upstreamHeaders,
     body,
     cache: "no-store",
     signal: request.signal,
   });
   if (upstream.status === 410) return expiredResponse();
 
+  const streamed = route === "events" || route === "logs";
   const headers = new Headers({ "Cache-Control": "no-store, no-cache, must-revalidate, no-transform" });
   const contentType = upstream.headers.get("Content-Type");
   if (contentType) headers.set("Content-Type", contentType);
-  if (route === "events") {
+  if (streamed) {
     headers.set("X-Accel-Buffering", "no");
   }
-  const response = new Response(route === "events" ? streamingBody(upstream) : upstream.body, { status: upstream.status, headers });
+  const response = new Response(streamed ? streamingBody(upstream) : upstream.body, { status: upstream.status, headers });
   response.headers.append("Set-Cookie", sessionCookie(token));
   return response;
 }

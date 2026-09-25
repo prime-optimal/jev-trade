@@ -3,6 +3,7 @@ import Script from "next/script";
 import { IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { SettingsProvider } from "@/lib/trading/SettingsProvider";
+import DebugLogs from "@/components/DebugLogs/DebugLogs";
 
 const plex = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -94,7 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <script id="jev-trade-json-ld" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-        <SettingsProvider>{children}</SettingsProvider>
+        <SettingsProvider><DebugLogs />{children}</SettingsProvider>
       </body>
     </html>
   );

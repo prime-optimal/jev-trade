@@ -35,7 +35,7 @@ function NumberField({ label, field, value, onChange, min, max, step = 1, disabl
 
 export default function SettingsForm() {
   const context = useSettings();
-  const { settings, baseline, scope, sessionState, reconnect, theme, setTheme, run, connection, operator, notice, feed, ready } = context;
+  const { settings, baseline, scope, sessionState, reconnect, theme, setTheme, debug, setDebug, run, connection, operator, notice, feed, ready } = context;
   const [draft, setDraft] = useState<TradingSettings>(settings);
   const [apiKey, setApiKey] = useState("");
   const [keyHost, setKeyHost] = useState<string | null>(null);
@@ -156,6 +156,11 @@ export default function SettingsForm() {
           <div className={styles.segmented} aria-label="Color theme">
             <button type="button" aria-pressed={theme === "light"} onClick={() => setTheme("light")}>Light</button>
             <button type="button" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>Dark</button>
+          </div>
+          <p>Debug mode streams the visitor session bot console output to the browser console. Each forwarded line appears with a [jev] prefix. This display preference is stored in this browser and applies only to the visitor paper session.</p>
+          <div className={styles.segmented} aria-label="Debug mode">
+            <button type="button" aria-pressed={debug} onClick={() => setDebug(true)}>On</button>
+            <button type="button" aria-pressed={!debug} onClick={() => setDebug(false)}>Off</button>
           </div>
         </section>
 

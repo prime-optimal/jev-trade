@@ -3,6 +3,7 @@ import type { TradingNetwork } from "./networks";
 
 export const NETWORK_STORAGE_KEY = "jev-trade:network:v1";
 export const THEME_STORAGE_KEY = "jev-trade:theme:v1";
+export const DEBUG_STORAGE_KEY = "jev-trade:debug:v1";
 const PREFIX = "jev-trade:settings:v1";
 
 export type SettingsOwner = string | null;
@@ -64,6 +65,18 @@ export function loadTheme(storage: Storage | null, systemDark = false): { theme:
 
 export function saveTheme(storage: Storage | null, theme: Theme): StorageNotice | null {
   const persisted = writeValue(storage, THEME_STORAGE_KEY, theme);
+  return persisted ? null : storageFallbackNotice();
+}
+
+export function loadDebug(storage: Storage | null): { debug: boolean; notice: StorageNotice | null } {
+  const raw = readValue(storage, DEBUG_STORAGE_KEY);
+  if (raw === "on" || raw === "off") return { debug: raw === "on", notice: storageFallbackNotice() };
+  if (raw !== null) return { debug: true, notice: { denied: false, message: "The saved debug preference was invalid and has been reset." } };
+  return { debug: true, notice: storageFallbackNotice() };
+}
+
+export function saveDebug(storage: Storage | null, debug: boolean): StorageNotice | null {
+  const persisted = writeValue(storage, DEBUG_STORAGE_KEY, debug ? "on" : "off");
   return persisted ? null : storageFallbackNotice();
 }
 

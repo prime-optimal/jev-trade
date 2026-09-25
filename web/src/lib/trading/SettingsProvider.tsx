@@ -7,7 +7,7 @@ import {
   reconcileOperator, resolveOperatorApiUrl, resolvePublicApiUrl, SESSION_API, startOperator, stopOperator,
   validateOperatorConnection,
 } from "./operator";
-import { loadSelectedNetwork, loadSettings, loadTheme, saveTheme, type SettingsOwner, type Theme } from "./persistence";
+import { loadDebug, loadSelectedNetwork, loadSettings, loadTheme, saveDebug, saveTheme, type SettingsOwner, type Theme } from "./persistence";
 import {
   DEFAULT_SETTINGS, effectiveEndpoints, validateApiKey, validateSettings,
   type ConnectionValidation, type OperatorSnapshot, type RunSnapshot, type TradingSettings,
@@ -25,6 +25,8 @@ interface SettingsContextValue {
   reconnect: () => Promise<void>;
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  debug: boolean;
+  setDebug: (debug: boolean) => void;
   save: (settings: TradingSettings, key?: string, clearedEndpoints?: (keyof TradingSettings)[]) => Promise<void>;
   loadNetworkDraft: (network: TradingSettings["network"]) => TradingSettings;
   run: RunSnapshot;
@@ -79,6 +81,7 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
   const [settings, setSettings] = useState<TradingSettings>({ ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins] });
   const [baseline, setBaseline] = useState<TradingSettings>({ ...DEFAULT_SETTINGS, enabledCoins: [...DEFAULT_SETTINGS.enabledCoins] });
   const [theme, setThemeState] = useState<Theme>("light");
+  const [debug, setDebugState] = useState(true);
   const [run, setRun] = useState<RunSnapshot>(OFF_RUN);
   const [connection, setConnection] = useState<ConnectionValidation | null>(null);
   const [operator, setOperator] = useState<OperatorSnapshot | null>(null);
@@ -138,13 +141,15 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
     const appearance = loadTheme(storage, window.matchMedia("(prefers-color-scheme: dark)").matches);
     setThemeState(appearance.theme);
     applyTheme(appearance.theme);
+    const debugPref = loadDebug(storage);
+    setDebugState(debugPref.debug);
     if (!isVisitor) {
       setSettings(loaded.settings);
       setBaseline(loaded.settings);
-      setNotice(loaded.notice?.message ?? selected.notice?.message ?? appearance.notice?.message ?? null);
+      setNotice(loaded.notice?.message ?? selected.notice?.message ?? appearance.notice?.message ?? debugPref.notice?.message ?? null);
     } else if (!bootstrapStartedRef.current) {
       bootstrapStartedRef.current = true;
-      setNotice(appearance.notice?.message ?? null);
+      setNotice(appearance.notice?.message ?? debugPref.notice?.message ?? null);
       void reconnect().catch(() => {});
     }
   }, [isVisitor, owner, reconnect, scopeResolved]);
@@ -192,6 +197,13 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
     applyTheme(next);
     const storage = (() => { try { return window.localStorage; } catch { return null; } })();
     const issue = saveTheme(storage, next);
+    if (issue) setNotice(issue.message);
+  }, []);
+
+  const setDebug = useCallback((next: boolean) => {
+    setDebugState(next);
+    const storage = (() => { try { return window.localStorage; } catch { return null; } })();
+    const issue = saveDebug(storage, next);
     if (issue) setNotice(issue.message);
   }, []);
 
@@ -281,8 +293,9 @@ export function SettingsProvider({ children, owner = null }: { children: ReactNo
 
   const value = useMemo<SettingsContextValue>(() => ({
     settings, baseline, scope: isVisitor ? "visitor" : "operator", sessionState, reconnect, theme, setTheme,
+    debug, setDebug,
     save, loadNetworkDraft, run, connection, operator, notice, validateConnection, start, stop, reconcile, feed, ready,
-  }), [settings, baseline, isVisitor, sessionState, reconnect, theme, setTheme, save, loadNetworkDraft, run, connection, operator, notice, validateConnection, start, stop, reconcile, feed, ready]);
+  }), [settings, baseline, isVisitor, sessionState, reconnect, theme, setTheme, debug, setDebug, save, loadNetworkDraft, run, connection, operator, notice, validateConnection, start, stop, reconcile, feed, ready]);
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
