@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [mise](https://mise.jdx.dev/) for repository tool versions and helper tasks. [`mise.toml`](../mise.toml) declares Bun, fnox, hk, and communique.
+- [mise](https://mise.jdx.dev/) for repository tool versions and helper tasks. [`mise.toml`](../mise.toml) declares Bun, fnox, and hk, and supplies the non-secret environment defaults.
 - Bun. The root [`package.json`](../package.json), dashboard [`web/package.json`](../web/package.json), and [`railpack.json`](../railpack.json) pin production and package-manager use to Bun 1.3.14. The local mise configuration tracks the latest Bun.
 - [fnox](https://fnox.jdx.dev/) with the 1Password CLI signed in. [`fnox.toml`](../fnox.toml) resolves secrets when the bot starts.
 - [just](https://just.systems/) for the project recipes in [`justfile`](../justfile).
@@ -11,14 +11,15 @@ Do not use Node, npm, pnpm, Vite, Express, or dotenv for this repository. The bo
 
 ## First-time setup
 
-Install both dependency trees and create the local bot configuration:
+Install both dependency trees, then trust the project configuration and sync secrets:
 
 ```sh
 just install
-cp .env.example .env
+mise trust
+fnox sync
 ```
 
-Edit `.env` for the intended model and safety mode. See [Configuration](configuration.md) for every variable and secret source. Copy `web/.env.example` to `web/.env.local` only when the dashboard needs a bot URL other than its localhost default.
+`mise.toml` supplies the non-secret bot configuration; see [Configuration](configuration.md) for every variable and secret source. Personal overrides belong in a git-ignored `mise.local.toml`, including a custom `NEXT_PUBLIC_API_URL` when the dashboard needs a bot URL other than its localhost default.
 
 ## Run locally
 

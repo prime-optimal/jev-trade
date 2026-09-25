@@ -36,14 +36,15 @@ The bot is Bun on port 3000. The dashboard is a separate Next app in `web/` on p
 
 ## Run locally
 
-Install [Bun](https://bun.sh), [just](https://just.systems/), [fnox](https://fnox.jdx.dev/), and the 1Password CLI. Then install both dependency trees and copy the non-secret configuration:
+Install [mise](https://mise.jdx.dev/), [just](https://just.systems/), [fnox](https://fnox.jdx.dev/), and the 1Password CLI. Then install both dependency trees and trust the project configuration:
 
 ```sh
 just install
-cp .env.example .env
+mise trust
+fnox sync
 ```
 
-`fnox.toml` resolves the OpenRouter key from 1Password. Start the bot and dashboard in separate terminals:
+`mise.toml` supplies every non-secret setting with defaults that mirror the code; `fnox.toml` resolves the OpenRouter key from 1Password. Personal overrides belong in a git-ignored `mise.local.toml`. Start the bot and dashboard in separate terminals:
 
 ```sh
 just dev
@@ -56,15 +57,15 @@ Open http://localhost:3001, or the Network URL `just web` prints to reach it fro
 
 ## Live Jev
 
-Set `MODEL=jev`. OpenRouter is the default provider:
+Set `MODEL=jev` in `mise.local.toml`:
 
-```dotenv
-MODEL=jev
-JEV_PROVIDER=openrouter
-OPENROUTER_API_KEY=
+```toml
+[env]
+MODEL = "jev"
+JEV_PROVIDER = "openrouter"
 ```
 
-The bot also supports the official TypeSafe API with `JEV_PROVIDER=typesafe` and `TYPESAFE_API_KEY`, or Vercel AI Gateway with `JEV_PROVIDER=gateway` and `AI_GATEWAY_API_KEY`. If `JEV_PROVIDER` is unset, available credentials select OpenRouter first, then TypeSafe, then Gateway. See [Jev provider](docs/jev-provider.md) for model defaults and request details.
+OpenRouter is the default provider and `fnox` injects its key. The bot also supports the official TypeSafe API with `JEV_PROVIDER=typesafe` and `TYPESAFE_API_KEY`, or Vercel AI Gateway with `JEV_PROVIDER=gateway` and `AI_GATEWAY_API_KEY`. If `JEV_PROVIDER` is unset, available credentials select OpenRouter first, then TypeSafe, then Gateway. See [Jev provider](docs/jev-provider.md) for model defaults and request details.
 
 ## Live testnet orders
 

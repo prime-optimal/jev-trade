@@ -13,7 +13,7 @@ The bot is Bun. The dashboard is Next in `web/`. That split is intentional: keys
 - `just install` installs bot and dashboard dependencies
 - `Bun.serve()` for the SSE API. WebSocket is built-in.
 - Prefer `Bun.file` over `node:fs` read/write when touching new I/O
-- Bun loads `.env`. Do not add dotenv.
+- Non-secret env config lives in `mise.toml [env]`; personal overrides go in git-ignored `mise.local.toml`. Secrets come from fnox + 1Password. Do not add `.env` files or dotenv.
 - Use `just` recipes for setup, local processes, and checks. `just dev` starts the bot in watch mode with fnox; `just start` starts it without watch mode with fnox. `just web` starts Next.
 
 Bot listens on `PORT` (default 3000). Dashboard `web/` is Next on 3001.

@@ -21,9 +21,10 @@ Any other explicit value throws `JEV_PROVIDER must be openrouter, typesafe, or g
 
 `JEV_MODEL_ID` overrides the provider default. For example, pin OpenRouter instead of following its latest alias:
 
-```dotenv
-JEV_PROVIDER=openrouter
-JEV_MODEL_ID=typesafe/jev-1.13
+```toml
+[env]
+JEV_PROVIDER = "openrouter"
+JEV_MODEL_ID = "typesafe/jev-1.13"
 ```
 
 The resolution and credential contracts are covered by [`test/jev-provider.test.ts`](../test/jev-provider.test.ts).
@@ -81,11 +82,12 @@ inputTokens / 1,000,000 * jevUsdPerMTok
 
 ## Local verification
 
-Set the safe local path in `.env`:
+Set the safe local path in `mise.local.toml`:
 
-```dotenv
-MODEL=jev
-DRY_RUN=true
+```toml
+[env]
+MODEL = "jev"
+DRY_RUN = "true"
 ```
 
 Ensure fnox can resolve the selected provider key, then run:
