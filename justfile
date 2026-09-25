@@ -9,17 +9,17 @@ install:
     bun install
     bun install --cwd web
 
-# Run the bot in watch mode with secrets injected by fnox
+# Run the bot in watch mode with mise env defaults and secrets injected by fnox
 dev:
-    fnox exec -- bun run dev
+    fnox exec -- mise exec -- bun run dev
 
-# Run the bot with secrets injected by fnox
+# Run the bot with mise env defaults and secrets injected by fnox
 start:
-    fnox exec -- bun run start
+    fnox exec -- mise exec -- bun run start
 
-# Run the dashboard development server
+# Run the dashboard development server with mise env defaults
 web:
-    bun run dev:web
+    mise exec -- bun run dev:web
 
 # Run the bot test suite
 test:

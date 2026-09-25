@@ -42,7 +42,7 @@ The Bun process reads environment values at startup, then exposes two settings l
 | `NEXT_PUBLIC_OPERATOR_API_URL` | `http://127.0.0.1:3002` on localhost pages, otherwise disabled | No | Optional browser-visible operator base URL. Set it only for an explicitly arranged local channel. It does not add authentication or make remote exposure safe. |
 | `BOT_API_URL` | `NEXT_PUBLIC_API_URL` | No | Server-side bot base URL used by the Next visitor-session gateway. A bare hostname gets `https://`. Prefer this runtime override when it differs from the browser-visible API URL. |
 
-Bun loads the root `.env` automatically. Copy [`.env.example`](../.env.example) for bot values and [`web/.env.example`](../web/.env.example) for browser build values. Do not commit live credentials.
+[`mise.toml`](../mise.toml) supplies every non-secret variable above with a default that mirrors the code fallback and yields to a value already set in the caller's environment (mise 2026.9.13 regressed this; see [mise#13630](https://github.com/jdx/mise/issues/13630), fixed releases behave as documented). Overrides also work in a git-ignored `mise.local.toml`, for example `MODEL = "jev"` under `[env]`. Secrets (`OPENROUTER_API_KEY`, `PRIVATE_KEY`, `HL_API_KEY`, and the other provider credentials) resolve from 1Password through [`fnox.toml`](../fnox.toml) at process start; `just dev` and `just start` inject them. There are no `.env` files in this repository; do not add dotenv. `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_OPERATOR_API_URL` stay unset by default so production builds never bake in a local address; set them in `mise.local.toml` only when a local dashboard build needs a non-default bot URL.
 
 ## Settings and control boundaries
 

@@ -43,6 +43,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Changed the dashboard and visitor gateway API URL handling to add `https://` when `NEXT_PUBLIC_API_URL` is a bare Railway host.
 - Updated `web/public/llms.txt` to name OpenRouter as the default Jev API.
 - The dashboard dev server now allows this machine's LAN IPv4 addresses in `allowedDevOrigins`, and with `NEXT_PUBLIC_API_URL` unset the dashboard reads the bot at the page's own host on port 3000. Opening it by LAN IP no longer needs a manual `next.config.ts` edit.
+- Replaced `.env` and `.env.example` with committed `mise.toml` `[env]` defaults that mirror the code fallbacks and yield to caller-supplied values. Secrets still resolve from 1Password through `fnox.toml`; `just dev`, `just start`, and `just web` now run through `mise exec`. Personal overrides also work in a git-ignored `mise.local.toml`; `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_OPERATOR_API_URL` stay unset by default so production dashboard builds never bake in a local address. `mise.toml` also pins Bun, fnox, and hk.
 - Added `railway` just recipes: `deploy-plan`, `deploy-infra`, `deploy-setup`, `deploy` and `deploy-status`.
 - Changed the default `TICK_MS` from 2000 to 30000, so each sleeve asks Jev every 30 seconds. The dashboard chart timeframes are unchanged and still only group prices into candles.
 - Removed the 30 second Jev pause after a credit or provider error. The next tick calls Jev again instead of emitting late holds without a call.

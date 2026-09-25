@@ -1,0 +1,31 @@
+[tools]
+bun = "1"
+fnox = "latest"
+hk = "latest"
+
+# Non-secret bot configuration. Every value mirrors the fallback in src/config.ts
+# and yields to a value already set in the caller's environment (regressed in mise
+# 2026.9.13 only: https://github.com/jdx/mise/issues/13630). Personal overrides
+# also work in git-ignored mise.local.toml. Secrets (OPENROUTER_API_KEY,
+# PRIVATE_KEY, HL_API_KEY) come from fnox via 1Password; `just dev` and
+# `just start` inject them. docs/configuration.md has the full variable reference.
+[env]
+HL_COINS = { default = "BTC,ETH,SOL,DOGE,BNB" }
+HL_TESTNET = { default = "true" }
+HL_API_URL = { default = "" }
+HL_WS_URL = { default = "" }
+HL_RPC_URL = { default = "" }
+HL_API_KEY_SCHEME = { default = "Bearer" }
+HL_FALLBACK_POLL_MS = { default = "30000" }
+TICK_MS = { default = "30000" }
+PRICE_MS = { default = "1000" }
+QUOTE_USD = { default = "40" }
+QUOTE_INSIDE_TICKS = { default = "1" }
+CLOSE_SLIPPAGE_BPS = { default = "5" }
+BANKROLL_USD = { default = "200" }
+HORIZON_BLOCKS = { default = "100" }
+RUN_DURATION_MINUTES = { default = "30" }
+MODEL = { default = "mock" }
+JEV_PROVIDER = { default = "openrouter" }
+DRY_RUN = { default = "true" }
+PORT = { default = "3000" }
