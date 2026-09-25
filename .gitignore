@@ -4,3 +4,4 @@ data/
 .wallets.json
 .cursor/
 fnox.local.toml
+.agents/
