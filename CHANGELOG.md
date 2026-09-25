@@ -61,6 +61,8 @@ All notable changes to this project are documented here. This changelog starts f
 - Reorganized Settings into Trading, Jev model, and Connections tabs. The model tab exposes cadence and lookback controls, the current prompt revision and questions, and the full input catalog with explanations.
 - Changed `Model.decide` to return the normalized answer with the exact immutable prompt snapshot used for that evaluation. Successful decisions now retain one ID through quotes and correlated fills.
 - Replaced the earlier snapshot-based `Model.decide` result with `{ decision: ModelDecision | null, evidence, observations }`. Each tick captures the program, starts all group calls, and awaits only the required group; failed required evaluations are journaled without a decision.
+- Changed the tracked live-desk URLs from `www.jev-trade.com` to `https://jevon.up.railway.app` in the README, package homepage, dashboard metadata, robots, sitemap, and `llms.txt` after the domain cutover.
+- Refreshed the README dashboard screenshot and added a `/model` screenshot to the README and dashboard documentation.
 
 ### Removed
 

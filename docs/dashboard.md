@@ -52,6 +52,8 @@ Decision-history reads use same-origin `GET /api/session/decisions?limit=&before
 
 ## Model page
 
+![The /model Decisions browser with the detail panel of a recorded decision](../assets/model.png)
+
 The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads only through same-origin `GET /api/session/decisions?limit=&before=`; the server resolves the owner from the session capability. It does not use the live feed reducer or SSE and creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
 
 The page loads newest-first bounded pages of 50 rows and uses the opaque `before` cursor to load older history. Refresh reloads history. Loading, empty, error, expired-session, and end-of-history states are shown. Appending older pages preserves the selected decision.

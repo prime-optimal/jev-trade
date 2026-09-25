@@ -11,7 +11,7 @@ const plex = IBM_Plex_Mono({
   display: "swap",
 });
 
-const site = "https://www.jev-trade.com";
+const site = "https://jevon.up.railway.app";
 const title = "Jev Trade | Live Jev trading bot on crypto and other assets";
 const description =
   "Jev Trade is live Jev trading: a bot that reads the book every tick and trades BTC, ETH, SOL, DOGE, and BNB.";
@@ -89,7 +89,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={plex.variable} suppressHydrationWarning>
       <head>
-        <link rel="describedby" href="https://www.jev-trade.com/llms.txt" />
+        <link rel="describedby" href="https://jevon.up.railway.app/llms.txt" />
         <Script id="theme-boot" strategy="beforeInteractive">{themeBoot}</Script>
       </head>
       <body>

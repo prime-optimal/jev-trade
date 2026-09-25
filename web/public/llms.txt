@@ -4,13 +4,13 @@
 
 Jev reads the Hyperliquid book every tick and answers buy, sell, or hold. The bot sends the order. Five isolated sleeves: BTC, ETH, SOL, DOGE, and BNB. Each sleeve has its own wallet and its own Jev call.
 
-Venue is Hyperliquid. The public desk at https://www.jev-trade.com/ is a live testnet demo.
+Venue is Hyperliquid. The public desk at https://jevon.up.railway.app/ is a live testnet demo.
 
 Jev is TypeSafe's trading model. Jev Trade is the live desk and execution layer: it feeds Jev the book and places real orders from Jev's answer. OpenRouter is the default Jev API. The official TypeSafe API and Vercel AI Gateway with `typesafe-ai/jev` are also supported.
 
 ## Links
 
-- [Live desk](https://www.jev-trade.com/): public demo of the five books
+- [Live desk](https://jevon.up.railway.app/): public demo of the five books
 - [GitHub](https://github.com/prime-optimal/jev-trade): source for the Bun bot and Next desk
 - [TypeSafe Jev](https://docs.typesafe.ai/): the model that decides buy, sell, or hold
 - [README](https://raw.githubusercontent.com/prime-optimal/jev-trade/main/README.md): how a tick works and how to run it
