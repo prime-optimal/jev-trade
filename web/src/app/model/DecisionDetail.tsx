@@ -1,6 +1,7 @@
 "use client";
 
-import type { DecisionRow, GroupResult, GroupSnapshot, ProviderAnswer, QuestionEvidence, ResolvedQuestion } from "@/lib/journal-types";
+import type { DecisionRow, GroupResult, GroupSnapshot, QuestionEvidence, ResolvedQuestion } from "@/lib/journal-types";
+import RevisionValue from "./RevisionValue";
 import styles from "./model.module.css";
 
 type ObjectValue = Record<string, unknown>;
@@ -24,7 +25,7 @@ export default function DecisionDetail({ row }: { row: DecisionRow | null }) {
     <header className={styles.detailHeader}><p className={styles.eyebrow}>Decision record</p><h2>{action}</h2><dl className={styles.summary}>
       <div><dt>Provider</dt><dd>{stringValue(envelope?.provider) ?? provider?.name ?? stringValue(decision?.provider) ?? "unavailable"}</dd></div>
       <div><dt>Model</dt><dd>{modelId}</dd></div>
-      <div><dt>Revision</dt><dd>{revision}</dd></div>
+      <div className={styles.answerField}><dt>Revision</dt><dd><RevisionValue value={revision} expandable /></dd></div>
       <div><dt>Evaluation time</dt><dd>{numberValue(envelope?.timestamp) !== null ? timestamp(numberValue(envelope?.timestamp)!) : timestamp(row.createdAt)}</dd></div>
       <div><dt>Evaluation duration</dt><dd>{row.evidence?.required?.timing?.latencyMs != null ? `${row.evidence.required.timing.latencyMs} ms` : numberValue(decision?.latencyMs) != null ? `${numberValue(decision?.latencyMs)} ms` : "unavailable"}</dd></div>
       <div><dt>Run ID</dt><dd>{stringValue(envelope?.runId) ?? stringValue(decision?.runId) ?? "unavailable"}</dd></div>
@@ -54,11 +55,11 @@ function EvidenceGroup({ group, snapshot }: { group: GroupResult; snapshot: Grou
 }
 
 function Snapshot({ snapshot }: { snapshot: GroupSnapshot }) {
-  const values = Object.entries(snapshot.state);
+  const values = Object.entries(objectValue(snapshot.state) ?? {});
   return <section className={styles.snapshot}><h5>Captured input snapshot</h5><dl className={styles.snapshotMeta}><div><dt>Captured at</dt><dd>{timestamp(snapshot.capturedAt)}</dd></div><div><dt>Catalog version</dt><dd>{snapshot.catalogVersion}</dd></div></dl>
     {values.length ? <dl className={styles.featureList}>{values.map(([id, value]) => {
-      const metadata = snapshot.features.find((feature) => feature.id === id);
-      return <div key={id}><dt>{id}</dt><dd><code>{json(value)}</code>{metadata ? <small>{metadata.meaning}; type {metadata.type}; freshness {metadata.freshness}; availability {metadata.availability}; captured at {timestamp(snapshot.capturedAt)}{metadata.freshness === "unknown" ? "; age unknown" : "; captured with this decision"}{value === null ? "; value is null" : ""}{metadata.units ? `; units ${metadata.units}` : ""}{metadata.maxItems != null ? `; max items ${metadata.maxItems}` : ""}</small> : <small>Feature metadata unavailable.</small>}</dd></div>;
+      const metadata = Array.isArray(snapshot.features) ? snapshot.features.find((feature) => feature?.id === id) : undefined;
+      return <div key={id} className={styles.answerField}><dt>{id}</dt><dd><FeatureValue value={value} />{metadata ? <div className={styles.featureMeta}><span>{metadata.meaning}</span><span>Type: {metadata.type}</span><span>Freshness: {metadata.freshness}</span><span>Availability: {metadata.availability}</span><span>Captured at: {timestamp(snapshot.capturedAt)}</span><span>{metadata.freshness === "unknown" ? "Age unknown" : "Captured with this decision"}</span>{value === null ? <span>Value is null</span> : null}{metadata.units ? <span>Units: {metadata.units}</span> : null}{metadata.maxItems != null ? <span>Max items: {metadata.maxItems}</span> : null}</div> : <small>Feature metadata unavailable.</small>}</dd></div>;
     })}</dl> : <p>No captured feature values.</p>}
   </section>;
 }
@@ -66,24 +67,126 @@ function Snapshot({ snapshot }: { snapshot: GroupSnapshot }) {
 function Question({ answer, question }: { answer: QuestionEvidence; question: ResolvedQuestion | undefined }) {
   return <article className={styles.question}><h6>{answer.key}</h6><dl className={styles.questionFields}>
     <div><dt>Declared type</dt><dd>{answer.declaredType}</dd></div><div><dt>Role</dt><dd>{answer.role}</dd></div><div><dt>Evaluation group</dt><dd>{answer.groupId}</dd></div><div><dt>Status</dt><dd>{answer.status}</dd></div>
-    <div><dt>Instructions</dt><dd>{question ? json(question.instructions) : "unavailable"}</dd></div><div><dt>Criteria or scale</dt><dd>{question?.criteria == null ? "unavailable" : json(question.criteria)}</dd></div>
-    <div className={styles.answerField}><dt>Recorded answer</dt><dd>{renderAnswer(answer)}</dd></div>
+    <div className={styles.answerField}><dt>Instructions</dt><dd><Instructions value={question?.instructions} /></dd></div><div className={styles.answerField}><dt>Criteria or scale</dt><dd><Criteria value={question?.criteria} selected={selectedAnswer(answer)} /></dd></div>
+    <div className={styles.answerField}><dt>Recorded answer</dt><dd><RecordedAnswer evidence={answer} /></dd></div>
     {answer.error ? <div><dt>Error</dt><dd>{answer.error}</dd></div> : null}
   </dl></article>;
 }
 
-function renderAnswer(evidence: QuestionEvidence): string {
-  if (evidence.status === "missing" || evidence.status === "incomplete") return "answer unavailable";
-  if (evidence.status === "invalid") return "invalid";
-  if (evidence.status === "failed") return "failed";
-  const answer: ProviderAnswer | undefined = evidence.answer;
-  if (!answer) return evidence.raw === null ? "raw null" : "answer unavailable";
-  switch (answer.type) {
-    case "choice": return `choice: ${answer.choice}${answer.confidence === undefined ? "" : `; confidence ${answer.confidence}`}${answer.probabilities === undefined ? "" : `; probabilities ${json(answer.probabilities)}`}`;
-    case "score": return `score: ${answer.score}${answer.legend === undefined ? "" : `; legend ${json(answer.legend)}`}${answer.confidence === undefined ? "" : `; confidence ${answer.confidence}`}${answer.probabilities === undefined ? "" : `; probabilities ${json(answer.probabilities)}`}`;
-    case "boolean": return `boolean probability: ${answer.probability}`;
-    case "noul": return `noul: ${answer.noul}`;
+function selectedAnswer(evidence: QuestionEvidence): string | undefined {
+  const answer = objectValue(evidence.answer);
+  const value = answer?.type === "choice" ? stringValue(answer.choice) : answer?.type === "score" ? numberValue(answer.score) : null;
+  return value == null ? undefined : String(value);
+}
+
+function RecordedAnswer({ evidence }: { evidence: QuestionEvidence }) {
+  if (evidence.status === "missing" || evidence.status === "incomplete") return <>answer unavailable</>;
+  if (evidence.status === "invalid" || evidence.status === "failed") return <>{evidence.status}</>;
+  const answer = objectValue(evidence.answer);
+  if (!answer) return <>{evidence.raw === null ? "raw null" : "answer unavailable"}</>;
+  const selected = selectedAnswer(evidence);
+  if (answer.type === "boolean") return <Probability label="Boolean probability" value={answer.probability} />;
+  if (answer.type === "noul") return <span className={styles.chip}>noul: {numberValue(answer.noul) ?? "unavailable"}</span>;
+  if (answer.type !== "choice" && answer.type !== "score") return <>answer unavailable</>;
+  return <div className={styles.answerValue}>
+    <span className={styles.chip} data-tone={tone(selected)}>{answer.type}: {selected ?? "unavailable"}</span>
+    {answer.legend !== undefined ? <Criteria value={answer.legend} selected={selected} /> : null}
+    {answer.confidence !== undefined ? <Probability label="Confidence" value={answer.confidence} /> : null}
+    {answer.probabilities !== undefined ? <Probabilities value={answer.probabilities} selected={selected} /> : null}
+  </div>;
+}
+
+function Instructions({ value }: { value: unknown }) {
+  if (typeof value === "string") return <p>{value}</p>;
+  const record = objectValue(value);
+  if (!record || !Object.keys(record).length) return <>unavailable</>;
+  return <dl className={styles.valueRows}>{Object.entries(record).map(([key, text]) => <div key={key} className={key === "question" ? styles.questionText : undefined}><dt>{key}</dt><dd>{typeof text === "string" ? text : "unavailable"}</dd></div>)}</dl>;
+}
+
+function Criteria({ value, selected }: { value: unknown; selected?: string }) {
+  const record = Array.isArray(value) ? value : objectValue(value);
+  if (!record || !Object.keys(record).length) return <>unavailable</>;
+  return <dl className={styles.criteria}>{Object.entries(record).map(([label, description]) => <div key={label} className={styles.chip} data-tone={label === selected ? tone(label) : undefined} data-selected={label === selected} data-empty={description === null}><dt>{label}</dt><dd>{description === null ? "null" : <Value value={description} />}</dd></div>)}</dl>;
+}
+
+function Probability({ label, value, selected = false }: { label: string; value: unknown; selected?: boolean }) {
+  const number = numberValue(value);
+  const valid = number !== null && number >= 0 && number <= 1;
+  return <div className={styles.probability} data-tone={selected ? tone(label) : undefined} data-selected={selected}>
+    <span>{label}</span><span className={styles.probabilityTrack} aria-hidden="true">{valid ? <span style={{ width: `${number * 100}%` }} /> : null}</span>
+    <span title={json(value)}>{valid ? `${Number((number * 100).toFixed(2))}%` : "unavailable"}</span>
+  </div>;
+}
+
+function Probabilities({ value, selected }: { value: unknown; selected?: string }) {
+  const record = objectValue(value);
+  if (!record || !Object.keys(record).length) return <>Probabilities unavailable</>;
+  const entries = Object.entries(record).sort(([a, av], [b, bv]) => (numberValue(bv) ?? -1) - (numberValue(av) ?? -1) || a.localeCompare(b));
+  return <div className={styles.probabilities} aria-label="Recorded probabilities">{entries.map(([label, probability]) => <Probability key={label} label={label} value={probability} selected={label === selected} />)}</div>;
+}
+
+function tone(label: string | undefined): string | undefined {
+  return label === "buy" || label === "long" ? "buy" : label === "sell" || label === "short" ? "sell" : undefined;
+}
+
+const venueLabels: Record<string, string> = {
+  markPx: "Mark price", oraclePx: "Oracle price", fundingBps: "Funding (bps)", premiumBps: "Premium (bps)",
+  maxLeverage: "Max leverage", dayChangeBps: "Day change (bps)", dayNtlVlmUsd: "Day volume (USD)", openInterest: "Open interest",
+};
+
+function FeatureValue({ value }: { value: unknown }) {
+  const record = objectValue(value);
+  if (!record) return <Value value={value} />;
+  if ("asks" in record || "bids" in record) return <Depth value={record} />;
+  if (!Object.keys(record).some((key) => key in venueLabels)) return <Value value={value} />;
+  return <dl className={styles.venueRows}>{Object.entries(record).map(([key, entry]) => {
+    const number = numberValue(entry);
+    const formatted = number !== null && key.endsWith("Bps") ? `${number > 0 ? "+" : ""}${number}` : number !== null && key === "dayNtlVlmUsd" ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 2 }).format(number) : null;
+    return <div key={key}><dt>{venueLabels[key] ?? key}</dt><dd title={json(entry)}>{formatted ?? <Value value={entry} />}</dd></div>;
+  })}</dl>;
+}
+
+type DepthLevel = { price: string; size: string; amount: number };
+
+function depthLevels(value: unknown): DepthLevel[] | null {
+  if (!Array.isArray(value)) return null;
+  const levels: DepthLevel[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    const parts = item.trim().split(/\s+x\s+/);
+    const price = parts[0], size = parts[1];
+    if (parts.length !== 2 || !price || !size || !Number.isFinite(Number(price)) || !Number.isFinite(Number(size)) || Number(price) <= 0 || Number(size) < 0) return null;
+    levels.push({ price, size, amount: Number(size) });
   }
+  return levels;
+}
+
+function Depth({ value }: { value: ObjectValue }) {
+  const asks = depthLevels(value.asks), bids = depthLevels(value.bids);
+  if (!asks || !bids) return <div><p>Depth ladder unavailable.</p><Value value={value} /></div>;
+  const maximum = Math.max(0, ...asks.map((level) => level.amount), ...bids.map((level) => level.amount));
+  const extras = Object.fromEntries(Object.entries(value).filter(([key]) => key !== "asks" && key !== "bids"));
+  return <div className={styles.depth}>
+    <DepthSide label="Asks" levels={asks} maximum={maximum} side="sell" />
+    <DepthSide label="Bids" levels={bids} maximum={maximum} side="buy" />
+    {Object.keys(extras).length ? <Value value={extras} /> : null}
+  </div>;
+}
+
+function DepthSide({ label, levels, maximum, side }: { label: string; levels: DepthLevel[]; maximum: number; side: string }) {
+  const rows = (items: DepthLevel[]) => items.map((level, index) => <div className={styles.depthLevel} key={index}><span className={styles.depthBar} aria-hidden="true" style={{ width: `${maximum ? level.amount / maximum * 100 : 0}%` }} /><span>{level.price}</span><span>x {level.size}</span></div>);
+  return <section data-tone={side}><h6>{label} <span>Price x size</span></h6>{levels.length ? rows(levels.slice(0, 5)) : <p>No recorded levels.</p>}{levels.length > 5 ? <details className={styles.expandValue}><summary>Show {levels.length - 5} more levels</summary>{rows(levels.slice(5))}</details> : null}</section>;
+}
+
+function Value({ value }: { value: unknown }) {
+  if (value === null) return <>null</>;
+  if (typeof value === "string") return <span className={styles.prose}>{value}</span>;
+  if (typeof value === "number") return <>{Number.isFinite(value) ? value : "unavailable"}</>;
+  if (typeof value === "boolean") return <>{String(value)}</>;
+  if (typeof value !== "object") return <>unavailable</>;
+  const text = json(value);
+  const preview = text.length > 160 ? `${text.slice(0, 160)}...` : text;
+  return <details className={styles.expandValue}><summary title={text}><span className={styles.valuePreview}>{preview}</span><span>Expand stored value</span></summary><pre><code>{JSON.stringify(value, null, 2)}</code></pre></details>;
 }
 
 function Execution({ row }: { row: DecisionRow }) {
