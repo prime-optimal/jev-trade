@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { Bone } from "@/components/Skeleton/Skeleton";
+import RevisionValue from "./RevisionValue";
 import type { DecisionRow } from "@/lib/journal-types";
 import type { DecisionHistoryStatus } from "@/lib/useDecisions";
 import styles from "./model.module.css";
@@ -51,7 +52,7 @@ export default function DecisionsTable({ rows, selectedId, select, status, error
               : row.programMetadata === "available" && typeof row.evidence?.capture?.revision === "string" ? row.evidence.capture.revision : "unavailable";
             const selected = row.decisionId === selectedId;
             return <tr key={row.decisionId} data-decision-id={row.decisionId} data-index={index} aria-selected={selected} tabIndex={selected || (selectedId === null && index === 0) ? 0 : -1} className={selected ? styles.selectedRow : undefined} onClick={() => select(row.decisionId)} onKeyDown={(event) => moveSelection(event, index)}>
-              <td>{new Date(row.createdAt).toLocaleString()}</td><td>{coin}</td><td title={row.decisionId}>{truncate(row.decisionId)}</td><td title={revision}>{revision}</td><td>{action}</td>
+              <td>{new Date(row.createdAt).toLocaleString()}</td><td>{coin}</td><td title={row.decisionId}>{truncate(row.decisionId)}</td><td title={revision}><RevisionValue value={revision} /></td><td>{action}</td>
             </tr>;
           })}
           {status === "empty" ? <tr><td className={styles.stateCell} colSpan={5}>No decisions recorded yet.</td></tr> : null}
