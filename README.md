@@ -1,13 +1,15 @@
 # Jev Trade
 
-[![Live desk](https://img.shields.io/badge/live-jev--trade.com-111)](https://www.jev-trade.com/)
+[![Live desk](https://img.shields.io/badge/live-jevon.up.railway.app-111)](https://jevon.up.railway.app/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111)](LICENSE)
 
 I built a trading bot with Jev. Jev reads the Hyperliquid book every tick and answers buy, sell, or hold. The bot sends the order. Five coins, five wallets, real fills.
 
-**[Watch the live desk](https://www.jev-trade.com/)**
+**[Watch the live desk](https://jevon.up.railway.app/)**
 
-[![Jev Trade live desk](assets/desk.png)](https://www.jev-trade.com/)
+[![Jev Trade live desk](assets/desk.png)](https://jevon.up.railway.app/)
+
+[![Recorded Jev decisions on the Model page](assets/model.png)](https://jevon.up.railway.app/model)
 
 Jev makes the call. Hold is one of its answers, so a tick can end with no order. Position, balance, and PnL come from Hyperliquid.
 

@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://www.jev-trade.com/sitemap.xml",
-    host: "https://www.jev-trade.com",
+    sitemap: "https://jevon.up.railway.app/sitemap.xml",
+    host: "https://jevon.up.railway.app",
   };
 }

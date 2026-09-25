@@ -63,7 +63,7 @@ The demo is a live Jev trading bot on Hyperliquid. Every design or strategy chan
 >
 > Jev decides on every Hyperliquid tick.
 >
-> Demo link: https://www.jev-trade.com/
+> Demo link: https://jevon.up.railway.app/
 
 Non-negotiables: Jev makes the buy/sell call (not code), from the price feed; real trades from a real wallet; a Jev decision every tick, not every N ticks. The demo is the live dashboard. No middle dots, em dashes or en dashes in any rendered text. No blinking or pulsing indicators.
 
