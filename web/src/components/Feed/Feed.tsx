@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BlockEvent, Meta } from "@/lib/types";
-import { fmtClock, fmtPrice, shortTx, txUrl } from "@/lib/format";
+import { fmtCall, fmtClock, fmtPct, fmtPosition, fmtPrice, shortTx, txUrl } from "@/lib/format";
 import { Bone } from "@/components/Skeleton/Skeleton";
 import styles from "./Feed.module.css";
 
@@ -78,13 +78,29 @@ export default function Feed({
   }, []);
 
   const callRows = useMemo(() => events.filter(isCallRow), [events]);
+  const [openBlock, setOpenBlock] = useState<number | null>(null);
+  const opened = openBlock === null ? null : callRows.find((e) => e.block === openBlock) ?? null;
+
+  if (opened) {
+    return (
+      <section className={styles.feed}>
+        <div className={styles.railHead}>
+          <span>HISTORY</span>
+          <button type="button" className={styles.tab} style={{ opacity: 1 }} onClick={() => setOpenBlock(null)}>
+            BACK
+          </button>
+        </div>
+        <DecisionDetail event={opened} meta={meta} />
+      </section>
+    );
+  }
 
   return (
     <section className={styles.feed}>
-      <div className={styles.railHead}>CALLS</div>
+      <div className={styles.railHead}>HISTORY</div>
       <div className={styles.list} ref={listRef}>
         {waiting && callRows.length === 0 ? (
-          <div aria-busy="true" aria-label="Loading calls">
+          <div aria-busy="true" aria-label="Loading history">
             {Array.from({ length: 8 }, (_, i) => (
               <div key={i} className={styles.row}>
                 <span className={`${styles.cell} ${styles.time}`}>
@@ -138,7 +154,20 @@ export default function Feed({
               .join(" ");
 
             return (
-              <div key={event.block} className={rowClass}>
+              <div
+                key={event.block}
+                className={`${rowClass} ${styles.clickable}`}
+                role="button"
+                tabIndex={0}
+                title="Show decision detail"
+                onClick={() => setOpenBlock(event.block)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setOpenBlock(event.block);
+                  }
+                }}
+              >
                 <span className={`${styles.cell} ${styles.time}`}>{fmtClock(event.ts, true)}</span>
                 <span className={`${styles.cell} ${styles.word}`}>{wordOf(event, kind)}</span>
                 <span className={`${styles.cell} ${styles.lat}`}>{lat}</span>
@@ -149,13 +178,14 @@ export default function Feed({
                 </span>
                 <span className={`${styles.cell} ${styles.tx}`}>
                   {fill && !fill.simulated && fill.txHash ? (
-                    <a href={txUrl(fill.txHash, meta?.explorerTx)} target="_blank" rel="noreferrer" title="the taker's transaction">
+                    <a onClick={(e) => e.stopPropagation()} href={txUrl(fill.txHash, meta?.explorerTx)} target="_blank" rel="noreferrer" title="the taker's transaction">
                       {shortTx(fill.txHash)}
                     </a>
                   ) : quote && quote.status === "sim" ? (
                     <span className={styles.muted}>sim</span>
                   ) : quote && quote.txHash ? (
                     <a
+                      onClick={(e) => e.stopPropagation()}
                       className={quote.status === "placed" ? undefined : styles.muted}
                       title={quote.status}
                       href={txUrl(quote.txHash, meta?.explorerTx)}
@@ -172,5 +202,98 @@ export default function Feed({
         )}
       </div>
     </section>
+  );
+}
+
+const KIND_COLOR: Record<Kind, string> = { buy: "var(--buy)", sell: "var(--sell)", hold: "var(--ink-2)", late: "var(--late)" };
+
+function Prob({ label, value, color }: { label: string; value: number | undefined; color: string }) {
+  if (value == null) return null;
+  return (
+    <div className={styles.probRow}>
+      <span className={styles.probLabel}>{label}</span>
+      <div className={styles.probTrack}>
+        <div className={styles.probFill} style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%`, background: color }} />
+      </div>
+      <span className={styles.probPct}>{fmtPct(value)}</span>
+    </div>
+  );
+}
+
+function DecisionDetail({ event, meta }: { event: BlockEvent; meta?: Meta | null }) {
+  const d = event.decision;
+  const q = event.quote;
+  const f = event.fill;
+  const p = d?.probabilities;
+  const hasBias = p?.long != null || p?.short != null;
+  const hasIntent = p?.open != null || p?.close != null;
+  const coin = meta?.coin ?? event.coin;
+  return (
+    <div className={styles.detailBody} aria-label="Decision detail">
+      <div className={styles.detailHead}>
+        <span className={styles.detailWord} style={{ color: KIND_COLOR[kindOf(event)] }}>{fmtCall(d) || "LATE"}</span>
+        <span className={styles.muted}>{fmtClock(event.ts, true)}</span>
+      </div>
+      <dl className={styles.detailGrid}>
+        <dt>block</dt><dd>{event.block}</dd>
+        <dt>latency</dt><dd>{d ? `${d.latencyMs} ms` : "-"}</dd>
+        <dt>mid</dt><dd>{fmtPrice(event.mid)}</dd>
+        <dt>bid / ask</dt><dd>{fmtPrice(event.bestBid)} / {fmtPrice(event.bestAsk)}</dd>
+        <dt>spread</dt><dd>{event.spreadBps.toFixed(2)} bps</dd>
+        {d ? (<><dt>up in 10</dt><dd>{fmtPct(d.upIn10)}</dd></>) : null}
+      </dl>
+
+      {p ? (
+        <div className={styles.detailSection}>
+          <div className={styles.detailTitle}>confidence</div>
+          {hasBias ? (
+            <>
+              <Prob label="long" value={p.long} color="var(--buy-bar)" />
+              <Prob label="short" value={p.short} color="var(--sell-bar)" />
+            </>
+          ) : (
+            <>
+              <Prob label="buy" value={p.buy} color="var(--buy-bar)" />
+              <Prob label="sell" value={p.sell} color="var(--sell-bar)" />
+            </>
+          )}
+          {hasIntent ? (
+            <>
+              <Prob label="open" value={p.open} color="var(--ink-2)" />
+              <Prob label="close" value={p.close} color="var(--ink-2)" />
+            </>
+          ) : null}
+          <Prob label="hold" value={p.hold} color="var(--hold-cell)" />
+        </div>
+      ) : null}
+
+      <div className={styles.detailSection}>
+        <div className={styles.detailTitle}>execution</div>
+        <dl className={styles.detailGrid}>
+          <dt>order</dt>
+          <dd>
+            {q
+              ? `${q.taker ? "cross" : q.side === "buy" ? "bid" : "ask"} ${fmtSize(q.size)} @ ${fmtPrice(q.price)}${q.reduceOnly ? " reduce" : ""}`
+              : "no order"}
+          </dd>
+          {q ? (<><dt>status</dt><dd>{q.status}</dd></>) : null}
+          <dt>fill</dt>
+          <dd>{f && f.size > 0 ? `${fmtSize(f.size)} @ ${fmtPrice(f.price)}${f.simulated ? " sim" : ""}` : "none"}</dd>
+          {(f?.txHash && !f.simulated) || q?.txHash ? (
+            <>
+              <dt>tx</dt>
+              <dd>
+                <a href={txUrl((f?.txHash && !f.simulated ? f.txHash : q?.txHash)!, meta?.explorerTx)} target="_blank" rel="noreferrer">
+                  {shortTx((f?.txHash && !f.simulated ? f.txHash : q?.txHash)!)}
+                </a>
+              </dd>
+            </>
+          ) : null}
+          <dt>position</dt><dd>{fmtPosition(event.position, coin)}</dd>
+          {d?.leverage != null ? (<><dt>leverage</dt><dd>{d.leverage}x</dd></>) : null}
+        </dl>
+      </div>
+      <a className={styles.detailLink} href="/model">full record on /model</a>
+    </div>
   );
 }

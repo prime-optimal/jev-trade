@@ -96,7 +96,7 @@ export default function Page() {
           </div>
         </div>
         <div className={styles.right}>
-          <DecisionPanel latest={sleeve.latest} meta={meta} waiting={waiting} />
+          <DecisionPanel events={sleeve.events} latest={sleeve.latest} meta={meta} waiting={waiting} />
           <Feed events={sleeve.events} meta={meta} waiting={waiting} />
         </div>
       </div>

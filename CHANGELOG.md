@@ -6,6 +6,8 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Added
 
+- Renamed the dashboard Call pane to Recent Decisions. It now summarizes the newest 100 decisions with their time span, category shares that sum to 100%, a bar or pie chart toggled by clicking, and category definitions on hover or click.
+- Renamed the Calls pane to History. Clicking a row opens a condensed decision detail with Jev's confidence, the order, fill, and position.
 - Added OpenRouter as a Jev provider through its System One endpoint, with provider-specific model defaults and startup credential checks.
 - Added provider resolution in this order: OpenRouter, TypeSafe, then Vercel AI Gateway when matching credentials are available.
 - Added OpenRouter provider coverage in `test/jev-provider.test.ts` and documented `OPENROUTER_API_KEY` in `.env.example`.

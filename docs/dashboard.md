@@ -15,6 +15,12 @@ A connected price stream does not mean trading is running. The old green Live me
 
 The run display derives elapsed and remaining time from Bun's `startedAt`, `deadlineAt`, `stoppedAt`, `durationMs`, and `serverNow`. React's interval only refreshes the display. It does not enforce or extend the deadline. A refresh resumes the same visitor Worker through its cookie and never sends Start.
 
+## Recent Decisions and History panes
+
+The right rail has two panes. Recent Decisions ([`DecisionPanel`](../web/src/components/DecisionPanel/DecisionPanel.tsx)) shows Jev's latest call and a breakdown of the newest 100 decisions the page holds for the selected sleeve, with the count and the time span they cover in the rail header. [`decision-summary.ts`](../web/src/lib/decision-summary.ts) puts each decision in exactly one category (open long, open short, close, hold, late), so the shares always sum to 100%. Clicking the chart switches between bars and a pie. The legend items show each category's count, a definition on hover, and the same definition inline on click.
+
+History ([`Feed`](../web/src/components/Feed/Feed.tsx)) lists recent calls. Clicking a row replaces the pane with a condensed detail view of that decision: block, latency, prices, Jev's confidence per answer, the order, fill, transaction, and position, with a link to the full record on `/model`. BACK returns to the list. The detail view takes over the pane instead of opening a popup so the chart and book stay visible.
+
 ## Operator and visitor views
 
 Remote visitors get an isolated, keyless paper executor. The page creates one server-side Bun Worker, then uses that worker for its feed, settings, run lifecycle, history, and tape. Save, Start, and Stop affect only that visitor's worker. They never mutate the shared demo or its wallet-backed executor.
