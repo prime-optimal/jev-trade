@@ -11,11 +11,11 @@ install:
 
 # Run the bot in watch mode with mise env defaults and secrets injected by fnox
 dev:
-    fnox exec -- mise exec -- bun run dev
+    fnox exec -- scripts/with-mise-env.sh bun run dev
 
 # Run the bot with mise env defaults and secrets injected by fnox
 start:
-    fnox exec -- mise exec -- bun run start
+    fnox exec -- scripts/with-mise-env.sh bun run start
 
 # Run the dashboard development server with mise env defaults
 web:

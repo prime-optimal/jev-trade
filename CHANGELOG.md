@@ -33,6 +33,10 @@ All notable changes to this project are documented here. This changelog starts f
 - Added the `/model` Decisions browser with owner-scoped journal pagination, question-grouped evidence and immutable group snapshots, separate execution and outcome sections, and legacy row labeling.
 - Added a Settings Debug mode, on by default as a browser preference, that streams the visitor session's own Worker console output to the browser console through a capability-scoped `GET /sessions/logs` SSE route. Lines are redacted of provider credentials and URLs and capped at 1000 characters. The shared public server never serves the route.
 
+### Fixed
+
+- Kept caller-supplied environment values winning over `mise.toml` defaults on mise 2026.9.13, which regressed `{ default }` yield semantics ([mise#13630](https://github.com/jdx/mise/issues/13630)). `just dev` and `just start` now run through `scripts/with-mise-env.sh`, which restores caller-set managed variables after `mise exec`; the shim is a no-op on fixed mise releases.
+
 ### Changed
 
 - Made OpenRouter the default Jev provider when no provider credential selects another provider. TypeSafe and Vercel AI Gateway remain available.
