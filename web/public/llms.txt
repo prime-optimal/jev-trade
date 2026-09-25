@@ -11,6 +11,6 @@ Jev is TypeSafe's trading model. Jev Trade is the live desk and execution layer:
 ## Links
 
 - [Live desk](https://www.jev-trade.com/): public demo of the five books
-- [GitHub](https://github.com/aowang-ai/jev-trade): source for the Bun bot and Next desk
+- [GitHub](https://github.com/prime-optimal/jev-trade): source for the Bun bot and Next desk
 - [TypeSafe Jev](https://docs.typesafe.ai/): the model that decides buy, sell, or hold
-- [README](https://raw.githubusercontent.com/aowang-ai/jev-trade/main/README.md): how a tick works and how to run it
+- [README](https://raw.githubusercontent.com/prime-optimal/jev-trade/main/README.md): how a tick works and how to run it
