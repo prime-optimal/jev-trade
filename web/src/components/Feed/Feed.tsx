@@ -162,6 +162,8 @@ export default function Feed({
                 title="Show decision detail"
                 onClick={() => setOpenBlock(event.block)}
                 onKeyDown={(e) => {
+                  // Links inside the row keep their native Enter.
+                  if (e.target !== e.currentTarget) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     setOpenBlock(event.block);

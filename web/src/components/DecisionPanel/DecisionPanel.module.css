@@ -234,8 +234,12 @@
 }
 
 @media (max-width: 899.98px) {
-  .legend,
-  .info {
-    display: none;
+  .legend {
+    margin-top: 6px;
+  }
+
+  .legendItem {
+    font-size: 11px;
+    padding: 4px 0;
   }
 }
