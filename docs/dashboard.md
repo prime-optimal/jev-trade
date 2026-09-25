@@ -58,7 +58,7 @@ The page loads newest-first bounded pages of 50 rows and uses the opaque `before
 
 The detail panel has three sections:
 
-- Model evidence groups questions by stable question key under each evaluation group, with required-role questions separated from observational questions. Typed answers show their recorded confidence and probability distributions. Each evaluation group has one immutable input snapshot with feature freshness, stale, or missing metadata.
+- Model evidence groups questions by stable question key under each evaluation group, with required-role questions separated from observational questions. Typed answers show their recorded confidence and probability distributions as labeled bars, with the selected criterion marked. Instructions and criteria render as key/value rows and chips rather than raw JSON. Each evaluation group has one immutable input snapshot with feature freshness, stale, or missing metadata; venue market data renders as labeled rows and order-book depth as a two-sided price-by-size ladder. Long revisions truncate to an expandable chip, and any remaining large stored value collapses behind an expand toggle.
 - Execution shows the recorded quote and correlated fills. Missing data is shown as unavailable, never inferred.
 - Outcome shows closed PnL and 1, 5, 20, and 100 tick markouts with market return and bias-signed return. A hold with no order is still a completed decision.
 

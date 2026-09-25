@@ -77,4 +77,5 @@ All notable changes to this project are documented here. This changelog starts f
 - Serialized initial sleeve startup so simultaneous Hyperliquid HTTP requests do not amplify rate-limit failures.
 - Fixed the Settings page hydration mismatch by resolving local operator scope after mount, and moved the theme bootstrap to Next's managed pre-interactive script path.
 - Fixed the markout upsert by casting the horizon key as `$5::text`, preventing a PostgreSQL parameter type error from stalling the journal queue.
+- Fixed the `/model` decision detail layout so long revision hashes and wide values can no longer paint over neighboring grid cells, and replaced the raw JSON blobs in the decision record and model evidence sections with structured renderings: key/value instruction rows, criteria chips, labeled confidence and probability bars, labeled venue market data, and a two-sided order-book depth ladder. Large stored values collapse behind an expand toggle (#38).
 

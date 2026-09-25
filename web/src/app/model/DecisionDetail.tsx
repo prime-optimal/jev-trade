@@ -32,7 +32,7 @@ export default function DecisionDetail({ row }: { row: DecisionRow | null }) {
       <div><dt>Tick or block</dt><dd>{numberValue(envelope?.block) ?? numberValue(decision?.block) ?? numberValue(decision?.tick) ?? "unavailable"}</dd></div>
     </dl></header>
     <section className={styles.detailSection}><h3>Model evidence</h3>
-      {legacy ? <div className={styles.unavailable}><p>Program metadata unavailable for this record.</p><dl className={styles.summary}><div><dt>Action</dt><dd>{action}</dd></div><div><dt>Prompt revision</dt><dd>{revision}</dd></div><div><dt>Prompt</dt><dd>{stringValue(decision?.prompt) ?? "unavailable"}</dd></div><div><dt>Stored decision</dt><dd><code>{json(row.decision)}</code></dd></div></dl></div>
+      {legacy ? <div className={styles.unavailable}><p>Program metadata unavailable for this record.</p><dl className={styles.summary}><div><dt>Action</dt><dd>{action}</dd></div><div><dt>Prompt revision</dt><dd>{revision}</dd></div><div><dt>Prompt</dt><dd>{stringValue(decision?.prompt) ?? "unavailable"}</dd></div><div><dt>Stored decision</dt><dd><Value value={row.decision} /></dd></div></dl></div>
         : row.evidence ? <div className={styles.evidenceGroups}>{groups.map((group) => <EvidenceGroup key={group.groupId} group={group} snapshot={snapshots.find((snapshot) => snapshot.groupId === group.groupId) ?? null} />)}</div>
           : <p className={styles.unavailable}>Program metadata unavailable for this record.</p>}
     </section>
