@@ -30,6 +30,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added the Jev model contract guide covering every prompt field, exclusion, question, outcome, privacy boundary, and prompt-refinement workflow.
 - Added a validated, immutable versioned Jev question program with an allowlisted feature catalog, per-tick group captures, typed answers, and evidence records.
 - Added journaling for failed evaluations and observational group results tied to the captured program revision.
+- Added the `/model` Decisions browser with owner-scoped journal pagination, question-grouped evidence and immutable group snapshots, separate execution and outcome sections, and legacy row labeling.
 
 ### Changed
 

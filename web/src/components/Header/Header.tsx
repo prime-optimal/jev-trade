@@ -134,6 +134,7 @@ export default function Header({ connection, balance, unrealized, realized }: He
         <span className={styles.tagline}>Live Jev trading bot</span>
         <nav className={styles.links} aria-label="Primary navigation">
           <Link className={styles.navLink} aria-current={pathname === "/" ? "page" : undefined} href="/">Dashboard</Link>
+          <Link className={styles.navLink} aria-current={pathname.startsWith("/model") ? "page" : undefined} href="/model">Model</Link>
           <Link className={styles.navLink} aria-current={pathname.startsWith("/settings") ? "page" : undefined} href="/settings">Settings</Link>
           <a className={styles.iconLink} href="https://github.com/aowang-ai/jev-trade" target="_blank" rel="noreferrer" aria-label="jev-trade on GitHub"><GitHubMark /></a>
         </nav>
