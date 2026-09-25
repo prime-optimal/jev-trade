@@ -1,6 +1,20 @@
+import { captureConsoleLogs, createLogBuffer } from "./log-buffer";
+
+const LOG_LINE_MAX = 1000;
+const logBuffer = createLogBuffer();
+const inheritedSecrets: string[] = [];
+
+function sanitizeLogLine(line: string): string {
+  let safe = line;
+  for (const secret of inheritedSecrets) safe = safe.split(secret).join("[redacted]");
+  safe = safe.replace(/https?:\/\/[^\s]+/gi, "[redacted URL]");
+  return safe.length > LOG_LINE_MAX ? `${safe.slice(0, LOG_LINE_MAX)} [truncated]` : safe;
+}
+
+captureConsoleLogs(logBuffer, sanitizeLogLine);
+
 const workerEnv = process.env;
 const rawVisitorEnv = workerEnv.JEV_VISITOR_ENV;
-const inheritedSecrets: string[] = [];
 
 const ALLOWED_ENV: Record<string, true> = {
   MODEL: true,
@@ -77,6 +91,7 @@ try {
     hostname: "127.0.0.1",
     port: 0,
     fetch: visitorFetch,
+    logs: logBuffer,
   });
   runtime.attachSink(server);
 

@@ -171,6 +171,43 @@ describe("visitor session gateway", () => {
     expect(readSessionCookie(browserRequest("/", { headers: { Cookie: "jev-paper-session=%GG" } }))).toBeNull();
   });
 
+  test("streams visitor logs like events and forwards Last-Event-ID", async () => {
+    const upstreamCalls: { url: string; lastEventId: string | null }[] = [];
+    globalThis.fetch = (async (input, init) => {
+      upstreamCalls.push({
+        url: String(input),
+        lastEventId: (init?.headers as Headers).get("Last-Event-ID"),
+      });
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("data: {\"seq\":1}\n\n"));
+        },
+        cancel() {},
+      }), { headers: { "Content-Type": "text/event-stream" } });
+    }) as typeof fetch;
+
+    const resumed = withSession(browserRequest("/api/session/logs", { headers: { "Last-Event-ID": "41" } }));
+    const response = await proxySession(resumed, ["logs"]);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(response.headers.get("X-Accel-Buffering")).toBe("no");
+    expect(response.headers.get("Cache-Control")).toContain("no-transform");
+    expect(upstreamCalls).toEqual([{ url: "https://bot.example/sessions/logs", lastEventId: "41" }]);
+
+    let cancelled = false;
+    globalThis.fetch = (async () => new Response(new ReadableStream({
+      start() {},
+      cancel() { cancelled = true; },
+    }), { headers: { "Content-Type": "text/event-stream" } })) as typeof fetch;
+    const live = await proxySession(withSession(browserRequest("/api/session/logs")), ["logs"]);
+    const reader = live.body!.getReader();
+    await reader.cancel();
+    expect(cancelled).toBe(true);
+
+    expect((await proxySession(withSession(browserRequest("/api/session/logs", { method: "POST", body: "{}" })), ["logs"])).status).toBe(405);
+    expect((await proxySession(withSession(browserRequest("/api/session/logs?level=warn")), ["logs"])).status).toBe(400);
+  });
+
   test("cancelling an SSE response cancels the upstream stream", async () => {
     let cancelled = false;
     globalThis.fetch = (async () => new Response(new ReadableStream({

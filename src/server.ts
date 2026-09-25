@@ -1,4 +1,5 @@
 import { config } from "./config";
+import type { LogBuffer, LogRecord } from "./log-buffer";
 import { clipHistory, clipSnapshotTape, clipTape, TAPE_MIDS } from "./snapshot";
 import type { RunSnapshot } from "./settings";
 import type { BlockEvent, Fill, Meta, PricePoint, Quote, SleeveMeta } from "./types";
@@ -47,6 +48,9 @@ export interface PublicServerOptions {
   port?: number;
   hostname?: string;
   fetch?: (request: Request) => Response | undefined | Promise<Response | undefined>;
+  /** Loopback-only console log stream. Only the visitor worker server passes one; the shared public server never serves /logs. */
+  logs?: LogBuffer;
+  logPingMs?: number;
 }
 
 /** Public read-only market data and authoritative run status. */
@@ -117,6 +121,39 @@ export function startServer(
       if (pathname === "/history") return jsonMaybeGzip(req, historyByCoin());
       if (pathname === "/tape") return jsonMaybeGzip(req, tapeByCoin());
       if (pathname === "/run" && req.method === "GET") return json(runSnapshot());
+      if (pathname === "/logs" && req.method === "GET" && options.logs) {
+        const logs = options.logs;
+        const lastEventId = Number(req.headers.get("last-event-id"));
+        const afterSeq = Number.isSafeInteger(lastEventId) ? lastEventId : 0;
+        const frame = (record: LogRecord) => enc.encode(`id: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n`);
+        let unsubscribe: (() => void) | null = null;
+        let pingTimer: Timer | null = null;
+        let closed = false;
+        const cleanup = () => {
+          if (closed) return;
+          closed = true;
+          unsubscribe?.();
+          unsubscribe = null;
+          clearInterval(pingTimer ?? undefined);
+          pingTimer = null;
+        };
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            unsubscribe = logs.subscribe((record) => {
+              try { controller.enqueue(frame(record)); } catch { cleanup(); }
+            });
+            for (const record of logs.replay(afterSeq)) {
+              try { controller.enqueue(frame(record)); } catch { cleanup(); return; }
+            }
+            pingTimer = setInterval(() => {
+              try { controller.enqueue(enc.encode(": ping\n\n")); } catch { cleanup(); }
+            }, options.logPingMs ?? 15_000);
+            pingTimer.unref?.();
+          },
+          cancel() { cleanup(); },
+        });
+        return new Response(stream, { headers: { ...CORS, "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } });
+      }
       if (pathname === "/events") {
         const lite = url.searchParams.get("lite") === "1";
         let controller: ReadableStreamDefaultController<Uint8Array> | null = null;

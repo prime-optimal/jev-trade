@@ -48,6 +48,9 @@ Execution-only values remain labeled as execution controls. They are not present
 The form separates drafts from applied settings. Save validates and applies one complete snapshot to the selected executor. Cancel restores applied values without making a request. Reset changes the draft to defaults, and Save is still required. Trading and connection fields are disabled during Starting, Running, Paused, Stopping, and Attention required. Theme remains editable.
 
 Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. An explicit light or dark choice updates the whole app and browser theme color. Browser settings are network-scoped preferences, not durable visitor execution state. API keys, RPC URLs, and credential-bearing endpoint paths or queries remain memory-only in local operator scope.
+
+Debug mode uses `jev-trade:debug:v1` and is on by default. The toggle sits in the Appearance section next to the theme controls. In the visitor scope it opens a same-origin EventSource on `GET /api/session/logs`, which the gateway proxies to the visitor worker's loopback console stream using the same unbuffered streaming path as events. Each bot console line appears in the browser console with a `[jev]` prefix, replaying buffered lines after `Last-Event-ID` on reconnect. The subscription opens only while a visitor session is connected; the local operator scope has no logs stream. Toggling the preference takes effect without a reload.
+
 Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=`. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages are newest first and contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `recordType`, `evidence`, `observations`, `programMetadata`, `quote`, `fills`, and `markouts`. The `/model` page presents this history; see [Model page](#model-page).
 
 ## Model page

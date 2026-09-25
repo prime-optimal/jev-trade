@@ -31,6 +31,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added a validated, immutable versioned Jev question program with an allowlisted feature catalog, per-tick group captures, typed answers, and evidence records.
 - Added journaling for failed evaluations and observational group results tied to the captured program revision.
 - Added the `/model` Decisions browser with owner-scoped journal pagination, question-grouped evidence and immutable group snapshots, separate execution and outcome sections, and legacy row labeling.
+- Added a Settings Debug mode, on by default as a browser preference, that streams the visitor session's own Worker console output to the browser console through a capability-scoped `GET /sessions/logs` SSE route. Lines are redacted of provider credentials and URLs and capped at 1000 characters. The shared public server never serves the route.
 
 ### Changed
 

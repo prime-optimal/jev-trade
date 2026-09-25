@@ -51,6 +51,24 @@ Each row joins an evaluation to its quote, correlated fills, and available 1, 5,
 
 Legacy rows retain their original `decision` JSON, including its old `prompt` and `promptRevision`. They use `recordType: "legacy"`, `programMetadata: "unavailable"`, `evidence: null`, and `observations: {}`. The server does not reconstruct program metadata or evidence for these rows.
 
+## Visitor log stream
+
+`GET /sessions/logs` streams the visitor session Worker's own console output as server-sent events. The opaque session capability is required, the same as for the other session routes. The route is served only by the isolated visitor Worker; the shared public server never registers it, and the public market feed is unchanged.
+
+The Next gateway exposes the same stream as same-origin `GET /api/session/logs`. Each frame carries one console call. On connect, the Worker replays its buffered records and then streams live records. The buffer holds the last 500 records. A `Last-Event-ID` header resumes after the given sequence number, which `EventSource` sends automatically on reconnect. A `: ping` comment frame is sent every 15 seconds.
+
+```ts
+// data: payload of one frame; id: equals seq
+interface LogRecord {
+  seq: number;
+  ts: number;
+  level: "log" | "warn" | "error";
+  line: string;
+}
+```
+
+Before a line is buffered, the Worker replaces every configured provider credential with `[redacted]`, replaces URLs with `[redacted URL]`, and truncates lines at 1000 characters. The stream exists so a visitor can tell from the browser console whether their session bot is alive and working. It carries only that visitor's own paper-session output.
+
 ## Run payload
 
 ```ts

@@ -24,6 +24,7 @@ const ROUTES: Readonly<Record<string, readonly string[]>> = {
   history: ["GET"],
   tape: ["GET"],
   events: ["GET"],
+  logs: ["GET"],
   decisions: ["GET"],
 };
 
@@ -142,7 +143,7 @@ async function boundedBody(request: Request): Promise<Uint8Array | undefined> {
 
 function controlledRequestHeaders(request: Request): Headers {
   const headers = new Headers();
-  for (const name of ["accept", "content-type"] as const) {
+  for (const name of ["accept", "content-type", "last-event-id"] as const) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
@@ -354,7 +355,7 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
   };
 
   const proxy = async (request: Request, session: Session, route: string): Promise<Response> => {
-    const isStream = route === "events";
+    const isStream = route === "events" || route === "logs";
     if (isStream) {
       if (session.streams >= maxStreams) return json({ error: "Too many session streams" }, 429);
       session.streams++;

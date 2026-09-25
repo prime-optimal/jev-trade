@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import {
+  DEBUG_STORAGE_KEY,
+  loadDebug,
   loadSelectedNetwork,
   loadSettings,
+  saveDebug,
   saveSettings,
   settingsStorageKey,
 } from "../web/src/lib/trading/persistence";
@@ -57,6 +60,20 @@ test("corrupt scope resets without overwriting another scope", () => {
   expect(corrupt.notice?.message).toContain("corrupt");
   expect(JSON.parse(local.getItem(settingsStorageKey("testnet", owner)) ?? "{}").version).toBe(1);
   expect(loadSettings(local, "mainnet", owner).settings.quoteUsd).toBe(77);
+});
+
+test("debug preference defaults on, persists, and resets invalid values", () => {
+  const local = storage();
+  expect(loadDebug(local)).toEqual({ debug: true, notice: null });
+  expect(saveDebug(local, false)).toBeNull();
+  expect(loadDebug(local).debug).toBe(false);
+  expect(saveDebug(local, true)).toBeNull();
+  expect(loadDebug(local).debug).toBe(true);
+
+  local.setItem(DEBUG_STORAGE_KEY, "banana");
+  const invalid = loadDebug(local);
+  expect(invalid.debug).toBe(true);
+  expect(invalid.notice?.message).toBe("The saved debug preference was invalid and has been reset.");
 });
 
 test("denied storage uses memory and reports that settings are not durable", () => {
