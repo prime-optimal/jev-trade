@@ -7,6 +7,7 @@ All notable changes to this project are documented here. This changelog starts f
 ### Added
 
 - Added `web/src/site.config.json` for the site name, slogan, logo, menu, and icon links, with a Settings Top row tab that shows them and edits them on a local dev server.
+- Added a draggable divider and resizable columns to the bottom pane, one History column per sleeve, fee and PnL columns on Trades, and a filter-icon market toggle next to the tabs that defaults to All.
 - Added per-sleeve mini charts, trading pair labels, `$` prices with commas, time in position, and computed metrics (last call, order rate, fill rate, average latency) to the asset sleeve cards. The selected sleeve and the Recent Decisions and History panes take the coin's brand color.
 - Renamed the dashboard Call pane to Recent Decisions. It now summarizes the newest 100 decisions with their time span, category shares that sum to 100%, a bar or pie chart toggled by clicking, and category definitions on hover or click.
 - Renamed the Calls pane to History. Clicking a row opens a condensed decision detail with Jev's confidence, the order, fill, and position.
