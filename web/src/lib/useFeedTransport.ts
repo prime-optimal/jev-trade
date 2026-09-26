@@ -30,6 +30,7 @@ export function useFeedTransport(
     let closed = false;
     let attempt = 0;
     let haveSnapshot = false;
+    let backfillPending = true;
     let tapeStatus: "idle" | "loading" | "done" = "idle";
     let es: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -83,13 +84,31 @@ export function useFeedTransport(
       } catch { if (!closed) tapeStatus = "idle"; }
     };
     loadTapeRef.current = hydrateTape;
+    // The snapshot carries only a short event tail. Backfill the full history so the
+    // decision panes keep their window across reconnects and fill any gap they missed.
+    const hydrateHistory = async () => {
+      try {
+        const response = await fetch(`${base}/history`, { signal: controller.signal });
+        if (!response.ok || closed) return;
+        const raw = await response.json();
+        if (closed) return;
+        const historyByCoin: Record<string, BlockEvent[]> = {};
+        for (const [coin, rows] of Object.entries(decodeMap(raw))) historyByCoin[coin] = rows as BlockEvent[];
+        if (Object.keys(historyByCoin).length) dispatch({ type: "histories", historyByCoin });
+      } catch { /* The live stream still works without the backfill. */ }
+    };
     const applySnapshot = (data: unknown) => {
       if (closed) return;
       const next = decodeSnapshot(data);
       if (!Object.keys(next.historyByCoin).length && !Object.keys(next.tapeByCoin).length && !next.meta) return;
       haveSnapshot = true;
       dispatch({ type: "snapshot", ...next });
-      if (!closed) void hydrateTape();
+      if (closed || !backfillPending) return;
+      // Once per connection: a reconnect may have missed prints and decisions.
+      backfillPending = false;
+      if (tapeStatus === "done") tapeStatus = "idle";
+      void hydrateTape();
+      void hydrateHistory();
     };
     let snapInflight: Promise<boolean> | null = null;
     const pullSnapshot = (): Promise<boolean> => {
@@ -109,6 +128,7 @@ export function useFeedTransport(
     };
     function connect() {
       if (closed) return;
+      backfillPending = true;
       dispatch({ type: "connection", connection: attempt === 0 ? "connecting" : "reconnecting" });
       void pullSnapshot();
       es = new EventSource(`${base}/events?lite=1`);

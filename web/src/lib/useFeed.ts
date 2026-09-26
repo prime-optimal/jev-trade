@@ -36,6 +36,7 @@ export type FeedAction =
   | { type: "quote"; coin: string; block: number; quote: Quote }
   | { type: "connection"; connection: ConnectionState }
   | { type: "tapes"; tapeByCoin: Record<string, PricePoint[]> }
+  | { type: "histories"; historyByCoin: Record<string, BlockEvent[]> }
   | { type: "sleeve"; sleeve: unknown }
   | { type: "price"; coin: string; mark: Mark };
 
@@ -136,6 +137,27 @@ function viewOf(s: SleeveMem): SleeveMem {
 
 function replaceSleeve(state: State, coin: string, next: SleeveMem): State {
   return { ...state, sleeves: { ...state.sleeves, [coin]: viewOf(next) } };
+}
+
+/**
+ * Union of two event lists by block, newest copy of a block winning, oldest first, capped.
+ * Reconnect snapshots carry only a short tail, so replacing would drop what the page already holds.
+ */
+export function mergeEvents(existing: BlockEvent[], incoming: BlockEvent[], cap = CAP): BlockEvent[] {
+  if (!existing.length) return incoming.length > cap ? incoming.slice(incoming.length - cap) : incoming;
+  if (!incoming.length) return existing;
+  const byBlock = new Map<number, BlockEvent>();
+  for (const e of existing) byBlock.set(e.block, e);
+  for (const e of incoming) byBlock.set(e.block, e);
+  const out = [...byBlock.values()].sort((a, b) => a.block - b.block);
+  return out.length > cap ? out.slice(out.length - cap) : out;
+}
+
+/** Rebuilds a sleeve around merged events, keeping the longer tape and the newer price mark. */
+function mergeSleeve(prev: SleeveMem | undefined, history: BlockEvent[], tape: PricePoint[]): SleeveMem {
+  const next = fromHistory(mergeEvents(prev?.events ?? [], history), prev && prev.tape.length > tape.length ? prev.tape : tape);
+  if (prev?.mark && (!next.mark || prev.mark.ts > next.mark.ts)) next.mark = prev.mark;
+  return viewOf(next);
 }
 
 function fromHistory(history: BlockEvent[], tape: PricePoint[]): SleeveMem {
@@ -247,6 +269,16 @@ function reducer(state: State, action: FeedAction): State {
       return next;
     }
 
+    case "histories": {
+      let next = state;
+      for (const [coin, history] of Object.entries(action.historyByCoin)) {
+        if (!history.length) continue;
+        const s = next.sleeves[coin];
+        next = replaceSleeve(next, coin, mergeSleeve(s, history, s?.tape ?? []));
+      }
+      return next;
+    }
+
     case "connection":
       return state.connection === action.connection ? state : { ...state, connection: action.connection };
 
@@ -258,7 +290,7 @@ function reducer(state: State, action: FeedAction): State {
       ]);
       const sleeves: Record<string, SleeveMem> = {};
       for (const coin of coins) {
-        sleeves[coin] = fromHistory(action.historyByCoin[coin] ?? [], action.tapeByCoin[coin] ?? []);
+        sleeves[coin] = mergeSleeve(state.sleeves[coin], action.historyByCoin[coin] ?? [], action.tapeByCoin[coin] ?? []);
       }
       return {
         meta: action.meta ?? state.meta,
