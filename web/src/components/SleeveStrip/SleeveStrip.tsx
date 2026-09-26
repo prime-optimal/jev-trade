@@ -144,8 +144,8 @@ export default function SleeveStrip({
               <span title="Share of decisions that sent an order">
                 orders <b>{m.decisions ? fmtPct(m.orderRate) : "-"}</b>
               </span>
-              <span title="Share of orders that filled">
-                filled <b>{m.decisions ? fmtPct(m.fillRate) : "-"}</b>
+              <span title={m.orders ? "Share of orders that filled" : "No orders sent yet"}>
+                filled <b>{m.fillRate != null ? fmtPct(m.fillRate) : "-"}</b>
               </span>
               <span title="Average Jev response time">
                 avg <b>{m.avgLatencyMs ? `${Math.round(m.avgLatencyMs)}ms` : "-"}</b>

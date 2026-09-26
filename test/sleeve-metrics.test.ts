@@ -4,6 +4,7 @@ import type { BlockEvent } from "../src/types";
 
 function ev(ts: number, o: { late?: boolean; quote?: boolean; fill?: boolean; side?: "long" | "short" | "flat" } = {}): BlockEvent {
   return {
+    block: ts,
     ts,
     decision: { id: String(ts), action: "buy", probabilities: { buy: 1, sell: 0, hold: 0 }, upIn10: 0.5, latencyMs: 100, late: !!o.late },
     quote: o.quote ? { size: 1 } : null,
@@ -39,4 +40,19 @@ test("formatters", () => {
   expect(quoteOf("ETH/USDC")).toBe("USDC");
   expect(fmtAgo(3_900_000)).toBe("1h 5m");
   expect(sparkPoints([{ ts: 0, mid: 1 }, { ts: 1, mid: 2 }], 10, 10)).toBe("0.0,10.0 10.0,0.0");
+});
+
+test("a repainted latest (same block, newer price time) is not counted twice", () => {
+  const events = [ev(1000, { quote: true }), ev(2000, { quote: true, fill: true })];
+  const repainted = { ...events[1]!, ts: 9999 } as BlockEvent;
+  const m = sleeveMetrics(events, repainted);
+  expect(m.decisions).toBe(2);
+  expect(m.lastCallTs).toBe(2000);
+  expect(sleeveMetrics(events, { ...events[1]!, block: 3000, ts: 3000 } as BlockEvent).decisions).toBe(3);
+});
+
+test("fill rate is unavailable when no order was sent", () => {
+  const m = sleeveMetrics([ev(1000), ev(2000)], null);
+  expect(m.orders).toBe(0);
+  expect(m.fillRate).toBeNull();
 });

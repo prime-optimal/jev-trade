@@ -1,4 +1,5 @@
 import type { BlockEvent, PricePoint } from "./types";
+import { withLatest } from "./decision-summary";
 
 /** Brand colors per coin, used for the selected sleeve accent. */
 export const COIN_COLOR: Record<string, string> = {
@@ -32,17 +33,18 @@ export interface SleeveMetrics {
   /** ms timestamp of the newest non-late call, or null. */
   lastCallTs: number | null;
   decisions: number;
+  orders: number;
   /** Share of decisions that sent an order. */
   orderRate: number;
-  /** Share of orders that filled. */
-  fillRate: number;
+  /** Share of orders that filled, or null when no order was sent. */
+  fillRate: number | null;
   avgLatencyMs: number;
   /** ms timestamp the current position was entered, or null when flat. */
   entryTs: number | null;
 }
 
 export function sleeveMetrics(events: BlockEvent[], latest: BlockEvent | null): SleeveMetrics {
-  const all = latest && events.at(-1) !== latest ? [...events, latest] : events;
+  const all = withLatest(events, latest);
   let decisions = 0;
   let orders = 0;
   let fills = 0;
@@ -71,8 +73,9 @@ export function sleeveMetrics(events: BlockEvent[], latest: BlockEvent | null): 
   return {
     lastCallTs,
     decisions,
+    orders,
     orderRate: decisions ? orders / decisions : 0,
-    fillRate: orders ? fills / orders : 0,
+    fillRate: orders ? fills / orders : null,
     avgLatencyMs: latN ? latSum / latN : 0,
     entryTs,
   };
