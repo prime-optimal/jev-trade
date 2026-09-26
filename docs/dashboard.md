@@ -15,6 +15,10 @@ A connected price stream does not mean trading is running. The old green Live me
 
 The run display derives elapsed and remaining time from Bun's `startedAt`, `deadlineAt`, `stoppedAt`, `durationMs`, and `serverNow`. React's interval only refreshes the display. It does not enforce or extend the deadline. A refresh resumes the same visitor Worker through its cookie and never sends Start.
 
+## Asset sleeves
+
+Each sleeve card in [`SleeveStrip`](../web/src/components/SleeveStrip/SleeveStrip.tsx) shows the coin, unrealized PnL, position, latest call, the price as `$1,234.56` (more decimals below $1) with the trading pair from `SleeveMeta.pair` under it, and a mini chart of the newest 120 tape prints. A metrics row is computed in the browser by [`sleeve-metrics.ts`](../web/src/lib/sleeve-metrics.ts) from events already received: time in the current position, time since Jev's last call, the share of decisions that sent an order, the share of orders that filled, and average Jev response time. The selected sleeve and the right rail use that coin's brand color as an accent.
+
 ## Recent Decisions and History panes
 
 The right rail has two panes. Recent Decisions ([`DecisionPanel`](../web/src/components/DecisionPanel/DecisionPanel.tsx)) shows Jev's latest call and a breakdown of the newest 100 decisions the page holds for the selected sleeve, with the count and the time span they cover in the rail header. [`decision-summary.ts`](../web/src/lib/decision-summary.ts) puts each decision in exactly one category (open long, open short, close, hold, late), so the shares always sum to 100%. Clicking the chart switches between bars and a pie. The legend items show each category's count, a definition on hover, and the same definition inline on click.
