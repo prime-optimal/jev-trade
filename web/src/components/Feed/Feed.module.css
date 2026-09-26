@@ -333,3 +333,7 @@
   color: var(--muted);
   font-size: 11px;
 }
+
+.railHead {
+  border-bottom: 3px solid var(--accent, var(--ink));
+}
