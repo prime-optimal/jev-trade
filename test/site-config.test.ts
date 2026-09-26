@@ -13,5 +13,6 @@ test("rejects unsafe links and forbidden punctuation", () => {
   expect(() => validateSiteConfig({ ...base, icons: [{ kind: "x", label: "X", href: "http://x.com" }] })).toThrow("https");
   expect(() => validateSiteConfig({ ...base, icons: [{ kind: "myspace", label: "M", href: "https://m.test" }] })).toThrow("kind");
   expect(() => validateSiteConfig({ ...base, slogan: "a — b" })).toThrow("dashes");
+  expect(() => validateSiteConfig({ ...base, menu: [{ label: "a", href: "/" }, { label: "b", href: "/" }] })).toThrow("unique");
   expect(validateSiteConfig({ ...base, logo: "/logo.png", menu: [{ label: "Docs", href: "https://x.test/docs" }] }).logo).toBe("/logo.png");
 });

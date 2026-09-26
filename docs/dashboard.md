@@ -39,7 +39,7 @@ The operator switch remains available only when a localhost page can reach the p
 
 Shared paper mode still arms one configured-duration run at process startup and starts when the first sleeve is ready. Expiry and manual Off do not start another run; a process restart creates a new paper run. Shared real mode starts Off, requires a private confirmed Start, and is unavailable to visitors. No Brave Wallet connection is required for the local server-wallet operator path.
 
-The switch shows the configured limit while Off, 30 minutes by default. A running display shows elapsed and remaining time. Manual Off and expiry use the same owned-order cleanup path. Stop does not liquidate positions. `Attention required` blocks another start and locks execution settings. A visitor sees Reset paper run; the local operator sees Retry cleanup. Either action reconciles cleanup and unlocks the form only after it succeeds.
+The switch shows the configured limit while Off, 30 minutes by default. An active run shows only the time left; elapsed time is in the tooltip. Manual Off and expiry use the same owned-order cleanup path. Stop does not liquidate positions. `Attention required` blocks another start and locks execution settings. A visitor sees Reset paper run; the local operator sees Retry cleanup. Either action reconciles cleanup and unlocks the form only after it succeeds.
 
 ## Top row
 

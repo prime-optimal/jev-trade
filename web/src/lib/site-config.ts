@@ -56,6 +56,15 @@ function list<T>(value: unknown, field: string, item: (v: Record<string, unknown
   });
 }
 
+function unique<T extends SiteLink>(items: T[], field: string): T[] {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.href)) throw new Error(`${field} URLs must be unique: ${item.href}`);
+    seen.add(item.href);
+  }
+  return items;
+}
+
 export function validateSiteConfig(input: unknown): SiteConfig {
   if (typeof input !== "object" || input === null || Array.isArray(input)) throw new Error("Site config must be an object");
   const c = input as Record<string, unknown>;
@@ -64,18 +73,18 @@ export function validateSiteConfig(input: unknown): SiteConfig {
     name: text(c.name, "Site name", 40),
     slogan: text(c.slogan, "Slogan", MAX_TEXT, true),
     logo,
-    menu: list(c.menu, "Menu item", (v, i) => ({
+    menu: unique(list(c.menu, "Menu item", (v, i) => ({
       label: text(v.label, `Menu item ${i + 1} label`, 24),
       href: href(v.href, `Menu item ${i + 1} URL`, true),
-    })),
-    icons: list(c.icons, "Icon link", (v, i) => {
+    })), "Menu item"),
+    icons: unique(list(c.icons, "Icon link", (v, i) => {
       if (!ICON_KINDS.includes(v.kind as IconKind)) throw new Error(`Icon link ${i + 1} kind must be one of ${ICON_KINDS.join(", ")}`);
       return {
         kind: v.kind as IconKind,
         label: text(v.label, `Icon link ${i + 1} label`, 60),
         href: href(v.href, `Icon link ${i + 1} URL`, false),
       };
-    }),
+    }), "Icon link"),
   };
 }
 
