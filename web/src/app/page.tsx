@@ -8,6 +8,7 @@ import FlowChart from "@/components/FlowChart/FlowChart";
 import Header from "@/components/Header/Header";
 import SleeveStrip from "@/components/SleeveStrip/SleeveStrip";
 import { lastMeaningfulCall } from "@/lib/format";
+import { coinColor } from "@/lib/sleeve-metrics";
 import { portfolioBalance, portfolioPnl } from "@/lib/pnl";
 import { useSettings } from "@/lib/trading/SettingsProvider";
 import type { BlockEvent, Meta, SleeveFeed } from "@/lib/types";
@@ -53,6 +54,12 @@ export default function Page() {
     return out;
   }, [coins, feed.byCoin]);
 
+  const eventsByCoin = useMemo(() => {
+    const out: Record<string, BlockEvent[]> = {};
+    for (const c of coins) out[c] = feed.byCoin[c]?.events ?? [];
+    return out;
+  }, [coins, feed.byCoin]);
+
   const lastCallByCoin = useMemo(() => {
     const out: Record<string, string> = {};
     for (const c of coins) {
@@ -79,6 +86,8 @@ export default function Page() {
         sleeves={feed.meta?.sleeves ?? []}
         latestByCoin={latestByCoin}
         lastCallByCoin={lastCallByCoin}
+        eventsByCoin={eventsByCoin}
+        tapeByCoin={tapeByCoin}
         selected={coin}
         onSelect={setPicked}
         waiting={waiting}
@@ -95,7 +104,7 @@ export default function Page() {
             />
           </div>
         </div>
-        <div className={styles.right}>
+        <div className={styles.right} style={{ "--accent": coinColor(coin) } as React.CSSProperties}>
           <DecisionPanel events={sleeve.events} latest={sleeve.latest} meta={meta} waiting={waiting} />
           <Feed events={sleeve.events} meta={meta} waiting={waiting} />
         </div>

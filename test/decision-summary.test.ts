@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fmtSpan, summarizeDecisions, wholePercents } from "../web/src/lib/decision-summary";
+import { fmtSpan, summarizeDecisions, wholePercents, withLatest } from "../web/src/lib/decision-summary";
 import type { BlockEvent } from "../src/types";
 
 function ev(ts: number, decision: Partial<NonNullable<BlockEvent["decision"]>> | null): BlockEvent {
@@ -43,4 +43,11 @@ test("fmtSpan", () => {
   expect(fmtSpan(45_000)).toBe("45s");
   expect(fmtSpan(95_000)).toBe("1m 35s");
   expect(fmtSpan(7_260_000)).toBe("2h 1m");
+});
+
+test("withLatest skips a repainted copy of the last event", () => {
+  const a = { block: 1, ts: 1000 } as BlockEvent;
+  expect(withLatest([a], { ...a, ts: 5000 })).toEqual([a]);
+  expect(withLatest([a], { block: 2, ts: 2000 } as BlockEvent)).toHaveLength(2);
+  expect(withLatest([], a)).toEqual([a]);
 });

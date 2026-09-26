@@ -7,6 +7,7 @@ All notable changes to this project are documented here. This changelog starts f
 ### Added
 
 - Added `web/src/site.config.json` for the site name, slogan, logo, menu, and icon links, with a Settings Top row tab that shows them and edits them on a local dev server.
+- Added per-sleeve mini charts, trading pair labels, `$` prices with commas, time in position, and computed metrics (last call, order rate, fill rate, average latency) to the asset sleeve cards. The selected sleeve and the Recent Decisions and History panes take the coin's brand color.
 - Renamed the dashboard Call pane to Recent Decisions. It now summarizes the newest 100 decisions with their time span, category shares that sum to 100%, a bar or pie chart toggled by clicking, and category definitions on hover or click.
 - Renamed the Calls pane to History. Clicking a row opens a condensed decision detail with Jev's confidence, the order, fill, and position.
 - Added OpenRouter as a Jev provider through its System One endpoint, with provider-specific model defaults and startup credential checks.
@@ -38,6 +39,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Fixed
 
+- Fixed Recent Decisions counting the newest decision twice when a price mark repainted it between ticks.
 - Kept caller-supplied environment values winning over `mise.toml` defaults on mise 2026.9.13, which regressed `{ default }` yield semantics ([mise#13630](https://github.com/jdx/mise/issues/13630)). `just dev` and `just start` now run through `scripts/with-mise-env.sh`, which restores caller-set managed variables after `mise exec`; the shim is a no-op on fixed mise releases.
 
 ### Changed

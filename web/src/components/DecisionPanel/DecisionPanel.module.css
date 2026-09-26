@@ -5,7 +5,7 @@
 }
 
 .section {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--accent, var(--border));
 }
 
 .railHead {
@@ -242,4 +242,8 @@
     font-size: 11px;
     padding: 4px 0;
   }
+}
+
+.railHead {
+  border-bottom: 3px solid var(--accent, var(--ink));
 }
