@@ -22,7 +22,7 @@ function fmtSize(size: number): string {
 
 /** A table whose header cells can be dragged to resize. Double click a handle to reset. */
 function Table({ id, cols, children }: { id: string; cols: string[]; children: ReactNode }) {
-  const { widths, startResize, reset } = useColumnWidths(`jev-trade:cols:${id}:v1`, cols.length);
+  const { widths, startResize, nudge, reset } = useColumnWidths(`jev-trade:cols:${id}:v1`, cols.length);
   const fixed = widths.some((w) => w != null);
   return (
     <table className={styles.table} style={fixed ? { tableLayout: "fixed", width: "auto" } : undefined}>
@@ -39,11 +39,23 @@ function Table({ id, cols, children }: { id: string; cols: string[]; children: R
               <span
                 className={styles.colHandle}
                 role="separator"
+                tabIndex={0}
                 aria-orientation="vertical"
                 aria-label={`Resize ${c} column`}
-                title="Drag to resize, double click to reset"
+                aria-valuemin={40}
+                aria-valuenow={widths[i] ?? undefined}
+                title="Drag or use arrow keys to resize, double click or Escape to reset"
                 onPointerDown={(e) => startResize(i, e)}
                 onDoubleClick={reset}
+                onKeyDown={(e) => {
+                  const th = e.currentTarget.parentElement;
+                  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                    e.preventDefault();
+                    nudge(i, (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 64 : 16), th);
+                  } else if (e.key === "Escape") {
+                    reset();
+                  }
+                }}
               />
             </th>
           ))}
@@ -104,7 +116,7 @@ export default function Book({
 }) {
   const [tab, setTab] = useState<Tab>("positions");
   const [allMarkets, setAllMarkets] = useState(true);
-  const [height, startDrag] = useDragSize(
+  const pane = useDragSize(
     "jev-trade:book-height:v1",
     220,
     120,
@@ -113,12 +125,13 @@ export default function Book({
   );
 
   const lotsByCoin = useMemo(() => {
-    const out: Record<string, (ReturnType<typeof closedLots>[number] & { coin: string })[]> = {};
+    // Summaries use every closed lot; only the rendered rows are capped.
+    const out: Record<string, { rows: (ReturnType<typeof closedLots>[number] & { coin: string })[]; count: number; pnl: number }> = {};
     for (const sleeve of sleeves) {
-      out[sleeve.coin] = closedLots(tapeFills(tapeByCoin[sleeve.coin] ?? []))
+      const all = closedLots(tapeFills(tapeByCoin[sleeve.coin] ?? []))
         .map((lot) => ({ ...lot, coin: sleeve.coin }))
-        .sort((a, b) => b.ts - a.ts)
-        .slice(0, TRADE_CAP);
+        .sort((a, b) => b.ts - a.ts);
+      out[sleeve.coin] = { rows: all.slice(0, TRADE_CAP), count: all.length, pnl: all.reduce((s, l) => s + l.pnl, 0) };
     }
     return out;
   }, [sleeves, tapeByCoin]);
@@ -133,8 +146,8 @@ export default function Book({
     return rows.slice(0, TRADE_CAP);
   }, [allMarkets, selected, sleeves, tapeByCoin]);
 
-  const history = allMarkets ? [] : lotsByCoin[selected] ?? [];
-  const anyLots = Object.values(lotsByCoin).some((rows) => rows.length > 0);
+  const history = allMarkets ? [] : lotsByCoin[selected]?.rows ?? [];
+  const anyLots = Object.values(lotsByCoin).some((lane) => lane.count > 0);
   const filterable = tab === "trades" || tab === "history";
 
   const tabButton = (id: Tab, label: string) => (
@@ -153,14 +166,24 @@ export default function Book({
   );
 
   return (
-    <section className={styles.wrap} style={{ "--book-h": `${height}px` } as React.CSSProperties}>
+    <section className={styles.wrap} style={{ "--book-h": `${pane.size}px` } as React.CSSProperties}>
       <div
         className={styles.divider}
         role="separator"
+        tabIndex={0}
         aria-orientation="horizontal"
         aria-label="Resize bottom pane"
-        title="Drag to resize"
-        onPointerDown={(e) => startDrag(e, "y")}
+        aria-valuemin={pane.min}
+        aria-valuemax={pane.max}
+        aria-valuenow={pane.size}
+        title="Drag or use arrow keys to resize"
+        onPointerDown={(e) => pane.startDrag(e, "y")}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            pane.nudge((e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 64 : 16));
+          }
+        }}
       />
       <div className={styles.tabs}>
         <div role="tablist" aria-label="Account book" className={styles.tabList}>
@@ -242,19 +265,20 @@ export default function Book({
           ) : (
             <div className={styles.lanes} style={{ gridTemplateColumns: `repeat(${Math.max(1, sleeves.length)}, minmax(220px, 1fr))` }}>
               {sleeves.map((sleeve) => {
-                const lots = lotsByCoin[sleeve.coin] ?? [];
-                const total = lots.reduce((s, l) => s + l.pnl, 0);
+                const lane = lotsByCoin[sleeve.coin] ?? { rows: [], count: 0, pnl: 0 };
+                const lots = lane.rows;
+                const total = lane.pnl;
                 return (
                   <div key={sleeve.coin} className={`${styles.lane}${sleeve.coin === selected ? ` ${styles.laneOn}` : ""}`}>
                     <button type="button" className={styles.laneHead} onClick={() => onSelect(sleeve.coin)}>
                       <span>{displayCoin(sleeve.coin)}</span>
-                      <span style={{ color: lots.length ? (total >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)") : undefined }}>
-                        {lots.length ? `${lots.length} lots ${fmtSignedUsd(total, 2)}` : "no closed lots"}
+                      <span style={{ color: lane.count ? (total >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)") : undefined }}>
+                        {lane.count ? `${lane.count} lots ${fmtSignedUsd(total, 2)}` : "no closed lots"}
                       </span>
                     </button>
                     <div className={styles.scroller}>
                       {lots.length ? (
-                        <Table id="history-lane" cols={LANE_COLS}>
+                        <Table id={`history-lane-${sleeve.coin}`} cols={LANE_COLS}>
                           {lots.map((lot) => (
                             <tr key={lot.key} onClick={() => onSelect(lot.coin)}>
                               <td>{fmtClock(lot.ts, true)}</td>

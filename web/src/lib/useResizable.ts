@@ -24,7 +24,17 @@ export function useDragSize(key: string, fallback: number, min: number, max: () 
   const [size, setSize] = useState(fallback);
   const sizeRef = useRef(size);
   sizeRef.current = size;
-  useEffect(() => setSize(read(key, fallback)), [key, fallback]);
+  // Callers pass `max` inline; a ref keeps clamp stable so the restore effect runs once per key.
+  const maxRef = useRef(max);
+  maxRef.current = max;
+  const clamp = useCallback((n: number) => Math.round(Math.max(min, Math.min(maxRef.current(), n))), [min]);
+  // Known only in the browser, so it starts undefined to match server HTML.
+  const [maxNow, setMaxNow] = useState<number | undefined>(undefined);
+  // A size saved on a taller window must still fit this one.
+  useEffect(() => {
+    setMaxNow(maxRef.current());
+    setSize(clamp(read(key, fallback)));
+  }, [key, fallback, clamp]);
 
   const startDrag = useCallback(
     (e: React.PointerEvent, axis: "x" | "y" = "y") => {
@@ -33,7 +43,7 @@ export function useDragSize(key: string, fallback: number, min: number, max: () 
       const base = sizeRef.current;
       const move = (ev: PointerEvent) => {
         const delta = ((axis === "y" ? ev.clientY : ev.clientX) - start) * sign;
-        setSize(Math.round(Math.max(min, Math.min(max(), base + delta))));
+        setSize(clamp(base + delta));
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
@@ -43,9 +53,18 @@ export function useDragSize(key: string, fallback: number, min: number, max: () 
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
     },
-    [key, min, max, sign],
+    [key, clamp, sign],
   );
-  return [size, startDrag, setSize] as const;
+  /** Keyboard resize: positive `delta` grows the size. */
+  const nudge = useCallback(
+    (delta: number) => {
+      const next = clamp(sizeRef.current + delta);
+      setSize(next);
+      write(key, next);
+    },
+    [key, clamp],
+  );
+  return { size, startDrag, nudge, min, max: maxNow } as const;
 }
 
 /** Column widths in px for one table, remembered per table key. `null` means auto. */
@@ -84,9 +103,21 @@ export function useColumnWidths(key: string, count: number) {
     },
     [key, count],
   );
+  /** Keyboard resize of column `i` by `delta` px, freezing the others at their rendered widths. */
+  const nudge = useCallback(
+    (i: number, delta: number, th: HTMLElement | null) => {
+      const table = th?.closest("table");
+      const cells = table ? (Array.from(table.querySelectorAll("thead th")) as HTMLElement[]) : [];
+      const next = cells.length === count ? cells.map((c) => c.offsetWidth) : [...ref.current];
+      next[i] = Math.max(40, Math.round((next[i] ?? th?.offsetWidth ?? 80) + delta));
+      setWidths(next);
+      write(key, next);
+    },
+    [key, count],
+  );
   const reset = useCallback(() => {
     setWidths(Array(count).fill(null));
     write(key, []);
   }, [key, count]);
-  return { widths, startResize, reset };
+  return { widths, startResize, nudge, reset };
 }
