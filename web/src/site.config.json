@@ -1,0 +1,26 @@
+{
+  "name": "Jev Trade",
+  "slogan": "Live Jev trading bot",
+  "logo": null,
+  "menu": [
+    {
+      "label": "Dashboard",
+      "href": "/"
+    },
+    {
+      "label": "Model",
+      "href": "/model"
+    },
+    {
+      "label": "Settings",
+      "href": "/settings"
+    }
+  ],
+  "icons": [
+    {
+      "kind": "github",
+      "label": "jev-trade on GitHub",
+      "href": "https://github.com/prime-optimal/jev-trade"
+    }
+  ]
+}

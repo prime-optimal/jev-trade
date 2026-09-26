@@ -41,13 +41,22 @@ Shared paper mode still arms one configured-duration run at process startup and 
 
 The switch shows the configured limit while Off, 30 minutes by default. A running display shows elapsed and remaining time. Manual Off and expiry use the same owned-order cleanup path. Stop does not liquidate positions. `Attention required` blocks another start and locks execution settings. A visitor sees Reset paper run; the local operator sees Retry cleanup. Either action reconciles cleanup and unlocks the form only after it succeeds.
 
+## Top row
+
+[`Header`](../web/src/components/Header/Header.tsx) reads the site name, slogan, logo, menu items, and icon links from [`web/src/site.config.json`](../web/src/site.config.json), validated by [`site-config.ts`](../web/src/lib/site-config.ts). Menu links are site paths or https URLs; icon links are https URLs with a `kind` of `github`, `x`, `discord`, `telegram`, `youtube`, or `link`. Adding an icon kind means adding its SVG path to [`SiteIcon.tsx`](../web/src/components/Header/SiteIcon.tsx). Rendered text rejects middle dots and en or em dashes.
+
+The Settings Top row tab shows these values and the logo's dimensions to everyone. Under `next dev` on localhost the tab can edit them and writes the JSON file through `POST /api/site-config`; that route returns 404 in production builds. Commit and merge the file to change the live site.
+
+The run switch sits at the right end of the top row after the balance. It shows only one clock: time left while a run is active, or the run limit while Off. Elapsed time is in the tooltip.
+
 ## Settings page
 
-The page has three tabs:
+The page has four tabs:
 
 - Trading contains network, mode, assets, execution-only controls, and run limits.
 - Jev model shows the legacy prompt label `jev-trade-2026-09-23.1`, its questions and input catalog, and edits `tickMs` and `horizonBlocks`. The active versioned program revision is recorded in decision history. See the [Jev model contract](jev-model.md) for detailed field definitions.
 - Connections contains official visitor connection checks or the local operator transport controls.
+- Top row shows and, on a local dev server, edits the site branding described above.
 
 Execution-only values remain labeled as execution controls. They are not presented as Jev inputs.
 

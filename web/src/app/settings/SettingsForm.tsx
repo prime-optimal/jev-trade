@@ -5,6 +5,7 @@ import Header from "@/components/Header/Header";
 import { useSettings } from "@/lib/trading/SettingsProvider";
 import { NETWORK_ENDPOINTS } from "@/lib/trading/networks";
 import { SUPPORTED_COINS, effectiveEndpoints, type TradingSettings } from "@/lib/trading/settings";
+import SiteConfigPanel from "./SiteConfigPanel";
 import styles from "./settings.module.css";
 
 const ACTIVE = new Set(["starting", "running", "paused", "stopping", "attention-required"]);
@@ -41,7 +42,7 @@ export default function SettingsForm() {
   const [keyHost, setKeyHost] = useState<string | null>(null);
   const [clearCredential, setClearCredential] = useState(false);
   const [clearedEndpoints, setClearedEndpoints] = useState<EndpointKey[]>([]);
-  const [activeTab, setActiveTab] = useState<"trading" | "model" | "connections">("trading");
+  const [activeTab, setActiveTab] = useState<"trading" | "model" | "connections" | "site">("trading");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -104,7 +105,7 @@ export default function SettingsForm() {
   };
 
 
-  const tab = (id: "trading" | "model" | "connections", label: string) => (
+  const tab = (id: "trading" | "model" | "connections" | "site", label: string) => (
     <button
       type="button"
       role="tab"
@@ -112,7 +113,7 @@ export default function SettingsForm() {
       aria-controls={`settings-panel-${id}`}
       aria-selected={activeTab === id}
       onKeyDown={(event) => {
-        const ids = ["trading", "model", "connections"] as const;
+        const ids = ["trading", "model", "connections", "site"] as const;
         const current = ids.indexOf(id);
         const next = event.key === "ArrowRight" ? (current + 1) % ids.length
           : event.key === "ArrowLeft" ? (current - 1 + ids.length) % ids.length
@@ -168,6 +169,7 @@ export default function SettingsForm() {
           {tab("trading", "Trading")}
           {tab("model", "Jev model")}
           {tab("connections", "Connections")}
+          {tab("site", "Top row")}
         </div>
 
         <section className={styles.tabPanel} role="tabpanel" id="settings-panel-trading" aria-labelledby="settings-tab-trading" hidden={activeTab !== "trading"}>
@@ -251,6 +253,10 @@ export default function SettingsForm() {
             <h2>{scope === "operator" ? "Operator configuration" : "Session ownership"}</h2>
             {scope === "operator" && operator ? <><p>Environment values form the baseline. Session overrides are listed without exposing secrets.</p><dl className={styles.operator}><div><dt>Model</dt><dd>{operator.configuration.model}</dd></div><div><dt>Provider</dt><dd>{operator.configuration.jevProvider}</dd></div><div><dt>Model ID</dt><dd>{operator.configuration.jevModelId}</dd></div><div><dt>Bot port</dt><dd>{operator.configuration.port}</dd></div><div><dt>Provider secrets</dt><dd>OpenRouter {operator.configuration.providerKeys.openrouter ? "configured" : "missing"}, TypeSafe {operator.configuration.providerKeys.typesafe ? "configured" : "missing"}, Gateway {operator.configuration.providerKeys.gateway ? "configured" : "missing"}</dd></div><div><dt>Server wallet</dt><dd>{operator.configuration.walletConfigured ? "configured" : "missing"}</dd></div><div><dt>Session overrides</dt><dd>{overrideKeys.size ? [...overrideKeys].join(", ") : "None"}</dd></div></dl><p className={styles.warning}>Private keys and wallet JSON stay server only and are managed through fnox.</p></> : <p>This visitor session has its own executor, settings, run state, history, and paper balance. Its controls cannot start, stop, or reconfigure the shared demo.</p>}
           </section>
+        </section>
+
+        <section className={styles.tabPanel} role="tabpanel" id="settings-panel-site" aria-labelledby="settings-tab-site" hidden={activeTab !== "site"}>
+          <SiteConfigPanel />
         </section>
 
         <footer className={styles.footer}><button type="submit" className={styles.primary} disabled={!ready || (!dirty && !apiKey && !clearCredential && clearedEndpoints.length === 0) || locked || busy}>Save</button><button type="button" disabled={(!dirty && !apiKey && !clearCredential && clearedEndpoints.length === 0) || busy} onClick={() => { setDraft(settings); setApiKey(""); setKeyHost(null); setClearCredential(false); setClearedEndpoints([]); setMessage("Draft changes cancelled."); }}>Cancel</button><button type="button" disabled={!ready || locked || busy} onClick={reset}>Reset draft</button><span>{scope === "operator" ? "Save applies to the shared executor." : "Save applies to this visitor session on the server."}</span></footer>

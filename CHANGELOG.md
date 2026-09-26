@@ -6,6 +6,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Added
 
+- Added `web/src/site.config.json` for the site name, slogan, logo, menu, and icon links, with a Settings Top row tab that shows them and edits them on a local dev server.
 - Renamed the dashboard Call pane to Recent Decisions. It now summarizes the newest 100 decisions with their time span, category shares that sum to 100%, a bar or pie chart toggled by clicking, and category definitions on hover or click.
 - Renamed the Calls pane to History. Clicking a row opens a condensed decision detail with Jev's confidence, the order, fill, and position.
 - Added OpenRouter as a Jev provider through its System One endpoint, with provider-specific model defaults and startup credential checks.
@@ -41,6 +42,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Changed
 
+- Moved the run switch next to the balance and reduced the run timer to a single countdown.
 - Made OpenRouter the default Jev provider when no provider credential selects another provider. TypeSafe and Vercel AI Gateway remain available.
 - Shared the TypeSafe SDK client path between OpenRouter and the official TypeSafe API.
 - Pinned Bun 1.3.14 in both package manifests and `railpack.json`.
