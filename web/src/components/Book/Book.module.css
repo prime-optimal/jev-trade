@@ -2,8 +2,9 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  height: 220px;
-  min-height: 180px;
+  position: relative;
+  height: var(--book-h, 220px);
+  min-height: 120px;
   overflow: hidden;
   border-top: 1px solid var(--border);
   background: var(--panel);
@@ -20,11 +21,110 @@
   color: var(--bg);
 }
 
-.scope {
-  margin-left: auto;
+.tabList {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
+}
+
+.scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--bg) 45%, transparent);
+}
+
+.hint {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.divider {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 3;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.divider:hover {
+  background: color-mix(in srgb, var(--ink) 25%, transparent);
+}
+
+.table th {
+  position: sticky;
+}
+
+.thLabel {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.colHandle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.colHandle:hover {
+  background: color-mix(in srgb, var(--ink) 25%, transparent);
+}
+
+.table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lanes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  overflow-x: auto;
+}
+
+.lane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+
+.lane:last-child {
+  border-right: 0;
+}
+
+.laneOn {
+  background: var(--panel-2);
+}
+
+.laneHead {
+  appearance: none;
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  font: 700 11px var(--font-mono), monospace;
+  letter-spacing: 0.06em;
+  text-align: left;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
 }
 
 .scopeBtn,
@@ -135,6 +235,12 @@
 @media (max-width: 899.98px) {
   .wrap {
     height: min(36vh, 260px);
+  }
+
+  .divider,
+  .colHandle,
+  .hint {
+    display: none;
   }
 
   .table th,

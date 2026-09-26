@@ -21,6 +21,10 @@ The right rail has two panes. Recent Decisions ([`DecisionPanel`](../web/src/com
 
 History ([`Feed`](../web/src/components/Feed/Feed.tsx)) lists recent calls. Clicking a row replaces the pane with a condensed detail view of that decision: block, latency, prices, Jev's confidence per answer, the order, fill, transaction, and position, with a link to the full record on `/model`. BACK returns to the list. The detail view takes over the pane instead of opening a popup so the chart and book stay visible.
 
+## Bottom pane
+
+[`Book`](../web/src/components/Book/Book.tsx) has Positions, Trades, and History tabs. Drag the divider on its top edge to change its height, and drag a column header edge to resize a column (double click resets that table). Both are remembered per browser through [`useResizable.ts`](../web/src/lib/useResizable.ts) under `jev-trade:book-height:v1` and `jev-trade:cols:<table>:v1`. Trades lists every venue fill from Jev's orders across sleeves, with fee and closed PnL. History shows one column per sleeve with its closed lots and total. The market filter sits next to the tabs with a filter icon and defaults to All; picking the selected coin narrows Trades and shows the full History table for that coin.
+
 ## Operator and visitor views
 
 Remote visitors get an isolated, keyless paper executor. The page creates one server-side Bun Worker, then uses that worker for its feed, settings, run lifecycle, history, and tape. Save, Start, and Stop affect only that visitor's worker. They never mutate the shared demo or its wallet-backed executor.
