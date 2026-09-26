@@ -86,7 +86,7 @@ export function useFeedTransport(
     loadTapeRef.current = hydrateTape;
     // The snapshot carries only a short event tail. Backfill the full history so the
     // decision panes keep their window across reconnects and fill any gap they missed.
-    const hydrateHistory = async () => {
+    const hydrateHistory = async (startedAt: number | undefined) => {
       try {
         const response = await fetch(`${base}/history`, { signal: controller.signal });
         if (!response.ok || closed) return;
@@ -94,7 +94,7 @@ export function useFeedTransport(
         if (closed) return;
         const historyByCoin: Record<string, BlockEvent[]> = {};
         for (const [coin, rows] of Object.entries(decodeMap(raw))) historyByCoin[coin] = rows as BlockEvent[];
-        if (Object.keys(historyByCoin).length) dispatch({ type: "histories", historyByCoin });
+        if (Object.keys(historyByCoin).length) dispatch({ type: "histories", historyByCoin, startedAt });
       } catch { /* The live stream still works without the backfill. */ }
     };
     const applySnapshot = (data: unknown) => {
@@ -108,7 +108,7 @@ export function useFeedTransport(
       backfillPending = false;
       if (tapeStatus === "done") tapeStatus = "idle";
       void hydrateTape();
-      void hydrateHistory();
+      void hydrateHistory(next.meta?.startedAt);
     };
     let snapInflight: Promise<boolean> | null = null;
     const pullSnapshot = (): Promise<boolean> => {

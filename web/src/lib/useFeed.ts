@@ -22,7 +22,7 @@ interface SleeveMem extends SleeveFeed {
   mark: Mark | null;
 }
 
-interface State {
+export interface State {
   meta: Meta | null;
   connection: ConnectionState;
   sleeves: Record<string, SleeveMem>;
@@ -36,7 +36,7 @@ export type FeedAction =
   | { type: "quote"; coin: string; block: number; quote: Quote }
   | { type: "connection"; connection: ConnectionState }
   | { type: "tapes"; tapeByCoin: Record<string, PricePoint[]> }
-  | { type: "histories"; historyByCoin: Record<string, BlockEvent[]> }
+  | { type: "histories"; historyByCoin: Record<string, BlockEvent[]>; startedAt?: number }
   | { type: "sleeve"; sleeve: unknown }
   | { type: "price"; coin: string; mark: Mark };
 
@@ -153,9 +153,27 @@ export function mergeEvents(existing: BlockEvent[], incoming: BlockEvent[], cap 
   return out.length > cap ? out.slice(out.length - cap) : out;
 }
 
-/** Rebuilds a sleeve around merged events, keeping the longer tape and the newer price mark. */
+/**
+ * The server is the source of truth for the time range `incoming` covers, so its points replace
+ * what the page held there (updated bars, missed fills). Held points outside that range stay:
+ * older history the response did not carry, and newer live candles built while it was in flight.
+ */
+export function mergeTape(existing: PricePoint[], incoming: PricePoint[], cap = TAPE_CAP): PricePoint[] {
+  if (!incoming.length) return existing;
+  if (!existing.length) return incoming.length > cap ? incoming.slice(incoming.length - cap) : incoming;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of incoming) {
+    if (p.ts < lo) lo = p.ts;
+    if (p.ts > hi) hi = p.ts;
+  }
+  const out = [...existing.filter((p) => p.ts < lo), ...incoming, ...existing.filter((p) => p.ts > hi)];
+  return out.length > cap ? out.slice(out.length - cap) : out;
+}
+
+/** Rebuilds a sleeve around merged events and tape, keeping the newer price mark. */
 function mergeSleeve(prev: SleeveMem | undefined, history: BlockEvent[], tape: PricePoint[]): SleeveMem {
-  const next = fromHistory(mergeEvents(prev?.events ?? [], history), prev && prev.tape.length > tape.length ? prev.tape : tape);
+  const next = fromHistory(mergeEvents(prev?.events ?? [], history), mergeTape(prev?.tape ?? [], tape));
   if (prev?.mark && (!next.mark || prev.mark.ts > next.mark.ts)) next.mark = prev.mark;
   return viewOf(next);
 }
@@ -244,7 +262,7 @@ function applyBlock(s: SleeveMem, ev: BlockEvent): SleeveMem {
   };
 }
 
-function reducer(state: State, action: FeedAction): State {
+export function reducer(state: State, action: FeedAction): State {
   if (action.type === "reset") {
     return { meta: null, connection: "connecting", sleeves: {} };
   }
@@ -263,13 +281,14 @@ function reducer(state: State, action: FeedAction): State {
       for (const [coin, tape] of Object.entries(action.tapeByCoin)) {
         if (!tape.length) continue;
         const s = next.sleeves[coin] ?? emptySleeve();
-        if (tape.length <= (s.tape?.length ?? 0)) continue;
-        next = replaceSleeve(next, coin, { ...s, tape: tape.length > TAPE_CAP ? tape.slice(tape.length - TAPE_CAP) : tape });
+        next = replaceSleeve(next, coin, { ...s, tape: mergeTape(s.tape ?? [], tape) });
       }
       return next;
     }
 
     case "histories": {
+      // A response from a run that has since restarted would mix block numbers.
+      if (action.startedAt !== undefined && state.meta && state.meta.startedAt !== action.startedAt) return state;
       let next = state;
       for (const [coin, history] of Object.entries(action.historyByCoin)) {
         if (!history.length) continue;
@@ -288,9 +307,13 @@ function reducer(state: State, action: FeedAction): State {
         ...Object.keys(action.tapeByCoin),
         ...(action.meta?.sleeves.map((s) => s.coin) ?? []),
       ]);
+      const sameRun = !state.meta || !action.meta || state.meta.startedAt === action.meta.startedAt;
       const sleeves: Record<string, SleeveMem> = {};
       for (const coin of coins) {
-        sleeves[coin] = mergeSleeve(state.sleeves[coin], action.historyByCoin[coin] ?? [], action.tapeByCoin[coin] ?? []);
+        const history = action.historyByCoin[coin] ?? [];
+        const tape = action.tapeByCoin[coin] ?? [];
+        // Block numbers restart with the bot process, so a new run replaces the old one.
+        sleeves[coin] = sameRun ? mergeSleeve(state.sleeves[coin], history, tape) : fromHistory(history, tape);
       }
       return {
         meta: action.meta ?? state.meta,
