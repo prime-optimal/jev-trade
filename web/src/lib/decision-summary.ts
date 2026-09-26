@@ -12,6 +12,16 @@ export const CATEGORIES: { key: DecisionCategory; label: string; color: string; 
   { key: "late", label: "late", color: "var(--late-ink)", info: "Jev did not answer before the next tick arrived, so the tick passed without a call." },
 ];
 
+/**
+ * Events plus `latest` when it is a newer block. `latest` from the feed is often the last
+ * event repainted with a newer price mark (new object, same block, price timestamp), so
+ * identity checks would double count it and move its time with the price feed.
+ */
+export function withLatest(events: BlockEvent[], latest: BlockEvent | null): BlockEvent[] {
+  const last = events.at(-1);
+  return latest && (!last || latest.block > last.block) ? [...events, latest] : events;
+}
+
 export interface DecisionSummary {
   total: number;
   counts: Record<DecisionCategory, number>;

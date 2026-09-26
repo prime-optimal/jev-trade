@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { BlockEvent, Meta } from "@/lib/types";
 import { fmtCall } from "@/lib/format";
-import { CATEGORIES, fmtSpan, summarizeDecisions, wholePercents, type DecisionCategory } from "@/lib/decision-summary";
+import { CATEGORIES, fmtSpan, summarizeDecisions, wholePercents, withLatest, type DecisionCategory } from "@/lib/decision-summary";
 import { Bone } from "@/components/Skeleton/Skeleton";
 import styles from "./DecisionPanel.module.css";
 
@@ -46,7 +46,7 @@ function Pie({ shares }: { shares: Record<DecisionCategory, number> }) {
 export default function DecisionPanel({ events, latest, waiting = false }: DecisionPanelProps) {
   const [pie, setPie] = useState(false);
   const [info, setInfo] = useState<DecisionCategory | null>(null);
-  const summary = useMemo(() => summarizeDecisions(latest && events.at(-1) !== latest ? [...events, latest] : events), [events, latest]);
+  const summary = useMemo(() => summarizeDecisions(withLatest(events, latest)), [events, latest]);
 
   if (waiting && !latest) {
     return (
