@@ -40,6 +40,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Fixed
 
+- Fixed the Recent Decisions window and an open History detail being wiped after a stream reconnect. Reconnect snapshots now merge into the held events, and the page backfills `/history` and `/tape` once per connection.
 - Fixed Recent Decisions counting the newest decision twice when a price mark repainted it between ticks.
 - Kept caller-supplied environment values winning over `mise.toml` defaults on mise 2026.9.13, which regressed `{ default }` yield semantics ([mise#13630](https://github.com/jdx/mise/issues/13630)). `just dev` and `just start` now run through `scripts/with-mise-env.sh`, which restores caller-set managed variables after `mise exec`; the shim is a no-op on fixed mise releases.
 

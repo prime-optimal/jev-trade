@@ -94,7 +94,9 @@ Legacy rows remain readable. When program fields were not persisted, the page sh
 
 ## Feed lifecycle
 
-[`useFeed()`](../web/src/lib/useFeed.ts) first fetches `GET /snapshot` and opens `/events?lite=1`. The lite stream sends `ready` instead of another snapshot. The hook later fetches `/tape` for deeper chart history.
+[`useFeed()`](../web/src/lib/useFeed.ts) first fetches `GET /snapshot` and opens `/events?lite=1`. The lite stream sends `ready` instead of another snapshot. The hook later fetches `/tape` for deeper chart history and `/history` for the full decision history, because the snapshot carries only the newest 12 events per sleeve.
+
+Snapshots merge into what the page already holds instead of replacing it: events are joined by block number and capped at 1000 per sleeve, and tape points from the server replace the held points in the time range the response covers while older history and newer live candles stay. Block numbers restart with the bot process, so a snapshot whose `startedAt` differs from the held run replaces the history instead, and a `/history` response from an earlier run is ignored. After each reconnect the page fetches `/tape` and `/history` once more to fill anything missed while disconnected. This keeps the Recent Decisions window and an open History detail intact when the stream reconnects, for example after the tab sat in the background.
 
 A 45-second event gap reconnects the stream. Before the first snapshot, the timeout is 90 seconds. Retry delay starts at one second and caps at ten seconds. `ping` events keep the connection active. Run state is polled every two seconds through the active scope, and operator state is polled every five seconds.
 
