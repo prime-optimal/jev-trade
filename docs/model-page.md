@@ -110,7 +110,7 @@ The action shown in the header is derived, not answered. `decideFromJevAnswers` 
 
 Source: `row.evidence.capture.groups[]`. `captureProgram` in `src/jev-program.ts` builds each group's `state` with `extractFeatures` in `src/jev-features.ts` from the `TradeState` that `Trader.buildState` returns. The capture happens once per tick, before any provider request, so the card values are exactly the values the provider was given.
 
-`Inputs.tsx` prints a caption such as `Captured 14:03:22 from catalog jev-features-2026-09-24.1. trade read 17 inputs.` The time is `capturedAt`. The number is `Object.keys(snapshot.state).length` for each group, joined by commas. `extractFeatures` writes every requested id, so the default `trade` group always reads 17. The count says how many inputs were sent, not how many held data: an empty `depth` object and an `indicators` object full of nulls still count.
+`Inputs.tsx` prints a caption such as `Captured 14:03:22 from catalog jev-features-2026-09-28.1. trade read 17 inputs.` The time is `capturedAt`. The number is `Object.keys(snapshot.state).length` for each group, joined by commas. `extractFeatures` writes every requested id, so the default `trade` group always reads 17. The count says how many inputs were sent, not how many held data: an empty `depth` object and an `indicators` object full of nulls still count.
 
 A card renders only if its feature id is present in the snapshot. A custom program that omits a feature omits its card. The `RENDERED` set in `Inputs.tsx` lists the 17 ids the page knows about. Any other id falls into an "Other inputs" card.
 
@@ -128,7 +128,7 @@ The ids are `FEATURE_IDS` in `src/jev-features.ts`. For exact field lists, round
 | `tickMs` | none | Never displayed in a card. | Not applicable. | `config.tickMs`, set from settings. |
 | `mid` | Price | Headline price. Also the mid row in the order book. | `n/a` | `Feed.book.mid`, the midpoint of best bid and best ask from `bookFromLevels` in `src/book.ts`. Book from WebSocket `l2Book` (`fast: true`) with an HTTP `l2Book` snapshot. |
 | `spreadBps` | Price (`bps spread`); Order book spread row | Spread in basis points. | `n/a` | Same book, `Book.spreadBps`. |
-| `bookImbalance` | Price (`book imbalance`); Depth footer | Signed ratio, three decimals. | `n/a` | `Book.imbalance`: (bid size minus ask size) over their sum for levels within 100 bps of mid (`near(..., 100)` in `bookFromLevels`). This is not top of book, although the catalog `meaning` and the Depth footer text say "Top of book". |
+| `bookImbalance` | Price (`book imbalance`); Depth footer | Signed ratio, three decimals. | `n/a` | `Book.imbalance`: (bid size minus ask size) over their sum for levels within 100 bps of mid (`near(..., 100)` in `bookFromLevels`). It is not top of book. The catalog `meaning` and the Depth footer say so since catalog version `jev-features-2026-09-28.1`. |
 | `depth` | Depth | Diverging bars of cumulative bid and ask size within 10, 25, and 50 bps of mid. | `No depth bands captured.` Rows written before the depth key fix have `{}` and keep this text. | `Book.depthBps` from `bookFromLevels`; `Trader.buildState` passes keys `"10"`, `"25"`, `"50"`. Same `l2Book` book. |
 | `book` | Order book | Five asks above and five bids below with size bars. | `No book levels captured.` | `Book.levels` (top five per side, from `l2Book`), formatted `price x size` in `Trader.buildState`. |
 | `returnsBps` | Price (returns row) | `1 tick`, `5 ticks`, `20 ticks`, `100 ticks` returns in bps, ending at the decision mid. | Row is empty if the object is absent. A value of `0.00 bps` can also mean not enough history (see [Price pane](#price-pane-what-jev-saw)). | `Trader.buildState` `ret(k)` over `Trader.mids`, the per-tick `book.mid` history. |
@@ -257,7 +257,5 @@ A tick is one Jev evaluation, not a Hyperliquid block. `Feed.maybeTick` in `src/
 
 ## Known discrepancies
 
-- `bookImbalance` is measured within 100 bps of mid (`bookFromLevels` in `src/book.ts`, and the `Book.imbalance` comment in `src/types.ts`). The catalog `meaning` in `src/jev-features.ts` and the Depth card footer describe it as top of book. [jev-model.md](jev-model.md#catalog-metadata-per-input) records the same mismatch.
-- The catalog `meaning` for `tickMs` is "Tick time of day" and `Fields.tsx` labels it the same way, but the value is the configured interval between evaluations in milliseconds.
 - The sparkline steps one x unit per sampled mid (five ticks) but places the after-decision points one x unit per tick, so the overlay is drawn stretched to the right compared with the trailing series. Prices and Right or Wrong labels are unaffected. [model-performance.md](model-performance.md#known-inconsistencies) lists it too.
 - `returnsBps` reports `0` rather than null when the bot has too little history, for example just after a restart, so a zero return can mean no data.

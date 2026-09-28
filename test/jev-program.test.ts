@@ -111,7 +111,7 @@ const leverageCriteria = { "1": "1x", "2": "2x", "3": "3x", "5": "5x", "10": "10
 test("program constants and provider type allowlists match the contract", () => {
   expect(PROGRAM_SCHEMA).toBe("jev-program-2026-09-24.1");
   expect(PROJECTION_VERSION).toBe("jev-trade-projection-1");
-  expect(FEATURE_CATALOG_VERSION).toBe("jev-features-2026-09-24.1");
+  expect(FEATURE_CATALOG_VERSION).toBe("jev-features-2026-09-28.1");
   expect(REQUIRED_KEYS).toEqual(["bias", "intent", "leverage"]);
   expect(PROVIDER_QUESTION_TYPES).toEqual({
     openrouter: ["choice", "score", "noul"],

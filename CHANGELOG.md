@@ -56,6 +56,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Changed
 
+- Started a new Jev model revision. `FEATURE_CATALOG_VERSION` is now `jev-features-2026-09-28.1`, which corrects the catalog text for `tickMs` ("Configured interval between decisions", was "Tick time of day") and `bookImbalance` ("Bid versus ask size imbalance within 100 bps of mid", was "Top-of-book size imbalance") and changes the program revision hash. The Model page label for `tickMs` and the Depth footer now match. The depth fix above ships in the same revision.
 - Moved every dashboard page onto the fixed type and spacing scales in `DESIGN.md`, and replaced the per-role buy, sell, and late color aliases with green, red, and amber HSL ramps behind one semantic token per role.
 - Moved the run switch next to the balance and reduced the run timer to a single countdown.
 - Made OpenRouter the default Jev provider when no provider credential selects another provider. TypeSafe and Vercel AI Gateway remain available.

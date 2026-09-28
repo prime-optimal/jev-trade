@@ -12,7 +12,7 @@ Overlapping evaluations are allowed because a slow request must not skip the nex
 
 ## Program revision
 
-The current code sets `PROGRAM_SCHEMA` to `jev-program-2026-09-24.1`, `FEATURE_CATALOG_VERSION` to `jev-features-2026-09-24.1`, and `PROJECTION_VERSION` to `jev-trade-projection-1`. A program definition pins the catalog version in `catalogVersion` and the projection version in `projection.version`. Validation checks the definition against the schema and the selected provider's supported question types. The activated definition is immutable.
+The current code sets `PROGRAM_SCHEMA` to `jev-program-2026-09-24.1`, `FEATURE_CATALOG_VERSION` to `jev-features-2026-09-28.1`, and `PROJECTION_VERSION` to `jev-trade-projection-1`. A program definition pins the catalog version in `catalogVersion` and the projection version in `projection.version`. Validation checks the definition against the schema and the selected provider's supported question types. The activated definition is immutable.
 
 `programRevision()` returns `sha256:` followed by the hash of canonical JSON containing the schema, catalog version, metadata for selected features, questions with their defaulted roles, groups, and projection. Changing any of those inputs changes the revision. The revision therefore identifies both the state Jev receives and how its required answers can become a decision. Presentation-only dashboard edits do not change it. See [`src/jev-program.ts`](../src/jev-program.ts) and [`src/jev-features.ts`](../src/jev-features.ts).
 
@@ -20,7 +20,7 @@ Each group carries its own selected feature values and resolved questions. The `
 
 ## State sent to Jev
 
-Jev reads 17 inputs, the ids in `FEATURE_IDS` ([`src/jev-features.ts`](../src/jev-features.ts)). The current catalog version is `FEATURE_CATALOG_VERSION` = `jev-features-2026-09-24.1`. `DEFAULT_PROGRAM` puts all 17 in its one `trade` group.
+Jev reads 17 inputs, the ids in `FEATURE_IDS` ([`src/jev-features.ts`](../src/jev-features.ts)). The current catalog version is `FEATURE_CATALOG_VERSION` = `jev-features-2026-09-28.1`. `DEFAULT_PROGRAM` puts all 17 in its one `trade` group.
 
 Every tick, `Trader.buildState` in [`src/trader.ts`](../src/trader.ts) builds a `TradeState` (type in [`src/model.ts`](../src/model.ts)). `captureProgram` in [`src/jev-program.ts`](../src/jev-program.ts) then calls `extractFeatures` with the group's feature ids. That copies each requested input out of the `TradeState` into a frozen `snapshot.state`. Two rules follow from that code:
 
@@ -130,10 +130,10 @@ These are the `FEATURE_CATALOG` entries. The catalog is copied into every group 
 | `coin` | Asset identifier | string | none | none | always | tick |
 | `market` | Market identifier | string | none | none | always | tick |
 | `tick` | Tick sequence number | number | tick | none | always | tick |
-| `tickMs` | "Tick time of day" (see the note below) | number | ms | none | always | tick |
+| `tickMs` | Configured interval between decisions | number | ms | none | always | tick |
 | `mid` | Mid-market price | number | USD | none | always | tick |
 | `spreadBps` | Bid-ask spread | number | bps | none | always | tick |
-| `bookImbalance` | "Top-of-book size imbalance" (see the note below) | number | ratio | none | always | tick |
+| `bookImbalance` | Bid versus ask size imbalance within 100 bps of mid | number | ratio | none | always | tick |
 | `depth` | Cumulative resting size by distance from mid | object | size | 3 | always | tick |
 | `book` | Best resting prices and sizes | object | price x size | 5 | always | tick |
 | `returnsBps` | Recent price returns | object | bps | none | always | tick |
@@ -145,7 +145,7 @@ These are the `FEATURE_CATALOG` entries. The catalog is copied into every group 
 | `asset` | Venue market data | object | none | none | nullable | unknown |
 | `maxLeverage` | Maximum allowed cross leverage | number | x | none | always | unknown |
 
-Two catalog descriptions disagree with the code. `tickMs` is the configured interval between evaluations, not a time of day. `bookImbalance` covers all received levels within 100 basis points of `mid`, not only the top of book. The catalog text is part of the revision hash, so it is documented here rather than silently reworded.
+Catalog version `jev-features-2026-09-28.1` corrected two descriptions that the earlier `jev-features-2026-09-24.1` text got wrong: `tickMs` had been "Tick time of day" and `bookImbalance` had been "Top-of-book size imbalance". The values never changed. Because the catalog text is part of the revision hash, that correction, together with the depth fix (see the `depth` rows above), starts a new program revision. Journal rows written under `jev-features-2026-09-24.1` carry the earlier revision.
 
 The `book` `maxItems` of 5 counts levels per side. The `depth` `maxItems` of 3 counts the bands.
 

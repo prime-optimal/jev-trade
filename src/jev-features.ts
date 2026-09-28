@@ -1,7 +1,7 @@
 import { deepFreeze, type FeatureMetadata, type JsonValue } from "./jev-evidence";
 import type { TradeState } from "./model";
 
-export const FEATURE_CATALOG_VERSION = "jev-features-2026-09-24.1";
+export const FEATURE_CATALOG_VERSION = "jev-features-2026-09-28.1";
 
 export type FeatureId = "coin" | "market" | "tick" | "tickMs" | "mid" | "spreadBps" | "bookImbalance" | "depth" | "book" | "returnsBps" | "recentMids" | "trades" | "recentTrades" | "position" | "indicators" | "asset" | "maxLeverage";
 
@@ -13,10 +13,10 @@ export const FEATURE_CATALOG: { readonly [id in FeatureId]: FeatureMetadata } = 
   coin: { id: "coin", type: "string", meaning: "Asset identifier", units: null, maxItems: null, availability: "always", freshness: "tick" },
   market: { id: "market", type: "string", meaning: "Market identifier", units: null, maxItems: null, availability: "always", freshness: "tick" },
   tick: { id: "tick", type: "number", meaning: "Tick sequence number", units: "tick", maxItems: null, availability: "always", freshness: "tick" },
-  tickMs: { id: "tickMs", type: "number", meaning: "Tick time of day", units: "ms", maxItems: null, availability: "always", freshness: "tick" },
+  tickMs: { id: "tickMs", type: "number", meaning: "Configured interval between decisions", units: "ms", maxItems: null, availability: "always", freshness: "tick" },
   mid: { id: "mid", type: "number", meaning: "Mid-market price", units: "USD", maxItems: null, availability: "always", freshness: "tick" },
   spreadBps: { id: "spreadBps", type: "number", meaning: "Bid-ask spread", units: "bps", maxItems: null, availability: "always", freshness: "tick" },
-  bookImbalance: { id: "bookImbalance", type: "number", meaning: "Top-of-book size imbalance", units: "ratio", maxItems: null, availability: "always", freshness: "tick" },
+  bookImbalance: { id: "bookImbalance", type: "number", meaning: "Bid versus ask size imbalance within 100 bps of mid", units: "ratio", maxItems: null, availability: "always", freshness: "tick" },
   depth: { id: "depth", type: "object", meaning: "Cumulative resting size by distance from mid", units: "size", maxItems: 3, availability: "always", freshness: "tick" },
   book: { id: "book", type: "object", meaning: "Best resting prices and sizes", units: "price x size", maxItems: 5, availability: "always", freshness: "tick" },
   returnsBps: { id: "returnsBps", type: "object", meaning: "Recent price returns", units: "bps", maxItems: null, availability: "always", freshness: "tick" },
