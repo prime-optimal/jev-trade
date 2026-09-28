@@ -96,6 +96,9 @@ The record body has three columns, which fold to two below 1600px:
 - What Jev saw renders each input of the group's immutable snapshot as its own card, labeled with capture time, catalog, and freshness. Price shows the mid, spread, book imbalance, a sparkline of recent mids with moving averages and the recorded mids after the decision, and recent returns. The order book is a price ladder, depth is a diverging bid and ask chart by distance, taker flow is a split bar, recent prints are a sized list, indicators show RSI and candle-range gauges with averages versus mid, venue data is a labeled grid, and position shows side, size, entry, and unrealized PnL. Unknown inputs fall back to formatted fields, never raw JSON.
 - Order and Outcome show the recorded quote, correlated fills, closed PnL, and a 1, 5, 20, and 100 tick chart of the bias-signed return against the market move. A hold with no order is still a completed decision. Missing data is shown as unavailable, never inferred.
 
+The toolbar switches between Decisions and Performance. Performance covers the currently loaded history; Load older extends that sample. Hit-rate tables show sample count and mean bias-signed bps by horizon, and by intent and leverage at 5 ticks. Pending markouts are excluded. The closed-PnL chart cumulatively plots recorded closed PnL over time. Confidence calibration buckets the picked required bias answer confidence and compares each bucket with its measured 5-tick hit rate. The page states the measured sample sizes and shows empty and small-sample states.
+
+
 Legacy rows remain readable. When program fields were not persisted, the page shows `Program metadata unavailable for this record.`
 
 ## Feed lifecycle

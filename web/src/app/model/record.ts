@@ -32,6 +32,7 @@ export interface DecisionSummary {
   inputTokens: number | null;
   outputTokens: number | null;
   markouts: Partial<Record<Horizon, Markout>>;
+  confidence: number | null;
   quote: QuoteRecord | null;
   fills: FillRecord[];
   closedPnl: number | null;
@@ -78,6 +79,11 @@ export function summarize(row: DecisionRow): DecisionSummary {
   const action: Action = rawAction === "buy" || rawAction === "sell" || rawAction === "hold" ? rawAction : failed ? "no decision" : "unavailable";
   const capturedCoin = row.evidence?.capture?.groups?.find((group) => typeof group.state?.coin === "string")?.state.coin;
   const required = row.evidence?.required;
+  const pickedBias = stringValue(decision?.bias)?.toLowerCase() ?? null;
+  const pickedBiasAnswer = required?.answers.find((answer) => answer.key === "bias" && answer.role === "required" &&
+    answer.status === "answered" && answer.answer?.type === "choice" && answer.answer.choice.toLowerCase() === pickedBias);
+  const confidence = pickedBiasAnswer?.answer && "confidence" in pickedBiasAnswer.answer
+    ? numberValue(pickedBiasAnswer.answer.confidence) : null;
   const fills = row.fills.map(fillRecord);
   const closedPnls = fills.map((fill) => fill.closedPnl).filter((value): value is number => value !== null);
   const markouts: Partial<Record<Horizon, Markout>> = {};
@@ -113,6 +119,7 @@ export function summarize(row: DecisionRow): DecisionSummary {
     quote: quoteRecord(row.quote),
     fills,
     closedPnl: closedPnls.length ? closedPnls.reduce((sum, value) => sum + value, 0) : null,
+    confidence,
   };
 }
 

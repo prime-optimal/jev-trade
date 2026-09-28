@@ -6,6 +6,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Added
 
+- Added a Performance view on `/model` with hit rates by horizon, intent, and leverage, a cumulative closed-PnL chart, and picked-answer confidence calibration over loaded history.
 - Added `test/fixtures/decision-journal.json`, a sample of real production decision journal rows, and `just smoke-model`, `just smoke-bot`, and `just smoke-clean` recipes that load it into a local Postgres for dashboard smoke checks.
 - Pinned `just` in `mise.toml`, added UI work rules to `CLAUDE.md`, and vendored the `refactoring-ui` agent skill in `.claude/skills` with its source recorded in `skills-lock.json`.
 - Added `web/src/site.config.json` for the site name, slogan, logo, menu, and icon links, with a Settings Top row tab that shows them and edits them on a local dev server.
