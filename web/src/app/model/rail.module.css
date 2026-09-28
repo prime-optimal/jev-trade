@@ -21,6 +21,7 @@
 .plan { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .plan b { color: var(--ink-2); font-weight: 400; }
 .late { margin-left: var(--space-2); color: var(--late); font-style: normal; }
+.fresh { display: inline-block; margin-right: var(--space-2); padding: 0 var(--space-1); border: 1px solid var(--border-2); color: var(--muted); font-style: normal; }
 .markout { color: var(--muted); }
 .markout[data-sign="pos"] { color: var(--buy); }
 .markout[data-sign="neg"] { color: var(--sell); }

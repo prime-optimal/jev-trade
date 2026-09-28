@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header/Header";
 import { useSettings } from "@/lib/trading/SettingsProvider";
 import { useDecisionRecord } from "@/lib/useDecisionRecord";
@@ -19,13 +19,22 @@ import styles from "./model.module.css";
 export default function ModelView() {
   const { feed } = useSettings();
   const urlState = useModelUrlState();
-  const history = useDecisions({ initialSelectedId: urlState.decisionId });
+  let liveSignal = "";
+  for (const coin in feed.byCoin) {
+    const latest = feed.byCoin[coin]?.events.at(-1);
+    if (latest) liveSignal += `${coin}:${latest.block}:${latest.ts};`;
+  }
+  const history = useDecisions({ initialSelectedId: urlState.decisionId, liveSignal });
+  const previousDecisionId = useRef(urlState.decisionId);
   useEffect(() => {
     if (urlState.decisionId !== null) {
       if (history.selectedId !== urlState.decisionId) history.select(urlState.decisionId);
-    } else if (history.rows[0] && history.selectedId !== history.rows[0].decisionId) {
-      history.select(history.rows[0].decisionId);
+    } else if (previousDecisionId.current !== null || history.selectedId === null) {
+      if (history.rows[0] && history.selectedId !== history.rows[0].decisionId) {
+        history.select(history.rows[0].decisionId);
+      }
     }
+    previousDecisionId.current = urlState.decisionId;
   }, [history.rows, history.selectedId, history.select, urlState.decisionId]);
   const [view, setView] = useState<"decisions" | "performance">("decisions");
   const [filters, setFilters] = useState<RailFilter>(DEFAULT_FILTERS);
@@ -64,7 +73,7 @@ export default function ModelView() {
           {noMatches && urlState.decisionId === null ? <NoMatchingDecisions clear={() => setFilters(DEFAULT_FILTERS)} /> : <>
             {noMatches ? <NoMatchingDecisions clear={() => setFilters(DEFAULT_FILTERS)} /> : (
               <DecisionRail summaries={filteredSummaries} selectedId={selectedSummary?.id ?? null} select={urlState.setDecision} horizon={urlState.horizon} status={history.status} error={history.error}
-                nextBefore={history.nextBefore} loadingMore={history.loadingMore} loadOlder={history.loadOlder} retry={history.retry} />
+                newIds={history.newIds} nextBefore={history.nextBefore} loadingMore={history.loadingMore} loadOlder={history.loadOlder} retry={history.retry} />
             )}
             {linked.status === "not-found" ? (
               <section className={styles.recordState} role="alert"><p>Decision not found for this account.</p></section>

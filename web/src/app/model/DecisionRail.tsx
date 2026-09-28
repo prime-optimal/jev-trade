@@ -16,13 +16,14 @@ type Props = {
   horizon: Horizon;
   status: DecisionHistoryStatus;
   error: string | null;
+  newIds: ReadonlySet<string>;
   nextBefore: string | null;
   loadingMore: boolean;
   loadOlder: () => void;
   retry: () => void;
 };
 
-export default function DecisionRail({ summaries, selectedId, select, horizon, status, error, nextBefore, loadingMore, loadOlder, retry }: Props) {
+export default function DecisionRail({ summaries, selectedId, select, horizon, status, error, newIds, nextBefore, loadingMore, loadOlder, retry }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-decision-id="${CSS.escape(selectedId ?? "")}"]`)?.scrollIntoView({ block: "nearest" });
@@ -59,7 +60,7 @@ export default function DecisionRail({ summaries, selectedId, select, horizon, s
             <span className={styles.time}>{fmtClock(summary.time, true)}</span>
             <span className={styles.coin}>{summary.coin ? <><TokenIcon coin={summary.coin} size={14} /><span>{displayCoin(summary.coin)}</span></> : "n/a"}</span>
             <span className={styles.call} data-tone={tone(summary.action)} data-action={summary.action}><ActionMark action={summary.action} /><span className={styles.callLabel}>{summary.action === "no decision" ? "none" : summary.action}</span></span>
-            <span className={styles.plan}>{plan}{summary.late ? <em className={styles.late}>late</em> : null}</span>
+            <span className={styles.plan}>{newIds.has(summary.id) ? <em className={styles.fresh}>new</em> : null}{plan}{summary.late ? <em className={styles.late}>late</em> : null}</span>
             <span className={styles.markout} data-sign={markout === null ? undefined : markout > 0 ? "pos" : markout < 0 ? "neg" : "flat"} title={markout === null ? `No ${horizon} tick markout recorded` : `${horizon} tick bias-signed return`}>{markout === null ? "n/a" : fmtBps(markout).replace(" bps", "")}</span>
           </div>;
         })}
