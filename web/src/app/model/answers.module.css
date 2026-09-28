@@ -1,0 +1,49 @@
+.group { display: grid; gap: var(--space-2); }
+.group + .group { margin-top: var(--space-5); }
+.groupHeader { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.groupHeader h3 { font-size: var(--text-14); font-weight: 600; }
+.groupHeader h3 span, .groupHeader p { color: var(--muted); font-size: var(--text-12); font-weight: 400; }
+.groupHeader p { display: flex; gap: var(--space-3); font-variant-numeric: tabular-nums; }
+.groupHeader [data-status="invalid"], .groupHeader [data-status="failed"], .groupHeader [data-status="timeout"] { color: var(--error); }
+.note { color: var(--muted); font-size: var(--text-12); }
+.failure { color: var(--error); font-size: var(--text-12); }
+.question { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--panel-1); }
+.question > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.question h4 { font-size: var(--text-14); font-weight: 600; }
+.type, .confidence { color: var(--muted); font-size: var(--text-12); }
+.confidence { margin-left: auto; font-variant-numeric: tabular-nums; }
+.status { padding: 0 var(--space-1); background: var(--sell-bar-dim); color: var(--error); font-size: var(--text-12); }
+.prompt { color: var(--ink-2); font-size: var(--text-12); line-height: 1.5; }
+.choices { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.choice { display: grid; grid-template-columns: minmax(96px, 1fr) minmax(64px, 1.2fr) 48px; align-items: center; gap: var(--space-2); min-height: 24px; color: var(--muted); font-size: var(--text-12); }
+.choiceLabel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.choiceLabel small { width: 100%; color: var(--muted); font-size: var(--text-12); font-weight: 400; line-height: 1.5; }
+.picked { color: var(--muted); font-style: normal; font-weight: 400; }
+.choice[data-selected="true"] { color: var(--ink); font-weight: 600; }
+.choice[data-selected="true"][data-tone="buy"] .choiceLabel { color: var(--buy-ink); }
+.choice[data-selected="true"][data-tone="sell"] .choiceLabel { color: var(--sell-ink); }
+.track { position: relative; display: block; height: 8px; background: var(--track); }
+.track > span { position: absolute; inset: 0 auto 0 0; background: var(--border-2); }
+.choice[data-selected="true"] .track > span, .meter .track > span { background: var(--ink); }
+.choice[data-selected="true"][data-tone="buy"] .track > span { background: var(--buy-bar); }
+.choice[data-selected="true"][data-tone="sell"] .track > span { background: var(--sell-bar); }
+.pct { text-align: right; font-variant-numeric: tabular-nums; }
+.scale { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.scale li { display: grid; grid-template-rows: 48px auto auto; gap: var(--space-1); min-width: 0; color: var(--muted); font-size: var(--text-12); text-align: center; }
+.column { display: flex; align-items: flex-end; background: var(--track); }
+.column > span { display: block; width: 100%; background: var(--border-2); }
+.scale li[data-selected="true"] { color: var(--ink); font-weight: 600; }
+.scale li[data-selected="true"] .column > span { background: var(--ink); }
+.stepValue { font-variant-numeric: tabular-nums; }
+.stepLabel { overflow-wrap: anywhere; }
+.stepLabel b { font-weight: 600; }
+.meter { display: grid; grid-template-columns: minmax(0, 1fr) 56px; align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--text-12); }
+.meterScale { display: flex; justify-content: space-between; grid-column: 1; color: var(--muted); }
+.unanswered { display: grid; gap: var(--space-2); color: var(--error); font-size: var(--text-12); }
+.details { font-size: var(--text-12); }
+.details summary { color: var(--muted); cursor: pointer; }
+.details summary:hover { color: var(--ink); }
+.details dl { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+.details dt { color: var(--muted); }
+.details dd { color: var(--ink-2); line-height: 1.5; overflow-wrap: anywhere; }
+.details pre { margin-top: var(--space-2); padding: var(--space-2); background: var(--page-bg); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-12) var(--font-mono); }

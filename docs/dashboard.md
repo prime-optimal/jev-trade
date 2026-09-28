@@ -55,17 +55,23 @@ Decision-history reads use same-origin `GET /api/session/decisions?limit=&before
 
 ## Model page
 
-![The /model Decisions browser with the detail panel of a recorded decision](../assets/model.png)
+![The /model decision browser with the timeline, decision rail, and selected decision record](../assets/model.png)
 
 The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads only through same-origin `GET /api/session/decisions?limit=&before=`; the server resolves the owner from the session capability. It does not use the live feed reducer or SSE and creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
 
 The page loads newest-first bounded pages of 50 rows and uses the opaque `before` cursor to load older history. Refresh reloads history. Loading, empty, error, expired-session, and end-of-history states are shown. Appending older pages preserves the selected decision.
 
-The detail panel has three sections:
+The layout is desktop first and fills the viewport. From 1100px up the page does not scroll; the decision rail and the record scroll independently.
 
-- Model evidence groups questions by stable question key under each evaluation group, with required-role questions separated from observational questions. Typed answers show their recorded confidence and probability distributions as labeled bars, with the selected criterion marked. Instructions and criteria render as key/value rows and chips rather than raw JSON. Each evaluation group has one immutable input snapshot with feature freshness, stale, or missing metadata; venue market data renders as labeled rows and order-book depth as a two-sided price-by-size ladder. Long revisions truncate to an expandable chip, and any remaining large stored value collapses behind an expand toggle.
-- Execution shows the recorded quote and correlated fills. Missing data is shown as unavailable, never inferred.
-- Outcome shows closed PnL and 1, 5, 20, and 100 tick markouts with market return and bias-signed return. A hold with no order is still a completed decision.
+- The timeline across the top counts buy, sell, hold, and no-decision calls, and plots every loaded decision oldest to newest as a bias-signed markout bar at the chosen horizon (1, 5, 20, or 100 ticks). It shows the share of measured calls that were right at that horizon and their mean. Hovering a bar previews that decision; clicking selects it.
+- The decision rail on the left is a compact listbox grouped by day: time, call, plan (intent, bias, leverage), a late flag, and the markout at the chosen horizon. Arrow keys, Home, and End move the selection.
+- The record header shows the call, its plan chips, latency, tokens, markout, model, and a meta line with coin, block, provider, run, decision id, and program revision.
+
+The record body has three columns, which fold to two below 1600px:
+
+- Trade call groups answers by evaluation group, with required-role questions separated from observational ones. Choice answers render as probability bars with the picked criterion marked, score answers as a column chart over their criteria, and numeric answers as a meter. Invalid answers show their status and the recorded provider response. Instructions stay collapsed.
+- What Jev saw renders each input of the group's immutable snapshot as its own card, labeled with capture time, catalog, and freshness. Price shows the mid, spread, book imbalance, a sparkline of recent mids with moving averages and the recorded mids after the decision, and recent returns. The order book is a price ladder, depth is a diverging bid and ask chart by distance, taker flow is a split bar, recent prints are a sized list, indicators show RSI and candle-range gauges with averages versus mid, venue data is a labeled grid, and position shows side, size, entry, and unrealized PnL. Unknown inputs fall back to formatted fields, never raw JSON.
+- Order and Outcome show the recorded quote, correlated fills, closed PnL, and a 1, 5, 20, and 100 tick chart of the bias-signed return against the market move. A hold with no order is still a completed decision. Missing data is shown as unavailable, never inferred.
 
 Legacy rows remain readable. When program fields were not persisted, the page shows `Program metadata unavailable for this record.`
 
