@@ -5,6 +5,8 @@
 - [Jev model contract](jev-model.md) is the full prompt, input, exclusion, decision history, privacy, and refinement reference.
 - [Bot HTTP and SSE API](api.md) defines routes, payloads, event types, retention, and compression.
 - [Dashboard](dashboard.md) maps the Next app, feed lifecycle, shared types, and UI rules.
+- [Model page](model-page.md) explains each panel of the `/model` Decisions tab, its data source, and how markouts differ from the inputs Jev saw.
+- [Model performance](model-performance.md) defines Right and Wrong, hit rate, and every Performance tab number.
 - [Configuration](configuration.md) lists environment variables, defaults, secrets, and wallet sources.
 - [Jev provider](jev-provider.md) covers provider selection, request handling, late ticks, and cost accounting.
 - [Development](development.md) covers setup, local recipes, verification, shared types, and repository rules.

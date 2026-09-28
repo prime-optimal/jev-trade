@@ -44,15 +44,19 @@ All notable changes to this project are documented here. This changelog starts f
 - Added URL-backed `/model?d=<decisionId>&h=<horizon>` state, owner-scoped single-decision lookup, and History links that open the matching record.
 - Added keyboard selection, a draggable and resizable overview brush, and range reset to the `/model` timeline.
 - Added live decision append to `/model` from the existing block SSE feed. The page refetches the owner-scoped journal for complete evidence and markouts, then merges by decision ID while preserving older pages and selection, with a brief text cue on new rows.
+- Added `docs/model-page.md` and `docs/model-performance.md`, documenting every Model page panel and every Performance section with data sources, the definition of Right and Wrong, and how the Price pane's 5 tick figure differs from the resolved 5 tick outcome.
+- Added an input provenance section to `docs/jev-model.md` naming the source file, symbol, and Hyperliquid call for each of the 17 inputs Jev reads, and corrected field descriptions the code contradicted.
 
 ### Fixed
 
 - Fixed the Recent Decisions window and an open History detail being wiped after a stream reconnect. Reconnect snapshots now merge into the held events, and the page backfills `/history` and `/tape` once per connection.
+- Fixed the `depth` input Jev is sent always being empty. `Trader.buildState` keyed the bands "10bps", "25bps", and "50bps" while `extractFeatures` reads "10", "25", and "50", so every decision carried `depth: {}`. Bands are now keyed by basis points. Journal rows recorded before this fix keep `depth: {}`.
 - Fixed Recent Decisions counting the newest decision twice when a price mark repainted it between ticks.
 - Kept caller-supplied environment values winning over `mise.toml` defaults on mise 2026.9.13, which regressed `{ default }` yield semantics ([mise#13630](https://github.com/jdx/mise/issues/13630)). `just dev` and `just start` now run through `scripts/with-mise-env.sh`, which restores caller-set managed variables after `mise exec`; the shim is a no-op on fixed mise releases.
 
 ### Changed
 
+- Started a new Jev model revision. `FEATURE_CATALOG_VERSION` is now `jev-features-2026-09-28.1`, which corrects the catalog text for `tickMs` ("Configured interval between decisions", was "Tick time of day") and `bookImbalance` ("Bid versus ask size imbalance within 100 bps of mid", was "Top-of-book size imbalance") and changes the program revision hash. The Model page label for `tickMs` and the Depth footer now match. The depth fix above ships in the same revision.
 - Moved every dashboard page onto the fixed type and spacing scales in `DESIGN.md`, and replaced the per-role buy, sell, and late color aliases with green, red, and amber HSL ramps behind one semantic token per role.
 - Moved the run switch next to the balance and reduced the run timer to a single countdown.
 - Made OpenRouter the default Jev provider when no provider credential selects another provider. TypeSafe and Vercel AI Gateway remain available.

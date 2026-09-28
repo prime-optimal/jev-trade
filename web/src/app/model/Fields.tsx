@@ -2,7 +2,7 @@ import { objectValue } from "./record";
 import styles from "./inputs.module.css";
 
 const LABELS: Record<string, string> = {
-  coin: "Asset", market: "Market", tick: "Tick", tickMs: "Tick time of day", maxLeverage: "Max leverage",
+  coin: "Asset", market: "Market", tick: "Tick", tickMs: "Tick interval", maxLeverage: "Max leverage",
   promptRevision: "Prompt revision", prompt: "Prompt", upIn10: "Up in 10", latencyMs: "Latency", inputTokens: "Input tokens",
 };
 

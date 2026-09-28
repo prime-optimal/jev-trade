@@ -104,7 +104,7 @@ export function DepthCard({ depth, imbalance }: { depth: Feature; imbalance: Fea
         <span className={styles.depthBand}>{band.band} bps</span>
         <span className={styles.depthSide} data-side="sell"><span className={styles.depthBar} style={{ width: `${peak ? band.ask / peak * 100 : 0}%` }} /><span>{fmtNumber(band.ask)}</span></span>
       </div>)}
-      <p className={styles.note}>Top of book imbalance {fmtNumber(numberValue(imbalance?.value), 3)}</p>
+      <p className={styles.note}>Book imbalance within 100 bps {fmtNumber(numberValue(imbalance?.value), 3)}</p>
     </div> : <p className={styles.note}>No depth bands captured.</p>}
   </InputCard>;
 }
