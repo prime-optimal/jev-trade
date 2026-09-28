@@ -36,9 +36,10 @@ class MemorySql {
     this.queries.push({ query, parameters: structuredClone(parameters) });
     if (query.startsWith("CREATE") || query.startsWith("ALTER")) return [];
     if (query.startsWith("SELECT")) {
-      const ownerId = String(parameters[0]);
+      const ownerId = query.includes("WHERE owner_id = $1") ? String(parameters[0]) : null;
+      const decisionId = query.includes("decision_id = $2") ? String(parameters[1]) : null;
       return [...this.rows.values()]
-        .filter((row) => row.owner_id === ownerId)
+        .filter((row) => (ownerId === null || row.owner_id === ownerId) && (decisionId === null || row.decision_id === decisionId))
         .map((row) => structuredClone(row));
     }
 
@@ -437,5 +438,16 @@ test("duplicate delivery and retry after an ambiguous fill commit preserve one f
   const page = await store.list("owner-a");
   expect(page.rows[0]?.fills).toEqual([fill("decision-a", 1), fill("decision-a", 2)]);
   expect(errors).toHaveLength(1);
+  await store.close();
+});
+test("get returns only the requested decision for its owner", async () => {
+  const sql = new MemorySql();
+  const store = createDecisionStore({ sql });
+  store.enqueue("owner-a", decision("shared-id"));
+  store.enqueue("owner-b", decision("shared-id"));
+
+  expect((await store.get("owner-a", "shared-id"))?.decisionId).toBe("shared-id");
+  expect(await store.get("owner-a", "missing")).toBeNull();
+  expect(await store.get("owner-c", "shared-id")).toBeNull();
   await store.close();
 });

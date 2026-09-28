@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { createDecisionStore, type DecisionPage, type DecisionStore } from "../src/decision-store";
+import { createDecisionStore, type DecisionPage, type DecisionRow, type DecisionStore } from "../src/decision-store";
 import { createOwnerTokens } from "../src/owner-token";
 import { createPaperSessions, paperSessionEnv } from "../src/paper-sessions";
 
@@ -294,6 +294,7 @@ describe("paper session broker", () => {
       enabled: true,
       ready: async () => {},
       enqueue() {},
+      get: async () => null,
       async list(ownerId): Promise<DecisionPage> {
         listedOwners.push(ownerId);
         return { rows: [], nextBefore: null };
@@ -350,6 +351,7 @@ describe("paper session broker", () => {
       enabled: true,
       ready: async () => {},
       enqueue() { order.push("journal"); },
+      get: async () => null,
       list: async () => ({ rows: [], nextBefore: null }),
       close: async () => { order.push("store closed"); },
     };
@@ -437,4 +439,53 @@ describe("paper session broker", () => {
     }
   });
 
+  test("single-decision lookup stays within the active owner and returns 404 for misses", async () => {
+    const fakes = autoWorkers([4906, 4907]);
+    const row: DecisionRow = {
+      decisionId: "known",
+      createdAt: 1,
+      updatedAt: 1,
+      decision: { action: "hold" },
+      recordType: "legacy",
+      evidence: null,
+      observations: {},
+      programMetadata: "unavailable",
+      quote: null,
+      fills: [],
+      markouts: {},
+    };
+    let rowOwner: string | null = null;
+    const store: DecisionStore = {
+      enabled: true,
+      ready: async () => {},
+      enqueue() {},
+      async get(ownerId, decisionId) {
+        if (decisionId === "known" && rowOwner === null) rowOwner = ownerId;
+        return decisionId === "known" && ownerId === rowOwner ? row : null;
+      },
+      list: async () => ({ rows: [], nextBefore: null }),
+      close: async () => {},
+    };
+    let sequence = 0;
+    const broker = createPaperSessions({
+      workerFactory: fakes.factory,
+      store,
+      ownerSecret: "lookup-test-secret-at-least-32-bytes",
+      randomToken: () => `lookup-${sequence++}`,
+    });
+    try {
+      const firstToken = await tokenFrom((await broker.fetch(new Request("http://bot/sessions", { method: "POST" })))!);
+      const found = await broker.fetch(new Request("http://bot/sessions/decisions?id=known", { headers: auth(firstToken) }));
+      expect(found?.status).toBe(200);
+      expect(await found?.json()).toEqual(row);
+      expect((await broker.fetch(new Request("http://bot/sessions/decisions?id=unknown", { headers: auth(firstToken) })))?.status).toBe(404);
+      expect((await broker.fetch(new Request("http://bot/sessions/decisions?id=known&limit=10", { headers: auth(firstToken) })))?.status).toBe(400);
+
+      const secondToken = await tokenFrom((await broker.fetch(new Request("http://bot/sessions", { method: "POST" })))!);
+      expect((await broker.fetch(new Request("http://bot/sessions/decisions?id=known", { headers: auth(secondToken) })))?.status).toBe(404);
+      expect(rowOwner).not.toBeNull();
+    } finally {
+      await broker.close();
+    }
+  });
 });

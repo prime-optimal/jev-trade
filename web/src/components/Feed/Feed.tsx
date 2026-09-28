@@ -295,7 +295,7 @@ function DecisionDetail({ event, meta }: { event: BlockEvent; meta?: Meta | null
           {d?.leverage != null ? (<><dt>leverage</dt><dd>{d.leverage}x</dd></>) : null}
         </dl>
       </div>
-      <a className={styles.detailLink} href="/model">full record on /model</a>
+      <a className={styles.detailLink} href={d ? `/model?d=${encodeURIComponent(d.id)}` : "/model"}>full record on /model</a>
     </div>
   );
 }

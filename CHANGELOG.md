@@ -41,6 +41,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added the `/model` Decisions browser with owner-scoped journal pagination, question-grouped evidence and immutable group snapshots, separate execution and outcome sections, and legacy row labeling.
 - Added a Settings Debug mode, on by default as a browser preference, that streams the visitor session's own Worker console output to the browser console through a capability-scoped `GET /sessions/logs` SSE route. Lines are redacted of provider credentials and URLs and capped at 1000 characters. The shared public server never serves the route.
 - Added combined call, late, invalid or failed, outcome, and coin filters to `/model`, with filtered timeline counts and hit rate, an empty-filter recovery action, and coin identity in the decision rail and record header.
+- Added URL-backed `/model?d=<decisionId>&h=<horizon>` state, owner-scoped single-decision lookup, and History links that open the matching record.
 
 ### Fixed
 

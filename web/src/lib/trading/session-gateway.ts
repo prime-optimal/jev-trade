@@ -276,7 +276,7 @@ export async function proxySession(request: Request, path: readonly string[]): P
     if (lite !== null && lite !== "1") return jsonError(400, "The events lite flag must be 1.");
     if (lite !== null) suffix = "?lite=1";
   } else if (route === "decisions") {
-    for (const key of sourceUrl.searchParams.keys()) if (key !== "limit" && key !== "before") return jsonError(400, "Unsupported query parameter.");
+    for (const key of sourceUrl.searchParams.keys()) if (key !== "limit" && key !== "before" && key !== "id") return jsonError(400, "Unsupported query parameter.");
     suffix = sourceUrl.search;
   } else if (sourceUrl.search) {
     return jsonError(400, "Query parameters are not supported for this route.");

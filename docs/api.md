@@ -22,9 +22,9 @@ The public API has no settings, validation, Start, Stop, or reconcile mutation. 
 
 `GET /sessions/decisions?limit=&before=` returns durable decision history for the owner associated with the active visitor session. The opaque session capability is required and authorizes the read. The server resolves the owner from that capability and always applies the owner predicate. A signed owner cookie may restore ownership after reconnect or restart. Query routes do not accept that cookie directly; session creation must exchange it for a new short-lived capability.
 
-The Next gateway exposes the same operation as same-origin `GET /api/session/decisions?limit=&before=`. Browser code never receives the capability. `limit` defaults to 50 and is capped at 200. `before` is the opaque cursor returned by the preceding page.
+`GET /sessions/decisions?id=<decisionId>` returns one decision row for that same owner, or 404 when the decision is unknown or belongs to another owner. `id` cannot be combined with `limit` or `before`.
 
-The dashboard `/model` Decisions view consumes this endpoint. No additional history routes exist.
+The Next gateway exposes both operations through same-origin `GET /api/session/decisions`. Browser code never receives the capability. For pages, `limit` defaults to 50 and is capped at 200, and `before` is the opaque cursor returned by the preceding page. The dashboard `/model` Decisions view consumes these operations.
 
 Pages are newest first:
 

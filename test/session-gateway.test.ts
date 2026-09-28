@@ -138,6 +138,22 @@ describe("visitor session gateway", () => {
     expect(forwardedAuth).toBe("Bearer visitor-b");
   });
 
+  test("forwards a single-decision query through the owner capability", async () => {
+    let forwardedUrl = "";
+    let forwardedAuth = "";
+    globalThis.fetch = (async (input, init) => {
+      forwardedUrl = String(input);
+      forwardedAuth = new Headers(init?.headers).get("Authorization") ?? "";
+      return Response.json({ decisionId: "decision/42" });
+    }) as typeof fetch;
+
+    const request = withSession(browserRequest("/api/session/decisions?id=decision%2F42"), "owner-capability");
+    const response = await proxySession(request, ["decisions"]);
+
+    expect(response.status).toBe(200);
+    expect(new URL(forwardedUrl).searchParams.get("id")).toBe("decision/42");
+    expect(forwardedAuth).toBe("Bearer owner-capability");
+  });
   test("sends the durable owner token only while creating a capability", async () => {
     const requestBodies: string[] = [];
     globalThis.fetch = (async (input, init) => {

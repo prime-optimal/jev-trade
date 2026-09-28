@@ -16,3 +16,5 @@
   .body { grid-template-columns: minmax(0, 1fr); }
   .body > section:first-child { max-height: 50vh; border-right: 0; border-bottom: 1px solid var(--grid); }
 }
+.recordState { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding: var(--space-5); border-left: 1px solid var(--grid); color: var(--ink); font-size: var(--text-14); }
+.recordState p { margin: 0; overflow-wrap: anywhere; }

@@ -38,6 +38,7 @@ export interface DecisionStore {
   readonly enabled: boolean;
   ready(): Promise<void>;
   enqueue(ownerId: string, event: DecisionJournalEvent): void;
+  get(ownerId: string, decisionId: string): Promise<DecisionRow | null>;
   list(ownerId: string, options?: DecisionListOptions): Promise<DecisionPage>;
   close(): Promise<void>;
 }
@@ -70,6 +71,27 @@ function decodeCursor(value: string): [number, string] {
   }
 }
 
+function toDecisionRow(row: Record<string, unknown>): DecisionRow {
+  const legacy = row.record_type == null;
+  return {
+    decisionId: String(row.decision_id),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+    decision: row.decision,
+    recordType: legacy ? "legacy" : row.record_type as ProgramRecordType,
+    evidence: legacy ? null : row.evidence as EvaluationEvidence | null,
+    observations: !legacy && row.observations && typeof row.observations === "object" && !Array.isArray(row.observations)
+      ? row.observations as { readonly [groupId: string]: GroupResult }
+      : {},
+    programMetadata: legacy ? "unavailable" : "available",
+    quote: row.quote ?? null,
+    fills: Array.isArray(row.fills) ? row.fills : [],
+    markouts: row.markouts && typeof row.markouts === "object" && !Array.isArray(row.markouts)
+      ? row.markouts as Record<string, unknown>
+      : {},
+  };
+}
+
 function eventTimestamp(event: DecisionJournalEvent): number {
   return event.type === "markout" ? event.observedTimestamp : event.timestamp;
 }
@@ -81,6 +103,7 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
       enabled: false,
       ready: async () => {},
       enqueue() {},
+      get: async () => null,
       list: async () => ({ rows: [], nextBefore: null }),
       close: async () => {},
     };
@@ -253,6 +276,17 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
       const snapshot = deepFreeze(structuredClone(event));
       queue = queue.then(() => writeWithRetry(ownerId, snapshot)).catch(report);
     },
+    async get(ownerId, decisionId) {
+      await initialized;
+      await queue;
+      if (!ownerId) throw new Error("ownerId is required");
+      const result = await sql.unsafe(
+        `SELECT decision_id, created_at, updated_at, decision, record_type, evidence, observations, quote, fills, markouts
+         FROM decision_journal WHERE owner_id = $1 AND decision_id = $2 LIMIT 1`,
+        [ownerId, decisionId],
+      ) as Record<string, unknown>[];
+      return result[0] ? toDecisionRow(result[0]) : null;
+    },
     async list(ownerId, listOptions = {}) {
       await initialized;
       await queue;
@@ -273,26 +307,7 @@ export function createDecisionStore(options: DecisionStoreOptions = {}): Decisio
       ) as Record<string, unknown>[];
       const more = result.length > limit;
       const selected = more ? result.slice(0, limit) : result;
-      const rows = selected.map((row): DecisionRow => {
-        const legacy = row.record_type == null;
-        return {
-          decisionId: String(row.decision_id),
-          createdAt: Number(row.created_at),
-          updatedAt: Number(row.updated_at),
-          decision: row.decision,
-          recordType: legacy ? "legacy" : row.record_type as ProgramRecordType,
-          evidence: legacy ? null : row.evidence as EvaluationEvidence | null,
-          observations: !legacy && row.observations && typeof row.observations === "object" && !Array.isArray(row.observations)
-            ? row.observations as { readonly [groupId: string]: GroupResult }
-            : {},
-          programMetadata: legacy ? "unavailable" : "available",
-          quote: row.quote ?? null,
-          fills: Array.isArray(row.fills) ? row.fills : [],
-          markouts: row.markouts && typeof row.markouts === "object" && !Array.isArray(row.markouts)
-            ? row.markouts as Record<string, unknown>
-            : {},
-        };
-      });
+      const rows = selected.map(toDecisionRow);
       const last = rows.at(-1);
       return { rows, nextBefore: more && last ? encodeCursor(last.createdAt, last.decisionId) : null };
     },
