@@ -2,10 +2,11 @@
 
 ## Prerequisites
 
-- [mise](https://mise.jdx.dev/) for repository tool versions and helper tasks. [`mise.toml`](../mise.toml) declares Bun, fnox, and hk, and supplies the non-secret environment defaults.
+- [mise](https://mise.jdx.dev/) for repository tool versions and helper tasks. [`mise.toml`](../mise.toml) declares Bun, just, fnox, and hk, and supplies the non-secret environment defaults.
 - Bun. The root [`package.json`](../package.json), dashboard [`web/package.json`](../web/package.json), and [`railpack.json`](../railpack.json) pin production and package-manager use to Bun 1.3.14. The local mise configuration tracks the latest Bun.
 - [fnox](https://fnox.jdx.dev/) with the 1Password CLI signed in. [`fnox.toml`](../fnox.toml) resolves secrets when the bot starts.
-- [just](https://just.systems/) for the project recipes in [`justfile`](../justfile).
+- [just](https://just.systems/) for the project recipes in [`justfile`](../justfile), installed by mise.
+- Docker, only for the dashboard smoke database.
 
 Do not use Node, npm, pnpm, Vite, Express, or dotenv for this repository. The bot is a Bun process. The dashboard is a separate Next.js application in [`web/`](../web/).
 
@@ -49,6 +50,20 @@ The dashboard development server listens on port 3001. Open `http://localhost:30
 | `just build-web` | Creates a production Next dashboard build. |
 
 The recipes are defined in [`justfile`](../justfile). Tests belong in [`test/`](../test/), not beside source files, and use Bun's test runner.
+
+## Dashboard smoke data
+
+Journal-driven pages such as `/model` need decision history, and the production database is private and scoped by owner. [`test/fixtures/decision-journal.json`](../test/fixtures/decision-journal.json) is a sample of real production journal rows: 80 recent visitor decisions with quotes, markouts, invalid answers, and observations, 12 legacy rows without program metadata, and 12 operator rows with quotes and fills. It holds market data and model answers only.
+
+```sh
+just smoke-model   # start Postgres on :55432, load the fixture, print an owner token
+just smoke-bot     # paper bot on :3000: mock model, testnet, dry run, no secrets
+BOT_API_URL=http://127.0.0.1:3000 just web
+```
+
+`scripts/seed-model.ts` refuses non-local databases and replaces only the `smoke-fixture-owner` rows, so rerunning it is safe. In the browser, set the printed token as the HttpOnly cookie `jev-paper-owner` with path `/api/session` on `http://127.0.0.1:3001`, delete any `jev-paper-session` cookie, then open `/model`. `document.cookie` cannot set HttpOnly cookies; use the devtools Application panel or CDP `Network.setCookie`. `just smoke-clean` removes the database.
+
+To refresh the fixture, enable the Railway Postgres TCP proxy, export recent rows for an owner with a read-only `SELECT`, check them for wallet addresses or credentials, then disable the proxy again.
 
 ## Continuous integration
 

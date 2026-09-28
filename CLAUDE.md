@@ -37,6 +37,17 @@ just check
 
 For dashboard, SSR, or client changes, also run a browser smoke check. Reuse an existing safe local process or start the needed processes with `just dev` and `just web` using paper/mock settings that cannot place real orders. If ports are occupied, reuse the appropriate process or choose alternate ports and update the local dashboard connection settings; never kill unknown processes. Open the affected route in a browser, exercise the changed behavior, and check the browser console for errors. A build or typecheck alone does not replace this runtime check.
 
+Pages that read the decision journal, such as `/model`, need history. Use `just smoke-model` and `just smoke-bot` to load the real-data fixture into a local paper setup instead of writing new seed data. The steps are in [`docs/development.md`](docs/development.md#dashboard-smoke-data).
+
+## UI work
+
+- [`DESIGN.md`](DESIGN.md) is the design system and `web/src/app/globals.css` holds its tokens. Use values from the type, spacing, and color scales only.
+- A new or changed token goes into `DESIGN.md` in the same commit as the code that uses it. Run `bunx @google/design.md lint DESIGN.md` and `bunx @google/design.md diff <base> DESIGN.md`. Light-theme tokens always report `orphaned-tokens` because components reference one theme; that warning alone is not a regression.
+- Design for desktop and dark mode first. Light mode and narrow windows must still work.
+- Check text contrast against every new surface color; lint only covers component tokens.
+- Screenshot the changed route at the target width, scroll every pane, and look for overflow before calling a layout done.
+- Refresh `assets/*.png` when a documented screen changes.
+
 ## Docs
 
 [`docs/`](docs/) is the maintainer map. Every behavior, configuration, or deployment change must update the matching document and add an entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md).

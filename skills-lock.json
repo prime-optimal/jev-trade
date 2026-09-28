@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "refactoring-ui": {
+      "source": "../skills/refactoring-ui-plugin/skills/refactoring-ui",
+      "sourceType": "local",
+      "computedHash": "d560763cdd7daaece5422194369ad9797ceea3a52e27e5b8995b27b9165ee639"
+    }
+  }
+}

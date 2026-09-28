@@ -1,5 +1,6 @@
 [tools]
 bun = "1"
+just = "1"
 fnox = "latest"
 hk = "latest"
 
