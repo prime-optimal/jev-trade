@@ -56,10 +56,10 @@ export default function SleeveStrip({
         const active = sleeve.coin === selected;
         const accent = coinColor(sleeve.coin);
         const cardStyle = active ? ({ "--accent": accent } as React.CSSProperties) : undefined;
-        const pnlColor = open ? (pnl >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)") : undefined;
+        const pnlColor = open ? (pnl >= 0 ? "var(--buy)" : "var(--sell)") : undefined;
         const side = (pos?.side ?? "flat").toUpperCase();
         const sideColor =
-          pos?.side === "long" ? "var(--buy-ink)" : pos?.side === "short" ? "var(--sell-ink)" : undefined;
+          pos?.side === "long" ? "var(--buy)" : pos?.side === "short" ? "var(--sell)" : undefined;
         const lev = pos?.leverage != null ? `${pos.leverage}x` : "";
         const size =
           pos && pos.side !== "flat" ? fmtCoin(pos.size, sleeve.coin, 4) : "";

@@ -48,6 +48,7 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Changed
 
+- Moved every dashboard page onto the fixed type and spacing scales in `DESIGN.md`, and replaced the per-role buy, sell, and late color aliases with green, red, and amber HSL ramps behind one semantic token per role.
 - Moved the run switch next to the balance and reduced the run timer to a single countdown.
 - Made OpenRouter the default Jev provider when no provider credential selects another provider. TypeSafe and Vercel AI Gateway remain available.
 - Shared the TypeSafe SDK client path between OpenRouter and the official TypeSafe API.

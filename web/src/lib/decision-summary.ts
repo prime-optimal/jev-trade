@@ -5,11 +5,11 @@ export const SUMMARY_WINDOW = 100;
 export type DecisionCategory = "openLong" | "openShort" | "close" | "hold" | "late";
 
 export const CATEGORIES: { key: DecisionCategory; label: string; color: string; info: string }[] = [
-  { key: "openLong", label: "open long", color: "var(--buy-bar)", info: "Jev chose to open or add to a long position, so the bot quoted a buy." },
-  { key: "openShort", label: "open short", color: "var(--sell-bar)", info: "Jev chose to open or add to a short position, so the bot quoted a sell." },
+  { key: "openLong", label: "open long", color: "var(--buy)", info: "Jev chose to open or add to a long position, so the bot quoted a buy." },
+  { key: "openShort", label: "open short", color: "var(--sell)", info: "Jev chose to open or add to a short position, so the bot quoted a sell." },
   { key: "close", label: "close", color: "var(--ink-2)", info: "Jev chose to close the open position with a reduce only order." },
-  { key: "hold", label: "hold", color: "var(--hold-cell)", info: "Jev chose to do nothing this tick. No order is sent and any position stays as it is." },
-  { key: "late", label: "late", color: "var(--late-ink)", info: "Jev did not answer before the next tick arrived, so the tick passed without a call." },
+  { key: "hold", label: "hold", color: "var(--hold-dim)", info: "Jev chose to do nothing this tick. No order is sent and any position stays as it is." },
+  { key: "late", label: "late", color: "var(--late)", info: "Jev did not answer before the next tick arrived, so the tick passed without a call." },
 ];
 
 /**

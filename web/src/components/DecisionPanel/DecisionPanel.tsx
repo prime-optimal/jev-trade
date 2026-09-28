@@ -84,12 +84,12 @@ export default function DecisionPanel({ events, latest, waiting = false }: Decis
   const held = decision?.intent === "hold";
   const headline = decided ? fmtCall(decision) || "LATE" : "LATE";
   const headlineColor = !decided
-    ? "var(--late-ink)"
+    ? "var(--late)"
     : held
       ? "var(--ink-2)"
       : decision?.bias === "short" || decision?.action === "sell"
-        ? "var(--sell-ink)"
-        : "var(--buy-ink)";
+        ? "var(--sell)"
+        : "var(--buy)";
 
   const { total, counts, shares, spanMs } = summary;
   const percents = wholePercents(counts);

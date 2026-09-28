@@ -2,8 +2,8 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 20px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
@@ -21,14 +21,13 @@
 }
 
 .brandLockup {
-  gap: 10px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
 .brand {
   color: var(--ink);
-  font: 700 14px/1 var(--font-mono), monospace;
-  letter-spacing: 0.02em;
+  font: 600 var(--text-14)/1 var(--font-mono), monospace;
   white-space: nowrap;
 }
 
@@ -40,22 +39,21 @@
 
 .tagline {
   color: var(--muted);
-  font: 500 12px/1 var(--font-mono), monospace;
-  letter-spacing: 0.02em;
+  font: 400 var(--text-12)/1 var(--font-mono), monospace;
   white-space: nowrap;
 }
 
 .links {
-  gap: 3px;
-  margin-left: 4px;
+  gap: var(--space-1);
+  margin-left: var(--space-1);
 }
 
 .navLink {
   min-height: 30px;
-  padding: 7px 8px;
+  padding: var(--space-2) var(--space-2);
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-12);
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -79,15 +77,15 @@
 }
 
 .controls {
-  gap: 14px;
+  gap: var(--space-3);
   min-width: 0;
 }
 
 .priceStatus {
-  gap: 6px;
+  gap: var(--space-2);
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-12);
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -105,21 +103,21 @@
 }
 
 .runControl {
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   white-space: nowrap;
 }
 
 .switch {
   appearance: none;
-  gap: 6px;
+  gap: var(--space-2);
   min-height: 30px;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 700 11px/1 var(--font-mono), monospace;
+  font: 600 var(--text-12)/1 var(--font-mono), monospace;
   cursor: pointer;
 }
 
@@ -154,30 +152,30 @@
 .runStatus,
 .remaining {
   color: var(--ink-2);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-12);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .runStatus[data-running="true"] {
-  color: var(--live-dot);
+  color: var(--buy);
 }
 
 .remaining {
   color: var(--muted);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .actionError {
   max-width: 260px;
   color: var(--error);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-12);
+  font-weight: 600;
 }
 
 .scores {
   justify-content: flex-end;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: center;
   margin-left: auto;
   min-width: 0;
@@ -185,22 +183,22 @@
 
 .score {
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   font-variant-numeric: tabular-nums;
 }
 
 .scoreKey {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-12);
+  font-weight: 600;
   letter-spacing: 0.08em;
 }
 
 .scoreVal {
   color: var(--ink);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--text-16);
+  font-weight: 600;
 }
 
 @media (max-width: 1050px) {
@@ -215,21 +213,21 @@
   .scores {
     flex: 1 1 100%;
     justify-content: flex-start;
-    margin-left: 30px;
+    margin-left: var(--space-6);
   }
 }
 
 @media (max-width: 700px) {
   .header {
     align-items: flex-start;
-    gap: 8px;
-    padding: max(10px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 10px max(12px, env(safe-area-inset-left, 0px));
+    gap: var(--space-2);
+    padding: max(var(--space-2), env(safe-area-inset-top, 0px)) max(var(--space-3), env(safe-area-inset-right, 0px)) var(--space-2) max(var(--space-3), env(safe-area-inset-left, 0px));
   }
 
   .brandLockup {
     flex: 1 1 100%;
     flex-wrap: wrap;
-    gap: 7px;
+    gap: var(--space-2);
   }
 
   .tagline {
@@ -242,19 +240,19 @@
 
   .navLink {
     min-height: 32px;
-    padding: 8px 6px;
+    padding: var(--space-2) var(--space-2);
   }
 
   .controls {
     flex: 1 1 100%;
     flex-wrap: wrap;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
     margin-left: 0;
   }
 
   .runControl {
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .remaining {
@@ -272,9 +270,9 @@
     flex: 1 1 100%;
     flex-wrap: wrap;
     justify-content: space-between;
-    gap: 10px;
+    gap: var(--space-2);
     margin-left: 0;
-    padding-top: 2px;
+    padding-top: var(--space-1);
   }
 
   .scores .runControl {
@@ -286,7 +284,7 @@
   .score {
     flex-direction: column;
     align-items: flex-start;
-    gap: 3px;
+    gap: var(--space-1);
   }
 
   .score:nth-last-child(2) {
@@ -295,11 +293,11 @@
   }
 
   .scoreKey {
-    font-size: 10px;
+    font-size: var(--text-12);
   }
 
   .scoreVal {
-    font-size: 14px;
+    font-size: var(--text-14);
     line-height: 1;
   }
 }
@@ -308,10 +306,10 @@
   .priceStatus,
   .runStatus,
   .remaining {
-    font-size: 10px;
+    font-size: var(--text-12);
   }
 
   .switch {
-    padding-inline: 4px;
+    padding-inline: var(--space-1);
   }
 }

@@ -3,11 +3,11 @@
 .header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-3) var(--space-6); padding-bottom: var(--space-5); border-bottom: 1px solid var(--grid); }
 .call { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
 .call h2 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-30); font-weight: 600; line-height: 1; text-transform: capitalize; }
-.call h2[data-tone="buy"] { color: var(--buy-ink); }
-.call h2[data-tone="sell"] { color: var(--sell-ink); }
+.call h2[data-tone="buy"] { color: var(--buy); }
+.call h2[data-tone="sell"] { color: var(--sell); }
 .plan { display: flex; gap: var(--space-2); }
 .plan span { padding: var(--space-1) var(--space-2); background: var(--panel-2); color: var(--ink-2); font-size: var(--text-14); }
-.late { padding: var(--space-1) var(--space-2); background: var(--late-cell); color: var(--late-ink); font-size: var(--text-12); }
+.late { padding: var(--space-1) var(--space-2); background: var(--late-dim); color: var(--late); font-size: var(--text-12); }
 .stats { display: flex; gap: var(--space-6); margin: 0; }
 .stats div { display: grid; gap: var(--space-1); }
 .stats dt { color: var(--muted); font-size: var(--text-12); }
@@ -27,10 +27,10 @@
 .answers > .panel { margin-bottom: var(--space-5); }
 .order { display: grid; gap: var(--space-2); }
 .orderLine { font-size: var(--text-16); font-weight: 600; font-variant-numeric: tabular-nums; }
-.panel [data-tone="buy"] { color: var(--buy-ink); text-transform: capitalize; }
-.panel [data-tone="sell"] { color: var(--sell-ink); text-transform: capitalize; }
-.panel [data-sign="pos"] { color: var(--pnl-pos); }
-.panel [data-sign="neg"] { color: var(--pnl-neg); }
+.panel [data-tone="buy"] { color: var(--buy); text-transform: capitalize; }
+.panel [data-tone="sell"] { color: var(--sell); text-transform: capitalize; }
+.panel [data-sign="pos"] { color: var(--buy); }
+.panel [data-sign="neg"] { color: var(--sell); }
 .tags { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .tags span { padding: 0 var(--space-2); border: 1px solid var(--border-2); color: var(--ink-2); }
 .fills { display: grid; gap: var(--space-2); margin: 0; padding: var(--space-3) 0 0; border-top: 1px solid var(--grid); list-style: none; }
@@ -42,8 +42,8 @@
 .markoutPlot { position: relative; height: 96px; border-bottom: 0; background: linear-gradient(var(--border-2), var(--border-2)) center / 100% 1px no-repeat; }
 .markoutPlot span { position: absolute; width: 40%; }
 .markoutPlot [data-bar="signed"] { left: 8%; background: var(--border-2); }
-.markoutPlot [data-bar="signed"][data-sign="pos"] { background: var(--buy-bar); }
-.markoutPlot [data-bar="signed"][data-sign="neg"] { background: var(--sell-bar); }
+.markoutPlot [data-bar="signed"][data-sign="pos"] { background: var(--buy); }
+.markoutPlot [data-bar="signed"][data-sign="neg"] { background: var(--sell); }
 .markoutPlot [data-bar="market"] { right: 8%; border: 1px solid var(--border-2); }
 .markout b { font-weight: 600; }
 .legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); color: var(--muted); }

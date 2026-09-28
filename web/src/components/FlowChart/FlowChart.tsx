@@ -59,13 +59,13 @@ export default function FlowChart({
   const late = d?.late === true;
   const word = late ? "LATE" : fmtCall(d) || "HOLD";
   const wordColor = late
-    ? "var(--late-ink)"
+    ? "var(--late)"
     : d?.intent === "hold" || d?.action === "hold"
       ? "var(--ink-2)"
       : (d?.bias ?? d?.action) === "short" || d?.action === "sell"
-        ? "var(--sell-ink)"
+        ? "var(--sell)"
         : d?.action === "buy" || d?.bias === "long"
-          ? "var(--buy-ink)"
+          ? "var(--buy)"
           : "var(--ink)";
   const lastPx = shown?.mid ?? model?.candles.at(-1)?.close;
   const coin = meta?.coin ?? "BTC";

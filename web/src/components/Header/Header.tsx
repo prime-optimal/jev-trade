@@ -19,7 +19,7 @@ export interface HeaderProps {
 }
 
 function Score({ label, value, signed = true }: { label: string; value: number | null; signed?: boolean }) {
-  const color = !signed || value == null ? undefined : value >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)";
+  const color = !signed || value == null ? undefined : value >= 0 ? "var(--buy)" : "var(--sell)";
   return (
     <span className={styles.score}>
       <span className={styles.scoreKey}>{label}</span>

@@ -97,7 +97,7 @@ function mark(id: string, gid: string) {
             textAnchor="middle"
             fill="#FFF"
             fontSize="14"
-            fontWeight="700"
+            fontWeight="600"
             fontFamily="var(--font-plex), ui-monospace, monospace"
           >
             {id.slice(0, 1)}

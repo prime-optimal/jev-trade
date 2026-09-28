@@ -6,10 +6,10 @@
 .cardHeader { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-2); cursor: help; }
 .cardHeader h4 { font-size: var(--text-14); font-weight: 600; }
 .cardHeader span { color: var(--muted); font-size: var(--text-12); }
-[data-sign="pos"].card, .card [data-sign="pos"] { color: var(--pnl-pos); }
-.card [data-sign="neg"] { color: var(--pnl-neg); }
-.card [data-tone="buy"] { color: var(--buy-ink); }
-.card [data-tone="sell"] { color: var(--sell-ink); }
+[data-sign="pos"].card, .card [data-sign="pos"] { color: var(--buy); }
+.card [data-sign="neg"] { color: var(--sell); }
+.card [data-tone="buy"] { color: var(--buy); }
+.card [data-tone="sell"] { color: var(--sell); }
 
 .bigValue { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); font-size: var(--text-30); font-weight: 600; line-height: 1; text-transform: capitalize; }
 .bigValue span { color: var(--muted); font-size: var(--text-12); font-weight: 400; text-transform: none; }
@@ -50,11 +50,11 @@
 .ladder li > span:nth-child(3) { text-align: right; }
 .ladderHead { color: var(--muted); }
 .ladderHead span:last-child { text-align: right; }
-.ladder li[data-side="sell"] > span:nth-child(2) { color: var(--sell-ink); }
-.ladder li[data-side="buy"] > span:nth-child(2) { color: var(--buy-ink); }
+.ladder li[data-side="sell"] > span:nth-child(2) { color: var(--sell); }
+.ladder li[data-side="buy"] > span:nth-child(2) { color: var(--buy); }
 .levelBar { position: absolute; inset: 0 0 0 auto; }
-[data-side="sell"] > .levelBar, [data-side="sell"] .levelBar { background: var(--sell-bar-dim); }
-[data-side="buy"] > .levelBar, [data-side="buy"] .levelBar { background: var(--buy-bar-dim); }
+[data-side="sell"] > .levelBar, [data-side="sell"] .levelBar { background: var(--sell-dim); }
+[data-side="buy"] > .levelBar, [data-side="buy"] .levelBar { background: var(--buy-dim); }
 .spreadRow { margin: var(--space-1) 0; border-top: 1px solid var(--grid); border-bottom: 1px solid var(--grid); color: var(--muted); }
 .spreadRow span:last-child { text-align: right; }
 
@@ -66,15 +66,15 @@
 .depthSide { display: flex; align-items: center; gap: var(--space-2); height: 24px; }
 .depthSide[data-side="buy"] { flex-direction: row; justify-content: flex-end; }
 .depthBar { display: block; height: 100%; }
-.depthSide[data-side="buy"] .depthBar { background: var(--buy-bar); }
-.depthSide[data-side="sell"] .depthBar { background: var(--sell-bar); }
+.depthSide[data-side="buy"] .depthBar { background: var(--buy); }
+.depthSide[data-side="sell"] .depthBar { background: var(--sell); }
 
 .split { display: flex; gap: 2px; height: 12px; }
-.split span[data-side="buy"] { background: var(--buy-bar); }
-.split span[data-side="sell"] { background: var(--sell-bar); }
+.split span[data-side="buy"] { background: var(--buy); }
+.split span[data-side="sell"] { background: var(--sell); }
 .splitLabels { display: flex; justify-content: space-between; font-weight: 600; }
-.splitLabels [data-side="buy"] { color: var(--buy-ink); }
-.splitLabels [data-side="sell"] { color: var(--sell-ink); }
+.splitLabels [data-side="buy"] { color: var(--buy); }
+.splitLabels [data-side="sell"] { color: var(--sell); }
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-4); }
 .stats dd { color: var(--ink); font-size: var(--text-14); overflow-wrap: anywhere; }
 .stats dd span { text-transform: capitalize; }
@@ -82,8 +82,8 @@
 .prints li { display: grid; grid-template-columns: 64px 36px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-height: 24px; }
 .printAge { color: var(--muted); }
 .printSide { font-weight: 600; text-transform: capitalize; }
-.prints li[data-side="buy"] .printSide { color: var(--buy-ink); }
-.prints li[data-side="sell"] .printSide { color: var(--sell-ink); }
+.prints li[data-side="buy"] .printSide { color: var(--buy); }
+.prints li[data-side="sell"] .printSide { color: var(--sell); }
 .printSize { position: relative; display: flex; justify-content: flex-end; padding: 0 var(--space-1); }
 .printSize .levelBar { inset: 0 auto 0 0; }
 
