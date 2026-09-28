@@ -77,6 +77,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Replaced the earlier snapshot-based `Model.decide` result with `{ decision: ModelDecision | null, evidence, observations }`. Each tick captures the program, starts all group calls, and awaits only the required group; failed required evaluations are journaled without a decision.
 - Changed the tracked live-desk URLs from `www.jev-trade.com` to `https://jevon.up.railway.app` in the README, package homepage, dashboard metadata, robots, sitemap, and `llms.txt` after the domain cutover.
 - Refreshed the README dashboard screenshot and added a `/model` screenshot to the README and dashboard documentation.
+- Redesigned the `/model` page for desktop dark mode (#62): a viewport-height layout with a markout timeline and horizon switch across the top, a compact decision rail grouped by day, and a three-column decision record. Every captured input now renders as a formatted card (price sparkline with post-decision mids, book ladder, depth, taker flow, recent prints, indicator gauges, venue, position) instead of raw JSON, and outcome markouts chart the call against the market move. Added `--panel-1`, `--space-1` to `--space-7`, and `--text-12` to `--text-30` tokens to `globals.css` and `DESIGN.md`, and refreshed the `/model` screenshot.
 
 ### Removed
 
