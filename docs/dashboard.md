@@ -80,13 +80,15 @@ Decision-history reads use same-origin `GET /api/session/decisions?limit=&before
 
 ![The /model decision browser with the timeline, decision rail, and selected decision record](../assets/model.png)
 
-The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads through same-origin `GET /api/session/decisions?limit=&before=` and fetches a linked record by id when it is outside the first page; the server resolves the owner from the session capability. It does not use the live feed reducer or SSE and creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
+The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads through same-origin `GET /api/session/decisions?limit=&before=` and fetches a linked record by id when it is outside the first page; the server resolves the owner from the session capability. The existing live feed supplies SSE triggers only; rows are never rendered from feed payloads, and the page creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
 
 The URL stores the selected decision in `d` and the markout horizon in `h`. Supported horizons are 1, 5, 20, and 100 ticks; invalid horizons use 5. Refresh, Back, and Forward restore the URL state. A decision that is unknown or belongs to another owner shows a not-found state.
 History links resolve for decisions belonging to the visitor's own session. In localhost operator mode, feed rows belong to the internal operator owner and are not visible in visitor history.
 When active filters hide a deep-linked decision, its record remains visible. If no rail rows match, the empty state explains this and offers to clear the filters.
 
 The page loads newest-first bounded pages of 50 rows and uses the opaque `before` cursor to load older history. Refresh reloads history. Loading, empty, error, expired-session, and end-of-history states are shown. Appending older pages preserves the selected decision.
+
+The page also watches the existing SSE feed for new blocks and refetches the newest owner-scoped journal page. The feed payload is not a complete journal row, so the journal remains canonical for evidence and markouts. A single delayed retry covers decisions whose queued journal write has not completed when the first read finishes. Incoming rows merge by decision ID in newest-first order, keeping older loaded pages and the current selection; a text-only `new` cue marks newly appended rows for five seconds. After a reload, the initial journal read includes the same persisted rows.
 
 The layout is desktop first and fills the viewport. From 1100px up the page does not scroll; the decision rail and the record scroll independently.
 

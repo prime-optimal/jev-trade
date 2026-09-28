@@ -43,6 +43,7 @@ All notable changes to this project are documented here. This changelog starts f
 - Added combined call, late, invalid or failed, outcome, and coin filters to `/model`, with filtered timeline counts and hit rate, an empty-filter recovery action, and coin identity in the decision rail and record header.
 - Added URL-backed `/model?d=<decisionId>&h=<horizon>` state, owner-scoped single-decision lookup, and History links that open the matching record.
 - Added keyboard selection, a draggable and resizable overview brush, and range reset to the `/model` timeline.
+- Added live decision append to `/model` from the existing block SSE feed. The page refetches the owner-scoped journal for complete evidence and markouts, then merges by decision ID while preserving older pages and selection, with a brief text cue on new rows.
 
 ### Fixed
 
