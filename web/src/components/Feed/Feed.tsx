@@ -250,13 +250,13 @@ function DecisionDetail({ event, meta }: { event: BlockEvent; meta?: Meta | null
           <div className={styles.detailTitle}>confidence</div>
           {hasBias ? (
             <>
-              <Prob label="long" value={p.long} color="var(--buy-bar)" />
-              <Prob label="short" value={p.short} color="var(--sell-bar)" />
+              <Prob label="long" value={p.long} color="var(--buy)" />
+              <Prob label="short" value={p.short} color="var(--sell)" />
             </>
           ) : (
             <>
-              <Prob label="buy" value={p.buy} color="var(--buy-bar)" />
-              <Prob label="sell" value={p.sell} color="var(--sell-bar)" />
+              <Prob label="buy" value={p.buy} color="var(--buy)" />
+              <Prob label="sell" value={p.sell} color="var(--sell)" />
             </>
           )}
           {hasIntent ? (
@@ -265,7 +265,7 @@ function DecisionDetail({ event, meta }: { event: BlockEvent; meta?: Meta | null
               <Prob label="close" value={p.close} color="var(--ink-2)" />
             </>
           ) : null}
-          <Prob label="hold" value={p.hold} color="var(--hold-cell)" />
+          <Prob label="hold" value={p.hold} color="var(--hold-dim)" />
         </div>
       ) : null}
 

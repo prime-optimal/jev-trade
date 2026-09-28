@@ -3,8 +3,8 @@
 .counts { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); font-size: var(--text-12); color: var(--muted); }
 .counts strong { width: 100%; color: var(--ink); font-size: var(--text-14); font-weight: 600; }
 .counts span, .readout span[data-action] { display: inline-flex; align-items: center; gap: var(--space-1); text-transform: capitalize; }
-.counts [data-action="buy"], .readout [data-action="buy"] { color: var(--buy-ink); }
-.counts [data-action="sell"], .readout [data-action="sell"] { color: var(--sell-ink); }
+.counts [data-action="buy"], .readout [data-action="buy"] { color: var(--buy); }
+.counts [data-action="sell"], .readout [data-action="sell"] { color: var(--sell); }
 .counts [data-action="hold"], .readout [data-action="hold"] { color: var(--ink-2); }
 .horizon { display: inline-flex; justify-self: start; border: 1px solid var(--border-2); }
 .horizon button { min-width: 48px; min-height: 32px; padding: 0 var(--space-2); border: 0; background: transparent; color: var(--muted); font-size: var(--text-12); cursor: pointer; }
@@ -17,14 +17,14 @@
 .strip { display: grid; grid-template-rows: auto 1fr auto; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-4); }
 .readout { display: flex; flex-wrap: wrap; gap: var(--space-4); min-height: 20px; color: var(--ink-2); font-size: var(--text-12); font-variant-numeric: tabular-nums; }
 .readout span[data-action] { font-weight: 600; }
-.readout [data-sign="pos"] { color: var(--pnl-pos); }
-.readout [data-sign="neg"] { color: var(--pnl-neg); }
+.readout [data-sign="pos"] { color: var(--buy); }
+.readout [data-sign="neg"] { color: var(--sell); }
 .chart { display: block; width: 100%; height: 96px; cursor: pointer; }
 .zero { stroke: var(--border-2); stroke-width: 1; }
 .selected { fill: var(--panel-2); }
 .hovered { fill: var(--panel-1); }
-.bar[data-action="buy"] { fill: var(--buy-bar); }
-.bar[data-action="sell"] { fill: var(--sell-bar); }
+.bar[data-action="buy"] { fill: var(--buy); }
+.bar[data-action="sell"] { fill: var(--sell); }
 .bar, .bar[data-action="hold"] { fill: var(--border-2); }
 .pending { fill: var(--track); }
 .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: var(--text-12); font-variant-numeric: tabular-nums; }

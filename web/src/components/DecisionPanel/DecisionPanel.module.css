@@ -11,49 +11,48 @@
 .railHead {
   background: var(--ink);
   color: var(--bg);
-  font-weight: 700;
-  font-size: 12px;
+  font-weight: 600;
+  font-size: var(--text-12);
   line-height: 1;
-  letter-spacing: 0.12em;
-  padding: 8px 12px;
+  letter-spacing: 0.08em;
+  padding: var(--space-2) var(--space-3);
 }
 
 .body {
-  padding: 12px 14px 14px;
+  padding: var(--space-3) var(--space-3) var(--space-3);
 }
 
 .headline {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .headlineWord {
-  font-weight: 700;
-  font-size: 22px;
-  line-height: 1.1;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  font-size: var(--text-20);
+  line-height: 1.2;
 }
 
 .metaLine {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--text-12);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
 .bookLine {
-  font-weight: 700;
-  font-size: 13px;
-  line-height: 1.35;
+  font-weight: 600;
+  font-size: var(--text-14);
+  line-height: 1.4;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
 .bookSub {
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: var(--space-1);
+  font-size: var(--text-12);
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
@@ -61,9 +60,9 @@
 .stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 14px;
-  margin-top: 10px;
-  font-size: 11px;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+  font-size: var(--text-12);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -71,15 +70,15 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 3px 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
 }
 
 .label {
   width: 72px;
   flex: none;
-  font-weight: 700;
-  font-size: 12px;
+  font-weight: 600;
+  font-size: var(--text-12);
   line-height: 1.2;
 }
 
@@ -102,8 +101,8 @@
   width: 40px;
   flex: none;
   text-align: right;
-  font-weight: 500;
-  font-size: 12px;
+  font-weight: 600;
+  font-size: var(--text-12);
   line-height: 1.2;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -117,7 +116,7 @@
 
 @media (max-width: 899.98px) {
   .body {
-    padding: 8px 12px 10px;
+    padding: var(--space-2) var(--space-3) var(--space-2);
   }
 
   .headline {
@@ -127,12 +126,12 @@
   }
 
   .headlineWord {
-    font-size: 16px;
+    font-size: var(--text-16);
   }
 
   .metaLine {
     margin: 0;
-    font-size: 11px;
+    font-size: var(--text-12);
   }
 
   .bars {
@@ -140,17 +139,17 @@
   }
 
   .bookLine {
-    font-size: 12px;
+    font-size: var(--text-12);
   }
 
   .bookSub {
-    font-size: 11px;
+    font-size: var(--text-12);
   }
 
   .stats {
-    margin-top: 6px;
-    gap: 6px 12px;
-    font-size: 10px;
+    margin-top: var(--space-2);
+    gap: var(--space-2) var(--space-3);
+    font-size: var(--text-12);
   }
 }
 
@@ -158,12 +157,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .railMeta {
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-weight: 400;
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
@@ -184,7 +182,7 @@
 .pieWrap {
   display: flex;
   justify-content: center;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .pie {
@@ -195,20 +193,20 @@
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 8px;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .legendItem {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   background: transparent;
   border: 0;
   padding: 0;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-12);
   color: var(--muted);
   cursor: help;
   font-variant-numeric: tabular-nums;
@@ -227,20 +225,20 @@
 }
 
 .info {
-  margin: 6px 0 0;
-  font-size: 11px;
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-12);
   line-height: 1.4;
   color: var(--ink-2);
 }
 
 @media (max-width: 899.98px) {
   .legend {
-    margin-top: 6px;
+    margin-top: var(--space-2);
   }
 
   .legendItem {
-    font-size: 11px;
-    padding: 4px 0;
+    font-size: var(--text-12);
+    padding: var(--space-1) 0;
   }
 }
 

@@ -7,7 +7,7 @@ import DebugLogs from "@/components/DebugLogs/DebugLogs";
 
 const plex = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600"],
   variable: "--font-plex",
   display: "swap",
 });

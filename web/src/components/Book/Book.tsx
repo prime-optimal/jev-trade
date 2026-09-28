@@ -231,8 +231,8 @@ export default function Book({
                 const roe = roePct(pos);
                 const side = (pos?.side ?? "flat").toUpperCase();
                 const sideColor =
-                  pos?.side === "long" ? "var(--buy-ink)" : pos?.side === "short" ? "var(--sell-ink)" : undefined;
-                const pnlColor = open ? (u >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)") : undefined;
+                  pos?.side === "long" ? "var(--buy)" : pos?.side === "short" ? "var(--sell)" : undefined;
+                const pnlColor = open ? (u >= 0 ? "var(--buy)" : "var(--sell)") : undefined;
                 return (
                   <tr
                     key={sleeve.coin}
@@ -272,7 +272,7 @@ export default function Book({
                   <div key={sleeve.coin} className={`${styles.lane}${sleeve.coin === selected ? ` ${styles.laneOn}` : ""}`}>
                     <button type="button" className={styles.laneHead} onClick={() => onSelect(sleeve.coin)}>
                       <span>{displayCoin(sleeve.coin)}</span>
-                      <span style={{ color: lane.count ? (total >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)") : undefined }}>
+                      <span style={{ color: lane.count ? (total >= 0 ? "var(--buy)" : "var(--sell)") : undefined }}>
                         {lane.count ? `${lane.count} lots ${fmtSignedUsd(total, 2)}` : "no closed lots"}
                       </span>
                     </button>
@@ -282,9 +282,9 @@ export default function Book({
                           {lots.map((lot) => (
                             <tr key={lot.key} onClick={() => onSelect(lot.coin)}>
                               <td>{fmtClock(lot.ts, true)}</td>
-                              <td style={{ color: lot.side === "long" ? "var(--buy-ink)" : "var(--sell-ink)" }}>{lot.side.toUpperCase()}</td>
+                              <td style={{ color: lot.side === "long" ? "var(--buy)" : "var(--sell)" }}>{lot.side.toUpperCase()}</td>
                               <td>{fmtSize(lot.size)}</td>
-                              <td style={{ color: lot.pnl >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)" }}>{fmtSignedUsd(lot.pnl, 2)}</td>
+                              <td style={{ color: lot.pnl >= 0 ? "var(--buy)" : "var(--sell)" }}>{fmtSignedUsd(lot.pnl, 2)}</td>
                             </tr>
                           ))}
                         </Table>
@@ -301,12 +301,12 @@ export default function Book({
           <div className={styles.scroller}>
             <Table id="history" cols={HIST_COLS}>
               {history.map((lot) => {
-                const pnlColor = lot.pnl >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)";
+                const pnlColor = lot.pnl >= 0 ? "var(--buy)" : "var(--sell)";
                 return (
                   <tr key={`${lot.coin}|${lot.key}`} onClick={() => onSelect(lot.coin)}>
                     <td>{fmtClock(lot.ts, true)}</td>
                     <td>{displayCoin(lot.coin)}</td>
-                    <td style={{ color: lot.side === "long" ? "var(--buy-ink)" : "var(--sell-ink)" }}>{lot.side.toUpperCase()}</td>
+                    <td style={{ color: lot.side === "long" ? "var(--buy)" : "var(--sell)" }}>{lot.side.toUpperCase()}</td>
                     <td>{fmtSize(lot.size)}</td>
                     <td>{lot.entry != null ? fmtPrice(lot.entry) : "-"}</td>
                     <td>{fmtPrice(lot.exit)}</td>
@@ -330,7 +330,7 @@ export default function Book({
         <div className={styles.scroller}>
           <Table id="trades" cols={TRADE_COLS}>
             {trades.map((fill) => {
-              const sideColor = fill.side === "buy" ? "var(--buy-ink)" : "var(--sell-ink)";
+              const sideColor = fill.side === "buy" ? "var(--buy)" : "var(--sell)";
               const action = fill.dir === "open" ? "OPEN" : fill.dir === "close" ? "CLOSE" : fill.dir === "flip" ? "FLIP" : "FILL";
               const pnl = typeof fill.closedPnl === "number" && fill.dir !== "open" ? fill.closedPnl : null;
               return (
@@ -342,7 +342,7 @@ export default function Book({
                   <td>{fmtPrice(fill.price)}</td>
                   <td>{fmtSize(fill.size)}</td>
                   <td>{fill.feeUsd ? fmtUsd(fill.feeUsd, 4) : "-"}</td>
-                  <td style={pnl != null ? { color: pnl >= 0 ? "var(--pnl-pos)" : "var(--pnl-neg)" } : undefined}>
+                  <td style={pnl != null ? { color: pnl >= 0 ? "var(--buy)" : "var(--sell)" } : undefined}>
                     {pnl != null ? fmtSignedUsd(pnl, 2) : "-"}
                   </td>
                   <td>

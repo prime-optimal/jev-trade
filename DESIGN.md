@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: jevOn dashboard
-description: jev-trade Next dashboard. Dark theme is the primary theme; light values are recorded alongside. The /model page uses the fixed spacing and type scales below; older pages still carry baseline values.
+description: jev-trade Next dashboard. Dark theme is the primary theme; light values are recorded alongside. Every page uses the fixed spacing and type scales below.
 colors:
   primary: "#f4f5f6"
   on-primary: "#0b0d10"
@@ -19,12 +19,12 @@ colors:
   track: "#30353a"
   link: "#8eb2ff"
   focus: "#91b3ff"
-  buy: "#42d66b"
-  buy-dim: "#183d24"
-  sell: "#ff746c"
-  sell-dim: "#4b2222"
-  late: "#f0c35a"
-  late-dim: "#392f18"
+  buy: "#43d66a"
+  buy-dim: "#183e22"
+  sell: "#ff726b"
+  sell-dim: "#4a2321"
+  late: "#f0c35c"
+  late-dim: "#3a2f18"
   hold-dim: "#24282c"
   error: "#ff8b84"
   disabled-bg: "#292d31"
@@ -37,87 +37,49 @@ colors:
   light-border-strong: "#171717"
   light-border: "#5f6368"
   light-grid: "#e1e3e5"
-  light-buy: "#087d20"
-  light-sell: "#b42318"
+  light-buy: "#087d27"
+  light-sell: "#b42018"
   light-link: "#143fa3"
 typography:
   display:
     fontFamily: IBM Plex Mono
-    fontSize: 46px
-    fontWeight: 700
-    lineHeight: 1
-    letterSpacing: -0.02em
-  headline-md:
-    fontFamily: IBM Plex Mono
-    fontSize: 24px
-    fontWeight: 700
-    lineHeight: 1.1
-    letterSpacing: -0.02em
-  title-md:
-    fontFamily: IBM Plex Mono
-    fontSize: 17px
-    fontWeight: 700
-    lineHeight: 1.2
-  body-md:
-    fontFamily: IBM Plex Mono
-    fontSize: 14px
-    fontWeight: 400
-    lineHeight: 1.4
-    letterSpacing: -0.02em
-  body-sm:
-    fontFamily: IBM Plex Mono
-    fontSize: 12px
-    fontWeight: 400
-    lineHeight: 1.4
-  label-md:
-    fontFamily: IBM Plex Mono
-    fontSize: 11px
-    fontWeight: 400
-    lineHeight: 1.4
-  label-caps:
-    fontFamily: IBM Plex Mono
-    fontSize: 11px
-    fontWeight: 700
-    lineHeight: 1
-    letterSpacing: 0.08em
-  label-xs:
-    fontFamily: IBM Plex Mono
-    fontSize: 10px
-    fontWeight: 400
-    lineHeight: 1
-  scale-30:
-    fontFamily: IBM Plex Mono
     fontSize: 30px
     fontWeight: 600
     lineHeight: 1
-  scale-20:
+    letterSpacing: -0.02em
+  title:
     fontFamily: IBM Plex Mono
     fontSize: 20px
     fontWeight: 600
     lineHeight: 1.2
-  scale-16:
+  value:
     fontFamily: IBM Plex Mono
     fontSize: 16px
     fontWeight: 600
-    lineHeight: 1.3
-  scale-14:
+    lineHeight: 1.4
+  heading:
     fontFamily: IBM Plex Mono
     fontSize: 14px
     fontWeight: 600
     lineHeight: 1.4
-  scale-12:
+  body:
+    fontFamily: IBM Plex Mono
+    fontSize: 14px
+    fontWeight: 400
+    lineHeight: 1.4
+    letterSpacing: -0.02em
+  data:
     fontFamily: IBM Plex Mono
     fontSize: 12px
     fontWeight: 400
     lineHeight: 1.5
+  label-caps:
+    fontFamily: IBM Plex Mono
+    fontSize: 12px
+    fontWeight: 600
+    lineHeight: 1
+    letterSpacing: 0.08em
 spacing:
-  xs: 4px
-  sm: 8px
-  md: 12px
-  lg: 16px
-  xl: 24px
-  page-x: 56px
-  page-top: 28px
   space-1: 4px
   space-2: 8px
   space-3: 12px
@@ -182,9 +144,9 @@ dashes, en dashes, or middle dots in rendered text.
 
 ## Colors
 
-Colors are CSS custom properties in `web/src/app/globals.css`, defined twice (light `:root`,
-dark `:root[data-theme="dark"]`). They are hex values, not HSL ramps, and there is no numbered
-grey scale: greys are named by role.
+Colors are CSS custom properties in `web/src/app/globals.css`. Greys are named by role and defined
+twice (light `:root`, dark `:root[data-theme="dark"]`). Signal colors come from three HSL ramps
+defined once in `:root`, and each theme maps one semantic token per role onto a ramp step.
 
 - **Ink (#f4f5f6 dark):** primary text, the Jev badge background, and chart up candles.
 - **Surfaces (#0b0d10, #121519, #1a1d20, #22262a):** page and panel share one value, so panels are
@@ -192,30 +154,38 @@ grey scale: greys are named by role.
   `/model`, one step above the page; `--panel-2` is the inset or selected surface.
 - **Borders:** `--border` (#d8dce0) is a near-white strong border; `--border-2` (#858b92) is the
   secondary border; `--grid` (#2c3035) divides table rows.
-- **Muted text (#a8adb4):** secondary text. `--muted` and `--muted-2` hold the same value.
-- **Buy / sell (#42d66b / #ff746c):** each has four aliases (`--buy`, `--buy-ink`, `--buy-bar`,
-  `--up-bar`) that hold one value, plus a dim background (`--buy-bar-dim`, `--sell-bar-dim`).
-- **Late (#f0c35a)** marks late decisions; **link (#8eb2ff)** and **focus (#91b3ff)** are the
-  only blues.
+- **Muted text (#a8adb4):** secondary text, `--muted`.
+- **Ramps:** three HSL ramps live only in `globals.css`, each with steps 100 (light tint), 400
+  (bright ink for dark surfaces), 700 (deep ink for light surfaces), and 900 (dark tint).
+  Components never use a ramp step directly, so the ramps are not frontmatter tokens.
+
+  | Ramp | 100 | 400 | 700 | 900 |
+  | --- | --- | --- | --- | --- |
+  | `--green-*` | `hsl(136 45% 91%)` | `hsl(136 64% 55%)` | `hsl(136 88% 26%)` | `hsl(136 44% 17%)` |
+  | `--red-*` | `hsl(3 60% 91%)` | `hsl(3 100% 71%)` | `hsl(3 76% 40%)` | `hsl(3 38% 21%)` |
+  | `--amber-*` | `hsl(43 100% 92%)` | `hsl(42 83% 65%)` | `hsl(42 100% 27%)` | `hsl(42 41% 16%)` |
+
+- **Signals:** `--buy` and `--sell` color buy and sell calls, bars, candles, positive and negative
+  PnL, and the live dot; `--buy-dim` and `--sell-dim` are their tinted backgrounds. Dark maps them
+  to steps 400 and 900, light to 700 and 100. `--late` / `--late-dim` mark late decisions the same
+  way, and `--hold-dim` is the neutral hold tint.
+- **Link (#8eb2ff)** and **focus (#91b3ff)** are the only blues.
 
 ## Typography
 
-One family, IBM Plex Mono (400, 500, 600, 700), loaded as `--font-plex` and exposed as both
-`--font-sans` and `--font-mono`. Body is 14px / 1.4 with -0.02em tracking.
+One family, IBM Plex Mono, loaded as `--font-plex` and exposed as both `--font-sans` and
+`--font-mono`. Body is `--text-14` / 1.4 with -0.02em tracking.
 
-Sizes in use: 10, 11, 11.5, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24px, plus two page headlines
-at `clamp(28px, 5vw, 46px)` and `clamp(28px, 5vw, 48px)`. 11px is the most common size by far.
-Weights in use are 400, 500, 600, and 700; 700 dominates emphasis. Uppercase eyebrow labels use
-0.08em tracking; other tracking values in use are 0.02, 0.04, 0.06, and 0.12em.
-
-`/model` uses a fixed scale instead: `--text-12`, `--text-14`, `--text-16`, `--text-20`, and
-`--text-30`, with weights 400 and 600 only. 12px / 1.5 carries data and meta text, 14px 600 titles
-panels and cards, 16px and 20px 600 carry key values, and 30px 600 is reserved for the selected
-call and the biggest input value in a card.
+Every page uses one fixed scale: `--text-12`, `--text-14`, `--text-16`, `--text-20`, and
+`--text-30`, with weights 400 and 600 only. 12px / 1.5 carries data, meta text, and uppercase
+eyebrow labels (600, 0.08em tracking); 14px 600 titles panels and cards; 16px and 20px 600 carry
+key values; 30px 600 is reserved for the selected call, the biggest value in a card, and page
+headlines. Line heights are 1, 1.2, 1.4, or 1.5; tracking is -0.02em, none, or 0.08em for caps.
 
 ## Layout
 
-Pages pad `28px clamp(16px, 4vw, 56px) 64px`. The home dashboard is a full-height shell.
+Pages pad `var(--space-6) clamp(var(--space-4), 4vw, var(--space-7)) var(--space-7)`. The home
+dashboard is a full-height shell.
 
 `/model` is a viewport-height workspace from 1100px up: a compact toolbar, a timeline strip
 (a 352px summary column beside a full-width markout chart), then a 352px decision rail beside
@@ -223,9 +193,8 @@ the record, each scrolling on its own. The record body is three columns (360px a
 inputs, 300px order and outcome), folding to two below 1600px. Below 1100px everything stacks
 and the page scrolls.
 
-Older pages have no fixed spacing scale. Gaps in use: 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20,
-24px. Paddings mix 1, 2, 6, 8, 9, 10, 12, 13, 14, 16, 20, 22px. `/model` uses only
-`--space-1` to `--space-7` (4, 8, 12, 16, 24, 32, 48px); new work uses that scale everywhere.
+Spacing uses only `--space-1` to `--space-7` (4, 8, 12, 16, 24, 32, 48px). Literal 1px and 2px
+values remain only for hairline borders, outline offsets, and optical nudges.
 
 ## Elevation & Depth
 
@@ -246,7 +215,7 @@ rounding is a 999px pill and a 50% circle for status dots.
   and markouts on `/model`.
 - **Secondary button:** 38px min height, 1px border, `--panel` fill, `--panel-2` on hover,
   3px `--link` focus outline.
-- **Chip:** 1px `--border-2` outline, 11px text; buy/sell tones recolor text and border, and
+- **Chip:** 1px `--border-2` outline, `--text-12` text; buy/sell tones recolor text and border, and
   selected chips fill with the dim tone.
 - **Probability bar:** 8px `--track` rail with an `--ink`, buy, or sell fill on `/model`.
 - **Depth ladder:** price x size rows over a dim buy or sell bar.

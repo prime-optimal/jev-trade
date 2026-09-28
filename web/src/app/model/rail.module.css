@@ -12,15 +12,15 @@
 .time { color: var(--muted); }
 .row[aria-selected="true"] .time { color: var(--ink-2); }
 .call { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: 600; text-transform: capitalize; color: var(--ink-2); }
-.call[data-tone="buy"] { color: var(--buy-ink); }
-.call[data-tone="sell"] { color: var(--sell-ink); }
+.call[data-tone="buy"] { color: var(--buy); }
+.call[data-tone="sell"] { color: var(--sell); }
 .call[data-action="no decision"], .call[data-action="unavailable"] { color: var(--muted); font-weight: 400; }
 .plan { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .plan b { color: var(--ink-2); font-weight: 400; }
-.late { margin-left: var(--space-2); color: var(--late-ink); font-style: normal; }
+.late { margin-left: var(--space-2); color: var(--late); font-style: normal; }
 .markout { color: var(--muted); }
-.markout[data-sign="pos"] { color: var(--pnl-pos); }
-.markout[data-sign="neg"] { color: var(--pnl-neg); }
+.markout[data-sign="pos"] { color: var(--buy); }
+.markout[data-sign="neg"] { color: var(--sell); }
 .skeleton { height: 32px; }
 .state { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-5) var(--space-4); color: var(--muted); font-size: var(--text-12); text-align: center; }
 .state [role="alert"] { color: var(--error); }
