@@ -1,5 +1,6 @@
 import type { DecisionRow } from "@/lib/journal-types";
 import { fmtInt } from "@/lib/format";
+import TokenIcon from "@/components/TokenIcon/TokenIcon";
 import ActionMark from "./ActionMark";
 import AnswerGroup from "./Answers";
 import Execution from "./Execution";
@@ -20,6 +21,7 @@ export default function RecordView({ row, summary, horizon }: { row: DecisionRow
     <header className={styles.header}>
       <div className={styles.call}>
         <h2 data-tone={tone(summary.action)}><ActionMark action={summary.action} size={20} />{summary.action}</h2>
+        {summary.coin ? <span className={styles.coin}><TokenIcon coin={summary.coin} size={20} />{summary.coin}</span> : null}
         {plan.length ? <p className={styles.plan}>{plan.map((part) => <span key={part}>{part}</span>)}</p> : null}
         {summary.late ? <p className={styles.late}>Late tick</p> : null}
       </div>

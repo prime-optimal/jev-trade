@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { Bone } from "@/components/Skeleton/Skeleton";
-import { fmtClock } from "@/lib/format";
+import TokenIcon from "@/components/TokenIcon/TokenIcon";
+import { displayCoin, fmtClock } from "@/lib/format";
 import type { DecisionHistoryStatus } from "@/lib/useDecisions";
 import { fmtBps, tone, type DecisionSummary, type Horizon } from "./record";
 import ActionMark from "./ActionMark";
@@ -44,9 +45,9 @@ export default function DecisionRail({ summaries, selectedId, select, horizon, s
   });
 
   return <section className={styles.rail} aria-label="Decisions history">
-    <div className={styles.columns} aria-hidden="true"><span>Time</span><span>Call</span><span>Plan</span><span>{horizon}t</span></div>
+    <div className={styles.columns} aria-hidden="true"><span>Time</span><span>Coin</span><span>Call</span><span>Plan</span><span>{horizon}t</span></div>
     <div className={styles.scroll} ref={listRef} role="listbox" aria-label="Recorded decisions">
-      {status === "loading" && summaries.length === 0 ? Array.from({ length: 12 }, (_, index) => <div className={styles.skeleton} key={index}><Bone w="64px" /><Bone w="44px" /><Bone w="88px" /><Bone w="36px" /></div>) : null}
+      {status === "loading" && summaries.length === 0 ? Array.from({ length: 12 }, (_, index) => <div className={styles.skeleton} key={index}><Bone w="58px" /><Bone w="28px" /><Bone w="44px" /><Bone w="76px" /><Bone w="36px" /></div>) : null}
       {days.map(({ day, items }) => <div role="group" aria-label={day} key={day}>
         <div className={styles.day} aria-hidden="true">{day}</div>
         {items.map(({ summary, index }) => {
@@ -56,8 +57,9 @@ export default function DecisionRail({ summaries, selectedId, select, horizon, s
           return <div key={summary.id} role="option" aria-selected={selected} data-decision-id={summary.id} data-index={index} tabIndex={selected || (selectedId === null && index === 0) ? 0 : -1}
             className={styles.row} onClick={() => select(summary.id)} onKeyDown={(event) => moveSelection(event, index)}>
             <span className={styles.time}>{fmtClock(summary.time, true)}</span>
-            <span className={styles.call} data-tone={tone(summary.action)} data-action={summary.action}><ActionMark action={summary.action} />{summary.action === "no decision" ? "none" : summary.action}</span>
-            <span className={styles.plan}>{plan || (summary.coin ?? "")}{summary.late ? <em className={styles.late}>late</em> : null}</span>
+            <span className={styles.coin}>{summary.coin ? <><TokenIcon coin={summary.coin} size={14} /><span>{displayCoin(summary.coin)}</span></> : "n/a"}</span>
+            <span className={styles.call} data-tone={tone(summary.action)} data-action={summary.action}><ActionMark action={summary.action} /><span className={styles.callLabel}>{summary.action === "no decision" ? "none" : summary.action}</span></span>
+            <span className={styles.plan}>{plan}{summary.late ? <em className={styles.late}>late</em> : null}</span>
             <span className={styles.markout} data-sign={markout === null ? undefined : markout > 0 ? "pos" : markout < 0 ? "neg" : "flat"} title={markout === null ? `No ${horizon} tick markout recorded` : `${horizon} tick bias-signed return`}>{markout === null ? "n/a" : fmtBps(markout).replace(" bps", "")}</span>
           </div>;
         })}

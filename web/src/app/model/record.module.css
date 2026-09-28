@@ -5,6 +5,7 @@
 .call h2 { display: inline-flex; align-items: center; gap: var(--space-3); font-size: var(--text-30); font-weight: 600; line-height: 1; text-transform: capitalize; }
 .call h2[data-tone="buy"] { color: var(--buy); }
 .call h2[data-tone="sell"] { color: var(--sell); }
+.coin { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: var(--space-1) var(--space-2); background: var(--panel-2); color: var(--ink-2); font-size: var(--text-14); }
 .plan { display: flex; gap: var(--space-2); }
 .plan span { padding: var(--space-1) var(--space-2); background: var(--panel-2); color: var(--ink-2); font-size: var(--text-14); }
 .late { padding: var(--space-1) var(--space-2); background: var(--late-dim); color: var(--late); font-size: var(--text-12); }
