@@ -449,8 +449,19 @@ export function createPaperSessions(options: PaperSessionsOptions = {}): PaperSe
         session.touchedAt = now();
         const limitValue = url.searchParams.get("limit");
         const before = url.searchParams.get("before") ?? undefined;
+        const decisionId = url.searchParams.get("id");
         for (const key of url.searchParams.keys()) {
-          if (key !== "limit" && key !== "before") return json({ error: "Unsupported query parameter" }, 400);
+          if (key !== "limit" && key !== "before" && key !== "id") return json({ error: "Unsupported query parameter" }, 400);
+        }
+        if (decisionId !== null) {
+          if (limitValue !== null || before !== undefined) return json({ error: "id cannot be combined with pagination parameters" }, 400);
+          try {
+            const row = await store?.get(session.ownerId, decisionId);
+            return row ? json(row, 200) : json({ error: "Decision not found" }, 404);
+          } catch (error) {
+            console.error("Could not get paper session decision", error);
+            return json({ error: "Decision history is unavailable" }, 503);
+          }
         }
         const limit = limitValue === null ? undefined : Number(limitValue);
         try {

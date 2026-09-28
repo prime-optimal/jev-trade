@@ -6,7 +6,7 @@ import { createVisitorSession, OperatorRequestError, SESSION_API } from "./tradi
 
 export type DecisionHistoryStatus = "loading" | "ready" | "empty" | "error" | "expired";
 
-export function useDecisions(): {
+export function useDecisions(options: { initialSelectedId?: string | null } = {}): {
   rows: DecisionRow[];
   selectedId: string | null;
   select: (id: string) => void;
@@ -19,7 +19,7 @@ export function useDecisions(): {
   retry: () => void;
 } {
   const [rows, setRows] = useState<DecisionRow[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(options.initialSelectedId ?? null);
   const [status, setStatus] = useState<DecisionHistoryStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
@@ -28,6 +28,8 @@ export function useDecisions(): {
   const sequence = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
   const mounted = useRef(false);
+  const pinnedId = useRef(options.initialSelectedId ?? null);
+  pinnedId.current = options.initialSelectedId ?? null;
 
   const loadPage = useCallback(async (before: string | null, replace: boolean, reconnect: boolean) => {
     const requestId = ++sequence.current;
@@ -70,7 +72,11 @@ export function useDecisions(): {
         rowsRef.current = nextRows;
       }
       setRows(nextRows);
-      if (replace) setSelectedId((selected) => selected && nextRows.some((row) => row.decisionId === selected) ? selected : nextRows[0]?.decisionId ?? null);
+      if (replace) setSelectedId((selected) => {
+        const pinned = pinnedId.current;
+        if (selected !== null && (selected === pinned || nextRows.some((row) => row.decisionId === selected))) return selected;
+        return pinned !== null && nextRows.some((row) => row.decisionId === pinned) ? pinned : nextRows[0]?.decisionId ?? null;
+      });
       setNextBefore(page.nextBefore);
       setStatus(nextRows.length === 0 ? "empty" : "ready");
       setError(null);

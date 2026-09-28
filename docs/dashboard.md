@@ -23,7 +23,7 @@ Each sleeve card in [`SleeveStrip`](../web/src/components/SleeveStrip/SleeveStri
 
 The right rail has two panes. Recent Decisions ([`DecisionPanel`](../web/src/components/DecisionPanel/DecisionPanel.tsx)) shows Jev's latest call and a breakdown of the newest 100 decisions the page holds for the selected sleeve, with the count and the time span they cover in the rail header. [`decision-summary.ts`](../web/src/lib/decision-summary.ts) puts each decision in exactly one category (open long, open short, close, hold, late), so the shares always sum to 100%. Clicking the chart switches between bars and a pie. The legend items show each category's count, a definition on hover, and the same definition inline on click.
 
-History ([`Feed`](../web/src/components/Feed/Feed.tsx)) lists recent calls. Clicking a row replaces the pane with a condensed detail view of that decision: block, latency, prices, Jev's confidence per answer, the order, fill, transaction, and position, with a link to the full record on `/model`. BACK returns to the list. The detail view takes over the pane instead of opening a popup so the chart and book stay visible.
+History ([`Feed`](../web/src/components/Feed/Feed.tsx)) lists recent calls. Clicking a row replaces the pane with a condensed detail view of that decision: block, latency, prices, Jev's confidence per answer, the order, fill, transaction, and position, with a prominent link to that decision's full record on `/model`. BACK returns to the list. The detail view takes over the pane instead of opening a popup so the chart and book stay visible.
 
 ## Bottom pane
 
@@ -74,13 +74,17 @@ Theme uses `jev-trade:theme:v1`. The first visit follows the system preference. 
 
 Debug mode uses `jev-trade:debug:v1` and is on by default. The toggle sits in the Appearance section next to the theme controls. In the visitor scope it opens a same-origin EventSource on `GET /api/session/logs`, which the gateway proxies to the visitor worker's loopback console stream using the same unbuffered streaming path as events. Each bot console line appears in the browser console with a `[jev]` prefix, replaying buffered lines after `Last-Event-ID` on reconnect. The subscription opens only while a visitor session is connected; the local operator scope has no logs stream. Toggling the preference takes effect without a reload.
 
-Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=`. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages are newest first and contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `recordType`, `evidence`, `observations`, `programMetadata`, `quote`, `fills`, and `markouts`. The `/model` page presents this history; see [Model page](#model-page).
+Decision-history reads use same-origin `GET /api/session/decisions?limit=&before=` for newest-first pages and `GET /api/session/decisions?id=<decisionId>` for one owner-scoped record. The Next gateway forwards the active capability to the bot and returns only the database owner resolved for that capability. Pages contain `decisionId`, `createdAt`, `updatedAt`, `decision`, `recordType`, `evidence`, `observations`, `programMetadata`, `quote`, `fills`, and `markouts`. The `/model` page presents this history; see [Model page](#model-page).
 
 ## Model page
 
 ![The /model decision browser with the timeline, decision rail, and selected decision record](../assets/model.png)
 
-The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads only through same-origin `GET /api/session/decisions?limit=&before=`; the server resolves the owner from the session capability. It does not use the live feed reducer or SSE and creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
+The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads through same-origin `GET /api/session/decisions?limit=&before=` and fetches a linked record by id when it is outside the first page; the server resolves the owner from the session capability. It does not use the live feed reducer or SSE and creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
+
+The URL stores the selected decision in `d` and the markout horizon in `h`. Supported horizons are 1, 5, 20, and 100 ticks; invalid horizons use 5. Refresh, Back, and Forward restore the URL state. A decision that is unknown or belongs to another owner shows a not-found state.
+History links resolve for decisions belonging to the visitor's own session. In localhost operator mode, feed rows belong to the internal operator owner and are not visible in visitor history.
+When active filters hide a deep-linked decision, its record remains visible. If no rail rows match, the empty state explains this and offers to clear the filters.
 
 The page loads newest-first bounded pages of 50 rows and uses the opaque `before` cursor to load older history. Refresh reloads history. Loading, empty, error, expired-session, and end-of-history states are shown. Appending older pages preserves the selected decision.
 

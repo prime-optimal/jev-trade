@@ -328,10 +328,23 @@
 }
 
 .detailLink {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   margin-top: var(--space-3);
-  color: var(--muted);
-  font-size: var(--text-12);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-2);
+  color: var(--ink);
+  font-size: var(--text-14);
+  font-weight: 600;
+}
+
+.detailLink:hover {
+  background: var(--panel-2);
+}
+
+.detailLink:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .railHead {
