@@ -6,6 +6,8 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Added
 
+- Added `test/fixtures/decision-journal.json`, a sample of real production decision journal rows, and `just smoke-model`, `just smoke-bot`, and `just smoke-clean` recipes that load it into a local Postgres for dashboard smoke checks.
+- Pinned `just` in `mise.toml`, added UI work rules to `CLAUDE.md`, and vendored the `refactoring-ui` agent skill in `.claude/skills` with its source recorded in `skills-lock.json`.
 - Added `web/src/site.config.json` for the site name, slogan, logo, menu, and icon links, with a Settings Top row tab that shows them and edits them on a local dev server.
 - Added a draggable divider and resizable columns to the bottom pane, one History column per sleeve, fee and PnL columns on Trades, and a filter-icon market toggle next to the tabs that defaults to All.
 - Added per-sleeve mini charts, trading pair labels, `$` prices with commas, time in position, and computed metrics (last call, order rate, fill rate, average latency) to the asset sleeve cards. The selected sleeve and the Recent Decisions and History panes take the coin's brand color.

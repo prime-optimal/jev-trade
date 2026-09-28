@@ -90,7 +90,7 @@ Railway builds the bot and dashboard with Railpack. TypeScript infrastructure in
 
 ## Docs
 
-Start with the [maintainer documentation map](docs/README.md). Project changes are recorded in the [changelog](CHANGELOG.md).
+Start with the [maintainer documentation map](docs/README.md). The dashboard design system is [`DESIGN.md`](DESIGN.md). Project changes are recorded in the [changelog](CHANGELOG.md).
 
 ## License
 

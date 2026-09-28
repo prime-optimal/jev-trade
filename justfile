@@ -37,6 +37,26 @@ check: test typecheck
 build-web:
     bun run --cwd web build
 
+smoke_db := "postgres://postgres:postgres@127.0.0.1:55432/postgres"
+smoke_secret := "local-smoke-secret-not-for-production-0123456789"
+
+# Start local Postgres and load the real decision fixture; prints the owner token
+[group('smoke')]
+smoke-model:
+    docker start jev-smoke-pg 2>/dev/null || docker run -d --name jev-smoke-pg -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17
+    until docker exec jev-smoke-pg pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+    DATABASE_URL={{smoke_db}} DECISION_OWNER_SECRET={{smoke_secret}} bun scripts/seed-model.ts
+
+# Run a paper bot (mock model, testnet, dry run, no secrets) against the smoke database
+[group('smoke')]
+smoke-bot:
+    DATABASE_URL={{smoke_db}} DECISION_OWNER_SECRET={{smoke_secret}} MODEL=mock DRY_RUN=true HL_TESTNET=true PORT=3000 bun src/index.ts
+
+# Remove the smoke database container
+[group('smoke')]
+smoke-clean:
+    docker rm -f jev-smoke-pg
+
 # Preview Railway infrastructure changes from .railway/railway.ts
 [group('railway')]
 deploy-plan:
