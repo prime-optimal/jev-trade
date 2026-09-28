@@ -1,5 +1,5 @@
 .rail { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--grid); background: var(--page-bg); }
-.columns, .row, .skeleton { display: grid; grid-template-columns: 72px 64px minmax(0, 1fr) 48px; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); }
+.columns, .row, .skeleton { display: grid; grid-template-columns: 64px 48px 68px minmax(0, 1fr) 44px; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); }
 .columns { height: 32px; border-bottom: 1px solid var(--grid); color: var(--muted); font-size: var(--text-12); }
 .columns > span:last-child, .markout { text-align: right; }
 .scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
@@ -11,7 +11,10 @@
 .row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .time { color: var(--muted); }
 .row[aria-selected="true"] .time { color: var(--ink-2); }
-.call { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: 600; text-transform: capitalize; color: var(--ink-2); }
+.coin { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; overflow: hidden; color: var(--ink-2); white-space: nowrap; }
+.coin > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.call { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; overflow: hidden; font-weight: 600; text-transform: capitalize; color: var(--ink-2); }
+.callLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .call[data-tone="buy"] { color: var(--buy); }
 .call[data-tone="sell"] { color: var(--sell); }
 .call[data-action="no decision"], .call[data-action="unavailable"] { color: var(--muted); font-weight: 400; }

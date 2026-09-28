@@ -23,6 +23,7 @@ export interface DecisionSummary {
   leverage: number | null;
   late: boolean;
   legacy: boolean;
+  hasInvalidAnswers: boolean;
   revision: string | null;
   provider: string | null;
   modelId: string | null;
@@ -84,6 +85,16 @@ export function summarize(row: DecisionRow): DecisionSummary {
     answer.status === "answered" && answer.answer?.type === "choice" && answer.answer.choice.toLowerCase() === pickedBias);
   const confidence = pickedBiasAnswer?.answer && "confidence" in pickedBiasAnswer.answer
     ? numberValue(pickedBiasAnswer.answer.confidence) : null;
+  let hasInvalidAnswers = row.evidence !== null && (row.evidence.status !== "complete" || groupHasInvalidAnswers(row.evidence.required));
+  if (!hasInvalidAnswers) {
+    for (const groupId in row.observations) {
+      if (!Object.hasOwn(row.observations, groupId)) continue;
+      if (groupHasInvalidAnswers(row.observations[groupId]!)) {
+        hasInvalidAnswers = true;
+        break;
+      }
+    }
+  }
   const fills = row.fills.map(fillRecord);
   const closedPnls = fills.map((fill) => fill.closedPnl).filter((value): value is number => value !== null);
   const markouts: Partial<Record<Horizon, Markout>> = {};
@@ -107,6 +118,7 @@ export function summarize(row: DecisionRow): DecisionSummary {
     leverage: numberValue(decision?.leverage),
     late: envelope?.late === true,
     legacy,
+    hasInvalidAnswers,
     revision: legacy ? stringValue(decision?.promptRevision) : stringValue(row.evidence?.capture?.revision),
     provider: stringValue(envelope?.provider) ?? stringValue(required?.provider?.name) ?? stringValue(decision?.provider),
     modelId: stringValue(envelope?.modelId) ?? stringValue(required?.provider?.model) ?? stringValue(decision?.modelId) ?? stringValue(decision?.model),
@@ -121,6 +133,13 @@ export function summarize(row: DecisionRow): DecisionSummary {
     closedPnl: closedPnls.length ? closedPnls.reduce((sum, value) => sum + value, 0) : null,
     confidence,
   };
+}
+function groupHasInvalidAnswers(group: GroupResult): boolean {
+  if (group.status !== "complete" || group.failure !== undefined) return true;
+  for (const answer of group.answers) {
+    if (answer.status !== "answered") return true;
+  }
+  return false;
 }
 
 function quoteRecord(value: unknown): QuoteRecord | null {

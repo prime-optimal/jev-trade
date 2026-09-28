@@ -86,9 +86,9 @@ The page loads newest-first bounded pages of 50 rows and uses the opaque `before
 
 The layout is desktop first and fills the viewport. From 1100px up the page does not scroll; the decision rail and the record scroll independently.
 
-- The timeline across the top counts buy, sell, hold, and no-decision calls, and plots every loaded decision oldest to newest as a bias-signed markout bar at the chosen horizon (1, 5, 20, or 100 ticks). It shows the share of measured calls that were right at that horizon and their mean. Hovering a bar previews that decision; clicking selects it.
-- The decision rail on the left is a compact listbox grouped by day: time, call, plan (intent, bias, leverage), a late flag, and the markout at the chosen horizon. Arrow keys, Home, and End move the selection.
-- The record header shows the call, its plan chips, latency, tokens, markout, model, and a meta line with coin, block, provider, run, decision id, and program revision.
+- The timeline across the top counts and plots the decisions that match the rail filters, oldest to newest, as bias-signed markout bars at the chosen horizon (1, 5, 20, or 100 ticks). Its call counts, right share, and mean reflect the same filtered set. Hovering a bar previews that decision; clicking selects it.
+- The decision rail on the left is a compact listbox grouped by day, with time, coin icon and symbol, call, plan (intent, bias, leverage), a late flag, and the markout at the chosen horizon. Call, late, invalid or failed, right or wrong at the selected horizon, and coin filters combine; clearing filters restores every loaded decision. Arrow keys, Home, and End move the selection.
+- The record header shows the call, coin icon and name, its plan chips, latency, tokens, markout, model, and a meta line with coin, block, provider, run, decision id, and program revision. If no decisions match the filters, a clear-filters action restores the full set.
 
 The record body has three columns, which fold to two below 1600px:
 
