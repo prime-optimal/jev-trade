@@ -266,6 +266,15 @@ test("journal markouts keep one decision id and emit each horizon once", async (
   expect(new Set(markouts.map((event) => event.horizonTicks)).size).toBe(4);
 });
 
+test("the depth Jev is sent carries the book's bands, keyed by basis points", async () => {
+  const journal: DecisionJournalEvent[] = [];
+  const { trader } = desk(new ScriptModel(), new FakeMarket(), { enqueue: (event) => journal.push(event) });
+  await trader.onBlock(1);
+  const decision = journal.find((event) => event.type === "decision");
+  if (decision?.type !== "decision" || decision.evidence.recordType !== PROGRAM_RECORD_TYPE) throw new Error("expected a program decision record");
+  expect(decision.evidence.capture.groups[0]!.state.depth).toEqual({ "10": { bid: 1, ask: 1 } });
+});
+
 test("live IOC partial fills retain their decision and individual execution details after stand-down", async () => {
   const model = new ScriptModel();
   model.next = packed({ intent: "open", bias: "long", action: "buy" });

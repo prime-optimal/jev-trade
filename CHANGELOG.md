@@ -44,10 +44,13 @@ All notable changes to this project are documented here. This changelog starts f
 - Added URL-backed `/model?d=<decisionId>&h=<horizon>` state, owner-scoped single-decision lookup, and History links that open the matching record.
 - Added keyboard selection, a draggable and resizable overview brush, and range reset to the `/model` timeline.
 - Added live decision append to `/model` from the existing block SSE feed. The page refetches the owner-scoped journal for complete evidence and markouts, then merges by decision ID while preserving older pages and selection, with a brief text cue on new rows.
+- Added `docs/model-page.md` and `docs/model-performance.md`, documenting every Model page panel and every Performance section with data sources, the definition of Right and Wrong, and how the Price pane's 5 tick figure differs from the resolved 5 tick outcome.
+- Added an input provenance section to `docs/jev-model.md` naming the source file, symbol, and Hyperliquid call for each of the 17 inputs Jev reads, and corrected field descriptions the code contradicted.
 
 ### Fixed
 
 - Fixed the Recent Decisions window and an open History detail being wiped after a stream reconnect. Reconnect snapshots now merge into the held events, and the page backfills `/history` and `/tape` once per connection.
+- Fixed the `depth` input Jev is sent always being empty. `Trader.buildState` keyed the bands "10bps", "25bps", and "50bps" while `extractFeatures` reads "10", "25", and "50", so every decision carried `depth: {}`. Bands are now keyed by basis points. Journal rows recorded before this fix keep `depth: {}`.
 - Fixed Recent Decisions counting the newest decision twice when a price mark repainted it between ticks.
 - Kept caller-supplied environment values winning over `mise.toml` defaults on mise 2026.9.13, which regressed `{ default }` yield semantics ([mise#13630](https://github.com/jdx/mise/issues/13630)). `just dev` and `just start` now run through `scripts/with-mise-env.sh`, which restores caller-set managed variables after `mise exec`; the shim is a no-op on fixed mise releases.
 

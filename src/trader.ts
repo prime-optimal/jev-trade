@@ -337,7 +337,7 @@ export class Trader {
     const sampled = m.slice(-H).filter((_, i, a) => (a.length - 1 - i) % 5 === 0);
     const lvl = (l: [number, number]) => `${l[0].toFixed(6)} x ${round(l[1], 1)}`;
     const depth: TradeState["depth"] = {};
-    for (const [k, v] of Object.entries(book.depthBps)) depth[k + "bps"] = { bid: round(v.bid, 1), ask: round(v.ask, 1) };
+    for (const [band, v] of Object.entries(book.depthBps)) depth[band] = { bid: round(v.bid, 1), ask: round(v.ask, 1) };
     const posSz = this.position.sz;
     const a = this.market.account;
     const entry = this.entryPrice();
