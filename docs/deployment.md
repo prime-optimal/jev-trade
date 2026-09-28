@@ -180,3 +180,20 @@ The variable meanings and wallet precedence are documented in [Configuration](co
 For an application regression, revert the offending commit on `main` and let the affected service rebuild from the reverted source. Do not start a second bot service as a shortcut. Keep the volume attached throughout the rollback.
 
 For an infrastructure regression, revert the corresponding change in [`.railway/railway.ts`](../.railway/railway.ts), run `railway config plan`, review the reversal, then run `railway config apply` only when the reversal is correct. A source rollback does not undo Railway variables. Restore changed variables separately, review the staged changes, and redeploy the affected service. After either rollback, repeat the bot HTTP 200 and dashboard feed checks.
+
+## Resetting decision history
+
+Nothing in the code deletes `decision_journal` rows, and PostgreSQL has no public endpoint, so a reset runs from inside Railway's network. Use it only when history should start over, for example after a Jev model revision (see [Program revision](jev-model.md#program-revision)). It is irreversible.
+
+1. Register an SSH key: `railway ssh keys add --key <fingerprint> --name <name>`. With 1Password's SSH agent, pass the key's fingerprint from `ssh-add -l`. The first `railway ssh` connection asks to trust `ssh.railway.com`. Remove the key afterwards with `railway ssh keys remove <fingerprint>`.
+2. Count first. Both tables are `decision_journal` and `decision_journal_pending_observations`:
+
+   ```sh
+   railway ssh --service bot -- bun -e 'const sql = new Bun.SQL(process.env.DATABASE_URL); console.log(await sql`SELECT count(*)::int AS n FROM decision_journal`); await sql.close();'
+   ```
+
+3. Restart the bot with `railway redeploy --service bot --yes` and wait for `SUCCESS`. Do not skip this. The bot keeps pending markouts in memory for up to 100 ticks. If you wipe while the old process is alive, it writes each late markout back as an orphan row with a markout and no decision, so the journal is not empty afterwards.
+4. Delete everything older than the new process. Take the newest `runId` from `decision_journal` where `owner_id = 'operator'` and `decision IS NOT NULL`, take the minimum `created_at` for that run as the cutoff, then `DELETE FROM decision_journal WHERE created_at < <cutoff>` and the same for `decision_journal_pending_observations`. Run both statements through `Bun.SQL` in `bun -e` on the bot, as in step 2.
+5. Count again. Every remaining row should belong to one run, and no row should have a null `record_type`.
+
+Owner tokens are derived from `DECISION_OWNER_SECRET`, not stored in these tables, so existing visitor cookies keep working after a reset. Visitor sessions and Workers are lost on the restart in step 3, as on any deploy.
