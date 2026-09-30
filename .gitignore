@@ -6,3 +6,4 @@ data/
 fnox.local.toml
 mise.local.toml
 .agents/
+debug/

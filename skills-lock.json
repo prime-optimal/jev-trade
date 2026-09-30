@@ -5,6 +5,12 @@
       "source": "../skills/refactoring-ui-plugin/skills/refactoring-ui",
       "sourceType": "local",
       "computedHash": "d560763cdd7daaece5422194369ad9797ceea3a52e27e5b8995b27b9165ee639"
+    },
+    "typesafe-ai": {
+      "source": "typesafe-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/typesafe-ai/SKILL.md",
+      "computedHash": "9cd84c5e535dec8dec59917c110f9c00b4a61faadb86b432ec7e41051170af12"
     }
   }
 }
