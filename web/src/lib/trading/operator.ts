@@ -1,3 +1,4 @@
+import type { ProgramDefinition } from "@/lib/journal-types";
 import type { ConnectionValidation, OperatorSnapshot, RunSnapshot, TradingSettings } from "./settings";
 
 export const OFF_RUN: RunSnapshot = {
@@ -75,4 +76,26 @@ export function stopOperator(base: string): Promise<RunSnapshot> {
 
 export function reconcileOperator(base: string): Promise<RunSnapshot> {
   return request(base, "/reconcile", { method: "POST", credentials: "same-origin", body: "{}" });
+}
+
+export interface SessionProgram {
+  definition: ProgramDefinition;
+  revision: string;
+}
+export interface SessionProgramPreset {
+  id: string;
+  name: string;
+  description: string;
+  definition: ProgramDefinition;
+}
+export interface SessionProgramSnapshot extends SessionProgram {
+  presets: SessionProgramPreset[];
+}
+
+export function getSessionProgram(signal?: AbortSignal): Promise<SessionProgramSnapshot> {
+  return request(SESSION_API, "/program", { credentials: "same-origin", signal });
+}
+
+export function applySessionProgram(definition: ProgramDefinition): Promise<SessionProgram> {
+  return request(SESSION_API, "/program", { method: "POST", credentials: "same-origin", body: JSON.stringify({ definition }) });
 }

@@ -20,11 +20,11 @@ Each group carries its own selected feature values and resolved questions. The `
 
 ## State sent to Jev
 
-Jev reads 17 inputs, the ids in `FEATURE_IDS` ([`src/jev-features.ts`](../src/jev-features.ts)). The current catalog version is `FEATURE_CATALOG_VERSION` = `jev-features-2026-09-28.1`. `DEFAULT_PROGRAM` puts all 17 in its one `trade` group.
+The catalog allowlists 17 inputs, the ids in `FEATURE_IDS` ([`src/jev-features.ts`](../src/jev-features.ts)). The current catalog version is `FEATURE_CATALOG_VERSION` = `jev-features-2026-09-28.1`. `DEFAULT_PROGRAM` puts all 17 in its one `trade` group; custom programs select inputs separately for each group.
 
 Every tick, `Trader.buildState` in [`src/trader.ts`](../src/trader.ts) builds a `TradeState` (type in [`src/model.ts`](../src/model.ts)). `captureProgram` in [`src/jev-program.ts`](../src/jev-program.ts) then calls `extractFeatures` with the group's feature ids. That copies each requested input out of the `TradeState` into a frozen `snapshot.state`. Two rules follow from that code:
 
-- All 17 keys are always present in `snapshot.state`. Missing data is never a missing or `null` top-level key. It appears as `null` fields inside `indicators` and `asset`, as `0` or `null` inside `trades` and `returnsBps`, or as an empty `depth` object.
+- Only the group's selected keys are present in `snapshot.state`. The default selects all 17. Missing data within a selected input is never a missing or `null` top-level key. It appears as `null` fields inside `indicators` and `asset`, as `0` or `null` inside `trades` and `returnsBps`, or as an empty collection. An empty feature selection produces an empty state object.
 - `extractFeatures` re-slices `book` to 5 levels and `recentTrades` to 10 entries. It copies only the named fields of each object, so extra fields on `TradeState` never reach Jev.
 
 The resolved question text is also part of what Jev is sent. `resolvedRequiredQuestion` in `src/jev-program.ts` writes `market`, `tickMs`, the position stance (side, size, entry), the current leverage, and `maxLeverage` into the question instructions. Those values come from the same `TradeState` and share the input provenance below.
@@ -214,6 +214,8 @@ The catalog `freshness` field takes two values, `tick` and `unknown` (`FeatureFr
 - **`tick`** declares that the input is read from the bot's state at the tick that is captured. `coin`, `market`, `tick`, `tickMs`, and every book, price, return, and tape input are labeled this way. The code does not verify it. `mid` is the newest book the bot received and the tick loop has no age check on `Feed.book`.
 - **`unknown`** declares that the catalog cannot say how old the underlying data is at the tick. That is true of `position` (the last `clearinghouseState` push or refresh for live sleeves, or the sleeve's simulated state for paper sleeves), `indicators` (the last `candle` update or the startup `candleSnapshot`), `asset` (the last `activeAssetCtx` message or poll), and `maxLeverage` (a `meta` read from process start). These sources have their own cadence, and the bot keeps no per-value timestamp for them.
 
+The snapshot's `capturedAt` is not an exchange observation timestamp. An open but silent socket does not trigger disconnected-socket HTTP recovery, so repeated ticks can capture an unchanged book. HTTP fallback cadence is not a maximum input age or a freshness guarantee.
+
 The Model page reads the flag from the snapshot's `features` list. `InputCard` in `web/src/app/model/InputCard.tsx` appends "age unknown" to a card header when any of its inputs is `unknown`. Changing a `freshness` value changes the program revision because the selected catalog entries are hashed by `programRevision`.
 
 ## Questions Jev answers
@@ -225,6 +227,45 @@ The default program asks three independent required choice questions over the sa
 3. **Leverage:** choose one cross-leverage rung from the values allowed by the venue maximum.
 
 The projection derives the wire `action` from bias and intent. Hold is a first-class Jev answer, not a code-side decision to skip a tick. Additional questions can be assigned to observational groups. Their answers are recorded separately and cannot change or suppress the required decision.
+
+## Configuring a visitor paper program
+
+Open `/model/configure` from Model to load the active program and revision for your isolated public paper session. This editor always targets the visitor session, including on localhost; it cannot modify the shared operator program, real wallets, or another visitor's Worker. Settings still controls assets, connections, execution parameters, run duration, `tickMs`, and `horizonBlocks`. Configure controls the program definition, not those settings.
+
+Choose a starting draft:
+
+- **Default** selects all 17 inputs for the required `trade` group, with no supplemental questions.
+- **Tape focus** selects `coin`, `mid`, `returnsBps`, `trades`, `position`, and `maxLeverage` for `trade`, plus a separate `tape` group with `mid`, `trades`, and `recentTrades` and an observational `tapeDirection` choice question.
+
+Presets are editable starting points, not recommendations. Selecting one changes only the draft and never applies it or starts a run. Reset draft restores the currently applied session program, not the default preset.
+
+You can add, remove, or edit supplemental observational question keys, supported answer types, instructions, and criteria, and select each group's inputs from the existing 17-field allowlist. No arbitrary source, new field, wallet data, or custom data endpoint can be added here. Required `bias`, `intent`, and `leverage` choice questions, their code-owned instructions and criteria, resolvers, and trade projection cannot be edited or replaced. Supplemental questions remain observational and cannot change or suppress the required trade call.
+
+Supported supplemental types depend on the execution provider, not a browser-selected provider:
+
+| Provider | Question types |
+| --- | --- |
+| OpenRouter, TypeSafe | `choice`, `score`, `noul` |
+| Vercel AI Gateway | `choice`, `score`, `boolean` |
+| Local mock | `choice` |
+
+Question keys must start with a lowercase letter and contain only letters, digits, or underscores, up to 40 characters. Static instructions must be a non-empty string or non-empty object of non-empty strings; each text value or instruction-object key is limited to 2,000 characters. Choice criteria require 2 to 32 named labels with string or `null` descriptions. Score criteria require an ordered array of 2 to 11 string or `null` levels. Boolean and noul criteria are optional; when supplied, only `true` and `false` labels with string or `null` descriptions are accepted. Criterion labels and text are also limited to 2,000 characters.
+
+Every question must belong to exactly one non-empty group, group ids must be unique, and selected features cannot repeat within a group. All three required questions must stay together in a group containing no observational questions. Unknown definition fields are rejected. These are server rules, not merely editor constraints; see `validateProgram` in [`src/jev-program.ts`](../src/jev-program.ts).
+
+Apply program is available only while the session is `off` or `expired`. Stop an active run with **Stop paper session** on Configure first. This button and the displayed status target the same visitor Worker as the program, including on localhost; the unrelated root Header run switch is hidden here. The server validates the schema, catalog, provider-supported types, question and group assignments, feature allowlist, required resolvers, and projection before activation. It allows at most 16 questions, four groups, and a 32,768-byte serialized definition. It recomputes the canonical `sha256:` revision rather than trusting a client hash; a rejected draft leaves the active program unchanged. See [Visitor paper program API](api.md#visitor-paper-program).
+
+Applying a program does not start a run or save timing and execution settings. It changes the stopped Worker's active definition for the next paper run, started explicitly with **Start paper session** on Configure. Start uses the applied program, not unapplied draft changes, and only calls the visitor paper lifecycle route. Connecting, preset selection, and Apply never auto-start. Pending settings, validation, or Start operations also block activation. No program change resets a historical decision or recalculates its answers.
+
+Each execution runtime owns its own immutable active program. Subsequent tick captures use the applied definition in both the real provider and mock model paths. Already captured evaluations and their later observations retain the old definition, state, resolved questions, and revision. Historical decisions are not rewritten. A fresh session after reconnect starts from defaults; the owner cookie restores access to prior history, not the old Worker's program.
+
+The browser uses the same-origin Next gateway. Session capabilities and owner tokens stay in HttpOnly cookies and server-side forwarding, and provider credentials are never returned to the editor.
+
+## Help reference
+
+`/help`, linked in the top menu, is the browser-facing reference for all 17 inputs. Each input has a `#feature-<id>` anchor, linked from Configure, with its calculation, source, units, lookback window, and null, zero, or empty rules. It also explains freshness, required and observational questions, revisions, privacy boundaries, and legacy records. This document remains the maintainer contract.
+
+Price returns are trailing evidence available at capture: `returnsBps.last5` compares the captured mid with the mid five ticks earlier. Outcome markouts are future observations: the 5-tick markout compares a later mid with the captured mid, and the bias-signed value reverses the sign for short. That future result was not an input Jev saw. Neither a markout nor a paper fill proves realized live profit.
 
 ## Evidence and evaluation outcomes
 

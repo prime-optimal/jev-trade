@@ -94,36 +94,8 @@
 }
 .tabPanel { display: grid; gap: var(--space-4); }
 .tabPanel[hidden] { display: none; }
-.promptCard header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-.promptCard header h2 { margin-bottom: 0; }
-.promptCard code {
-  padding: var(--space-2);
-  border: 1px solid var(--border-2);
-  background: var(--panel-2);
-  overflow-wrap: anywhere;
-}
-.questionGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-.questionGrid section { padding: var(--space-3); border: 1px solid var(--border-2); background: var(--panel-2); }
-.questionGrid h3, .promptCard > h3 { font-size: var(--text-14); margin: 0 0 var(--space-2); }
-.questionGrid p { color: var(--muted); margin: 0; }
-.catalog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--grid); }
-.catalog div { padding: var(--space-3) 0; border-bottom: 1px solid var(--grid); }
-.catalog div:nth-child(odd) { padding-right: var(--space-4); }
-.catalog div:nth-child(even) { padding-left: var(--space-4); border-left: 1px solid var(--grid); }
-.catalog dt { font-weight: 600; margin-bottom: var(--space-1); }
-.catalog dd { color: var(--muted); }
-.exclusion { margin: var(--space-4) 0 0 !important; padding: var(--space-3); border: 1px solid var(--border); background: var(--late-dim); color: var(--ink) !important; }
+.resources { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); }
+.resources a { color: var(--link); text-decoration: underline; text-underline-offset: var(--space-1); }
 .footer { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); border-top: 1px solid var(--border); padding-top: var(--space-4); }
 .footer span { margin-left: auto; color: var(--muted); }
 .primary { color: var(--badge-jev-fg) !important; background: var(--badge-jev-bg) !important; }
@@ -135,9 +107,6 @@
   .grid { grid-template-columns: 1fr; }
   .section { padding: var(--space-4); }
   .endpoints div, .operator div { grid-template-columns: 1fr; gap: var(--space-1); }
-  .questionGrid, .catalog { grid-template-columns: 1fr; }
-  .catalog div:nth-child(odd), .catalog div:nth-child(even) { padding-left: 0; padding-right: 0; border-left: 0; }
-  .promptCard header { flex-direction: column; }
   .footer { align-items: stretch; }
   .footer button { flex: 1; }
   .footer span { width: 100%; margin-left: 0; }

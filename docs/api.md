@@ -1,6 +1,6 @@
 # Bot HTTP and SSE API
 
-The implementation runs two Bun listeners. The public listener on `PORT`, default 3000, is read-only and allows browser origins. The private operator listener binds `127.0.0.1` on `CONTROL_PORT`, default 3002. Never expose or reverse proxy the operator listener as a public control API.
+The implementation runs two Bun listeners. The public listener on `PORT`, default 3000, serves read-only shared market data and capability-protected isolated visitor sessions. The private operator listener binds `127.0.0.1` on `CONTROL_PORT`, default 3002. Never expose or reverse proxy the operator listener as a public control API.
 
 ## Public routes
 
@@ -16,7 +16,7 @@ The implementation runs two Bun listeners. The public listener on `PORT`, defaul
 
 `/snapshot`, `/history`, and `/tape` support gzip and set `Cache-Control: no-store`. SSE sends `text/event-stream`, `Cache-Control: no-cache`, and a keep-alive connection.
 
-The public API has no settings, validation, Start, Stop, or reconcile mutation. Public CORS is for read-only dashboard data, not operator authorization.
+The shared public API has no settings, validation, Start, Stop, reconcile, or program mutation. Capability-protected `/sessions/*` routes affect only isolated paper Workers. Public CORS is for read-only dashboard data, not operator authorization.
 
 ## Visitor decision history
 
@@ -50,6 +50,29 @@ interface DecisionPage {
 Each row joins an evaluation to its quote, correlated fills, and available 1, 5, 20, and 100 tick markouts. A failed required-group evaluation has `decision: null`; it is recorded with evidence but does not produce a dashboard decision. New rows use `recordType: "jev-program-v1"` and include evidence and observational results.
 
 Legacy rows retain their original `decision` JSON, including its old `prompt` and `promptRevision`. They use `recordType: "legacy"`, `programMetadata: "unavailable"`, `evidence: null`, and `observations: {}`. The server does not reconstruct program metadata or evidence for these rows.
+
+## Visitor paper program
+
+The active session capability authorizes these routes for its own isolated paper Worker. No caller-supplied owner UUID is accepted, and they cannot mutate the shared operator, real wallets, or another visitor's program.
+
+| Bot route | Same-origin Next route | Body | Success response |
+| --- | --- | --- | --- |
+| `GET /sessions/program` | `GET /api/session/program` | None | `{ definition, revision, presets }` |
+| `POST /sessions/program` | `POST /api/session/program` | `{ definition }` | `{ definition, revision }` |
+
+`definition` is the validated `ProgramDefinition`: `schema`, `catalogVersion`, `questions`, `groups`, and `projection`. Each preset is `{ id, name, description, definition }`. The current presets are `default` (Default) and `tape` (Tape focus). They are starting drafts, not recommendations. GET never applies a preset; POST applies only the supplied definition. `/model/configure` consumes these routes, while `/help` documents the inputs and program semantics.
+
+POST requires JSON and accepts only the `definition` body field. The session gateway retains its existing capability, exact-Origin, and 64 KiB request-body protections. Definitions themselves are limited to 32,768 serialized bytes, 16 questions, and four groups. Validation checks the current schema and catalog versions, provider-supported question types, unique question and group assignments, the existing feature allowlist, and the code-owned projection and required `bias`, `intent`, and `leverage` choice resolvers. Required instructions and criteria cannot be supplied or overridden. Extra questions must remain observational, use static instructions, and cannot use required resolvers or replace the trading answers. Arbitrary new inputs or sources are rejected.
+
+The provider type matrix and exact instruction, criterion, key, and group constraints are documented in [Configuring a visitor paper program](jev-model.md#configuring-a-visitor-paper-program). In particular, OpenRouter and TypeSafe support `choice`, `score`, and `noul`; Gateway supports `choice`, `score`, and `boolean`; local mock supports only `choice`. Unsupported types are rejected, not converted or silently dropped.
+
+Apply is allowed only when lifecycle status is `off` or `expired`, with no pending settings, validation, or Start operation. Active or cleanup-blocked states return `409` with `{ error }`. Program validation failures return `400` with `{ error, issues }`, where each issue contains `path` and `message`; other malformed requests return `400` with `{ error }`. Failed validation does not replace the active program.
+
+A successful POST activates the stopped Worker's program; it does not start trading, change execution settings, or return a new session capability. Start the next timed paper run separately through the existing session Start operation. The applied program remains active for subsequent runs in that same Worker until another definition is applied or the Worker ends.
+
+The server activates an immutable definition and recomputes its canonical `sha256:` revision from schema, catalog metadata, questions, groups, and projection. Clients send no revision or hash; a forged client revision is not accepted as authority. Only subsequent tick captures use the new program in real-provider and mock-model execution. In-flight captures, their later observations, and durable historical rows keep their original definition and revision.
+
+Session capabilities and owner credentials stay in HttpOnly cookies and server-side gateway forwarding, never browser-readable payloads. GET returns program definitions and presets, not provider credentials. A new Worker starts with the default program; owner continuity restores history access, not the old Worker's active program.
 
 ## Visitor log stream
 

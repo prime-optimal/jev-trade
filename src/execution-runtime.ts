@@ -4,6 +4,7 @@ import { Feed } from "./feed";
 import { resetHyperliquidMetadata, safeTransportMessage } from "./hyperliquid";
 import { Market } from "./market";
 import { createModel } from "./model";
+import { ProgramRuntime } from "./program-runtime";
 import { createRunLifecycle, type RunGuard, type RunLifecycle } from "./run-lifecycle";
 import type { PublicServer, SleeveView } from "./server";
 import { createSleeveLifecycle, type SleeveLifecycle } from "./sleeve-lifecycle";
@@ -32,6 +33,7 @@ export interface ExecutionRuntime {
   readonly meta: Meta;
   readonly views: SleeveView[];
   readonly lifecycle: RunLifecycle;
+  readonly program: ProgramRuntime;
   rebuild(settings: TradingSettings, apiKey?: string): Promise<void>;
   attachSink(sink: ExecutionSink | null): void;
   armAutostart(mode: TradingSettings["mode"]): Promise<void>;
@@ -106,6 +108,7 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
       },
     },
   });
+  const program = new ProgramRuntime(lifecycle, config.model === "jev" ? config.jevProvider : "local");
 
   startupAutostart = createStartupAutostart({
     status: () => lifecycle.snapshot().status,
@@ -205,7 +208,7 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
           await market.init();
           await market.reconcileStartupOwned();
           await feed.connect();
-          const trader = new Trader(market, createModel(), onEvent(spec.coin), onFill(spec.coin), onQuote(spec.coin), journal);
+          const trader = new Trader(market, createModel({ program: program.active }), onEvent(spec.coin), onFill(spec.coin), onQuote(spec.coin), journal);
           trader.attachTradeFeed(feed.trades);
           market.onVenueFill = (fill) => {
             if (!committed) return;
@@ -289,6 +292,7 @@ export function createExecutionRuntime(options: ExecutionRuntimeOptions): Execut
     meta,
     views,
     lifecycle,
+    program,
     rebuild,
     attachSink(next) { sink = next; },
     armAutostart: (mode) => startupAutostart.arm(mode),

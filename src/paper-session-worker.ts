@@ -79,6 +79,7 @@ try {
   const operator = operatorModule.createOperatorControl({
     lifecycle: runtime.lifecycle,
     rebuild: runtime.rebuild,
+    program: runtime.program,
     env: safeRuntimeEnv,
     controlPort: 3002,
     controlHost: "127.0.0.1:3002",
