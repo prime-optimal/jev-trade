@@ -2,10 +2,13 @@ import type { DecisionStore } from "./decision-store";
 import { validateConnection } from "./transport-validation";
 import { SettingsRuntime, type LifecycleControl } from "./settings-runtime";
 import { validateApiKey, validateSettings, type ConnectionValidation, type RunSnapshot, type TradingSettings } from "./settings";
+import type { ProgramRuntime } from "./program-runtime";
+import { ProgramValidationError } from "./jev-program";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MUTATION_PATHS: Record<string, true> = {
   "/settings": true,
+  "/program": true,
   "/validate": true,
   "/start": true,
   "/stop": true,
@@ -15,6 +18,7 @@ const MUTATION_PATHS: Record<string, true> = {
 export interface OperatorControlOptions {
   lifecycle: LifecycleControl;
   rebuild(settings: TradingSettings, apiKey?: string): Promise<void>;
+  program?: ProgramRuntime;
   validate?: (settings: TradingSettings, apiKey?: string) => Promise<ConnectionValidation>;
   env?: Record<string, string | undefined>;
   controlPort?: number;
@@ -145,6 +149,9 @@ export function createOperatorControl(options: OperatorControlOptions): Operator
         return new Response(null, { status: 204, headers });
       }
       if (request.method === "GET" && url.pathname === "/operator") return response(runtime.snapshot(), 200, origin ?? undefined);
+      if (request.method === "GET" && url.pathname === "/program" && options.program) {
+        return response({ ...options.program.snapshot(), presets: options.program.presets }, 200, origin ?? undefined);
+      }
       if (request.method === "GET" && url.pathname === "/decisions") {
         if (!options.decisionStore || !options.decisionOwnerId) return response({ rows: [], nextBefore: null }, 200, origin ?? undefined);
         const limitValue = url.searchParams.get("limit");
@@ -160,6 +167,13 @@ export function createOperatorControl(options: OperatorControlOptions): Operator
       if (request.method !== "POST" || !MUTATION_PATHS[url.pathname]) return response({ error: "Not found" }, 404, origin ?? undefined);
       if (origin !== allowedOrigin) return response({ error: "Origin is required for operator mutations" }, 403);
       const body = await jsonBody(request);
+      if (url.pathname === "/program") {
+        if (!options.program) return response({ error: "Not found" }, 404, allowedOrigin);
+        assertOnly(body, ["definition"]);
+        if (!Object.hasOwn(body, "definition")) throw new Error("definition is required");
+        if (activeOperation) throw new Error(`Wait for the pending ${activeOperation} operation before changing the Jev program`);
+        return response(options.program.apply(body.definition), 200, allowedOrigin);
+      }
 
       if (url.pathname === "/settings") {
         assertOnly(body, ["settings", "apiKey", "clearedEndpoints"]);
@@ -247,6 +261,9 @@ export function createOperatorControl(options: OperatorControlOptions): Operator
         if (reconcileGeneration === operationGeneration && activeOperation === "reconcile") activeOperation = null;
       }
     } catch (error) {
+      if (error instanceof ProgramValidationError) {
+        return response({ error: error.message, issues: error.issues }, 400, origin === allowedOrigin ? allowedOrigin : undefined);
+      }
       const message = safeMessage(error, [runtime.credential()]);
       const conflict = /Stop trading|unless off|unless expired|pending|cancelled/i.test(message);
       return response({ error: message }, conflict ? 409 : 400, origin === allowedOrigin ? allowedOrigin : undefined);

@@ -99,7 +99,7 @@ export interface Model {
 export type CallGroup = (snapshot: GroupSnapshot, target: ProviderTarget) => Promise<GroupResult>;
 
 export interface JevModelOptions {
-  program?: ActiveProgram;
+  program?: ActiveProgram | (() => ActiveProgram);
   callGroup?: CallGroup;
   target?: ProviderTarget;
 }
@@ -233,15 +233,14 @@ export class JevModel implements Model {
   private readonly target: ProviderTarget;
   private readonly callGroup: CallGroup;
   private program: ActiveProgram;
+  private readonly programSource?: () => ActiveProgram;
 
   constructor(options: JevModelOptions = {}) {
     this.target = options.target ?? { provider: config.jevProvider, modelId: config.jevModelId };
     this.callGroup = options.callGroup ?? callProviderGroup;
-    this.program = activateProgram(
-      options.program?.definition ?? DEFAULT_PROGRAM,
-      this.target.provider,
-      options.program?.revision,
-    );
+    this.programSource = typeof options.program === "function" ? options.program : undefined;
+    const initial = this.programSource?.() ?? (typeof options.program === "function" ? undefined : options.program);
+    this.program = activateProgram(initial?.definition ?? DEFAULT_PROGRAM, this.target.provider, initial?.revision);
   }
 
   setProgram(program: ActiveProgram): void {
@@ -260,7 +259,7 @@ export class JevModel implements Model {
   }
 
   async decide(state: TradeState): Promise<ModelEvaluation> {
-    const program = this.program;
+    const program = this.programSource?.() ?? this.program;
     const capture = captureProgram(program, state, Date.now());
     const side = state.position.side;
     const maxLeverage = state.maxLeverage;
@@ -334,16 +333,26 @@ function mockEvidence(
 
 export class MockModel implements Model {
   readonly name = "mock";
-  private readonly program = activateProgram(DEFAULT_PROGRAM, "local");
+  private readonly programSource: () => ActiveProgram;
+
+  constructor(options: Pick<JevModelOptions, "program"> = {}) {
+    const program = options.program;
+    const initial = typeof program === "function" ? program() : program;
+    const active = activateProgram(initial?.definition ?? DEFAULT_PROGRAM, "local", initial?.revision);
+    this.programSource = typeof program === "function" ? program : () => active;
+  }
 
   async decide(state: TradeState): Promise<ModelEvaluation> {
-    const capture = captureProgram(this.program, state, Date.now());
+    const capture = captureProgram(this.programSource(), state, Date.now());
     const trade = capture.groups.find(({ groupId }) => groupId === capture.requiredGroupId)!;
     const seen = marketFacing(state);
+    const inputs = trade.state;
     const startedAt = Date.now();
     const startedPerf = performance.now();
-    const flow = seen.trades.buySz + seen.trades.sellSz ? seen.trades.cvdSz / (seen.trades.buySz + seen.trades.sellSz) : 0;
-    const signal = seen.returnsBps.last20 / 8 + seen.bookImbalance * 1.5 + flow * 2 + this.noise(seen.tick);
+    const trades = inputs.trades as TradeState["trades"] | undefined;
+    const returns = inputs.returnsBps as TradeState["returnsBps"] | undefined;
+    const flow = trades && trades.buySz + trades.sellSz ? trades.cvdSz / (trades.buySz + trades.sellSz) : 0;
+    const signal = (returns?.last20 ?? 0) / 8 + Number(inputs.bookImbalance ?? 0) * 1.5 + flow * 2 + this.noise(Number(inputs.tick ?? 0));
     const longP = 1 / (1 + Math.exp(-signal));
     const bias: Bias = longP >= 0.5 ? "long" : "short";
     const against = (bias === "long" && seen.position.side === "short") || (bias === "short" && seen.position.side === "long");
@@ -388,7 +397,23 @@ export class MockModel implements Model {
     return {
       decision,
       evidence: mockEvidence(capture, answers, inputTokens, startedAt, startedPerf),
-      observations: Promise.resolve([]),
+      observations: Promise.resolve(capture.groups.filter((group) => group.groupId !== capture.requiredGroupId).map((group) => {
+        const rawState = JSON.stringify(group.state);
+        const seed = [...rawState].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        return {
+          groupId: group.groupId,
+          status: "complete" as const,
+          answers: group.questions.map((question): QuestionEvidence => {
+            const labels = Object.keys(question.criteria ?? {});
+            const choice = labels[seed % labels.length]!;
+            const answer = { type: "choice" as const, choice, probabilities: Object.fromEntries(labels.map((label) => [label, label === choice ? 1 : 0])) };
+            return { key: question.key, declaredType: question.type, groupId: group.groupId, role: question.role, status: "answered", raw: boundedRaw(answer), answer };
+          }),
+          unexpected: [],
+          provider: { name: "local" as const, model: "mock", usage: { inputTokens: Math.round(rawState.length / 4) } },
+          timing: { startedAt, completedAt: Date.now(), latencyMs: performance.now() - startedPerf },
+        };
+      })),
     };
   }
 
@@ -399,8 +424,8 @@ export class MockModel implements Model {
   }
 }
 
-export const createModel = (): Model => {
-  if (config.model !== "jev") return new MockModel();
+export const createModel = (options: JevModelOptions = {}): Model => {
+  if (config.model !== "jev") return new MockModel(options);
   assertJevCredentials(config.model, config.jevProvider, runtimeEnv);
-  return new JevModel();
+  return new JevModel(options);
 };

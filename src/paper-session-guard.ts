@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from "./settings";
 const OPERATOR_PATHS: Record<string, true> = {
   "/operator": true,
   "/settings": true,
+  "/program": true,
   "/validate": true,
   "/start": true,
   "/stop": true,
@@ -40,7 +41,7 @@ export function createPaperOperatorFetch(operator: OperatorControl) {
   return async (request: Request): Promise<Response | undefined> => {
     const url = new URL(request.url);
     if (!OPERATOR_PATHS[url.pathname]) return undefined;
-    if (url.pathname === "/operator") {
+    if (url.pathname === "/operator" || (url.pathname === "/program" && request.method === "GET")) {
       if (request.method !== "GET") return error("Not found", 404);
     } else if (request.method !== "POST") {
       return error("Not found", 404);

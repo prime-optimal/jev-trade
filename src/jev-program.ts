@@ -62,6 +62,11 @@ const requiredKeySet: Record<string, true> = { bias: true, intent: true, leverag
 const questionTypes: Record<QuestionType, true> = { choice: true, score: true, boolean: true, noul: true };
 const resolverIds: Record<string, string> = { bias: "jev.bias", intent: "jev.intent", leverage: "jev.leverage" };
 
+function unknownFields(value: Record<string, unknown>, allowed: readonly string[], path: string, issues: ValidationIssue[]): void {
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) issues.push({ path: `${path}.${key}`, message: "unknown field" });
+  }
+}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -105,6 +110,7 @@ function addTextIssue(issues: ValidationIssue[], value: unknown, path: string): 
 
 function validateInstructions(value: unknown, path: string, issues: ValidationIssue[]): boolean {
   if (typeof value === "string") {
+    if (!value.trim()) issues.push({ path, message: "must not be empty" });
     addTextIssue(issues, value, path);
     return true;
   }
@@ -120,6 +126,7 @@ function validateInstructions(value: unknown, path: string, issues: ValidationIs
       valid = false;
     } else {
       addTextIssue(issues, text, `${path}.${key}`);
+      if (!text.trim()) issues.push({ path: `${path}.${key}`, message: "must not be empty" });
     }
   }
   return valid;
@@ -194,6 +201,7 @@ export function validateProgram(definition: unknown, provider: EvaluationProvide
     const projection = isRecord(definition.projection) ? definition.projection : null;
     if (!projection) issues.push({ path: "projection", message: "must be an object" });
     else {
+      unknownFields(projection, ["version", "keys"], "projection", issues);
       if (projection.version !== PROJECTION_VERSION) issues.push({ path: "projection.version", message: "unsupported projection version" });
       const projectionKeys = projection.keys;
       if (!Array.isArray(projectionKeys) || projectionKeys.length !== REQUIRED_KEYS.length || !REQUIRED_KEYS.every((key, index) => projectionKeys[index] === key)) {
@@ -212,6 +220,7 @@ export function validateProgram(definition: unknown, provider: EvaluationProvide
         issues.push({ path, message: "must be an object" });
         continue;
       }
+      unknownFields(value, ["key", "type", "role", "resolver", "instructions", "criteria"], path, issues);
       const key = value.key;
       if (typeof key !== "string") issues.push({ path: `${path}.key`, message: "must be a string" });
       else {
@@ -230,6 +239,7 @@ export function validateProgram(definition: unknown, provider: EvaluationProvide
         if (value.type !== "choice") issues.push({ path: `${path}.type`, message: "required questions must use choice" });
         if (role !== "required") issues.push({ path: `${path}.role`, message: "required key must have required role" });
         const resolver = isRecord(value.resolver) ? value.resolver : null;
+        if (resolver) unknownFields(resolver, ["id", "version"], `${path}.resolver`, issues);
         if (!resolver || resolver.id !== resolverIds[key] || resolver.version !== 1) issues.push({ path: `${path}.resolver`, message: `must use ${resolverIds[key]} version 1` });
         if (value.instructions !== undefined) issues.push({ path: `${path}.instructions`, message: "required instructions are code-owned" });
         if (value.criteria !== undefined) issues.push({ path: `${path}.criteria`, message: "required criteria are code-owned" });
@@ -260,6 +270,7 @@ export function validateProgram(definition: unknown, provider: EvaluationProvide
         issues.push({ path, message: "must be an object" });
         continue;
       }
+      unknownFields(value, ["id", "features", "questions"], path, issues);
       const groupId = value.id;
       if (typeof groupId !== "string" || groupId.length === 0) issues.push({ path: `${path}.id`, message: "must be a non-empty string" });
       else if (groupIds.has(groupId)) issues.push({ path: `${path}.id`, message: "duplicate group id" });

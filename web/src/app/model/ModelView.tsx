@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header/Header";
 import { useSettings } from "@/lib/trading/SettingsProvider";
@@ -64,6 +65,7 @@ export default function ModelView() {
           <button type="button" aria-pressed={view === "decisions"} onClick={() => setView("decisions")}>Decisions</button>
           <button type="button" aria-pressed={view === "performance"} onClick={() => setView("performance")}>Performance</button>
         </div>
+        <nav className={styles.links} aria-label="Model resources"><Link href="/help">Help</Link><Link href="/model/configure">Configure</Link></nav>
         <button type="button" className={styles.refresh} onClick={history.refresh}>Refresh</button>
       </header>
       {view === "performance" ? <Performance summaries={summaries} canLoadOlder={history.nextBefore !== null} loadingMore={history.loadingMore} loadOlder={history.loadOlder} /> : <>

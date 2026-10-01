@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Header from "@/components/Header/Header";
 import { useSettings } from "@/lib/trading/SettingsProvider";
@@ -141,6 +142,7 @@ export default function SettingsForm() {
           <p className={styles.eyebrow}>{scope === "operator" ? "Private operator scope" : "Private visitor paper session"}</p>
           <h1>Settings</h1>
           <p>{scope === "operator" ? "Configure the shared executor through its private local channel." : "These settings and trades belong only to this browser session. The shared demo stays untouched."}</p>
+          <nav className={styles.resources} aria-label="Settings resources"><Link href="/model/configure">Configure paper model</Link><Link href="/help">Help</Link></nav>
         </div>
         <span className={styles.status}>{scope === "visitor" && !ready ? sessionState : run.status}</span>
       </header>
@@ -198,32 +200,17 @@ export default function SettingsForm() {
         <section className={styles.tabPanel} role="tabpanel" id="settings-panel-model" aria-labelledby="settings-tab-model" hidden={activeTab !== "model"}>
           <fieldset className={styles.section} disabled={!ready || locked || busy}>
             <legend>Jev model</legend>
-            <p>These settings control when Jev evaluates and the compact market-history window included in each exact prompt snapshot.</p>
+            <p>These settings control decision timing and the recent market-history window. Paper session questions, feature selections and presets are edited separately in Configure model.</p>
             <div className={styles.grid}>
-              <NumberField label="Decision cadence, ms" field="tickMs" value={draft.tickMs} min={scope === "visitor" ? 30000 : 5000} max={300000} disabled={locked} onChange={changeNumber} help="Model input control: sets how often Jev receives a fresh state and answers all three question families." />
+              <NumberField label="Decision cadence, ms" field="tickMs" value={draft.tickMs} min={scope === "visitor" ? 30000 : 5000} max={300000} disabled={locked} onChange={changeNumber} help="Model input control: sets how often Jev receives a fresh state and evaluates the active program." />
               <NumberField label="Lookback, ticks" field="horizonBlocks" value={draft.horizonBlocks} min={20} max={400} disabled={locked} onChange={changeNumber} help="Model input control: sets the compact recent-mid and public-trade window. Fixed returns, current book depth, and indicators keep their own windows." />
             </div>
           </fieldset>
-          <article className={`${styles.section} ${styles.promptCard}`} aria-labelledby="jev-prompt-title">
-            <header><div><p className={styles.eyebrow}>Read only prompt contract</p><h2 id="jev-prompt-title">What Jev evaluates</h2></div><code>jev-trade-2026-09-23.1</code></header>
-            <p>Every decision asks the same three question families from one state snapshot.</p>
-            <div className={styles.questionGrid}>
-              <section><h3>Bias</h3><p><code>long or short {"{asset}"}?</code></p></section>
-              <section><h3>Intent</h3><p><code>open or hold {"{asset}"}?</code> while flat; <code>open, close, or hold {"{asset}"}?</code> while positioned.</p></section>
-              <section><h3>Leverage</h3><p><code>cross leverage for {"{asset}"}?</code></p></section>
-            </div>
-            <h3>Complete input catalog</h3>
-            <dl className={styles.catalog}>
-              <div><dt>Identity and timing</dt><dd>Coin, market, tick number, and tick cadence.</dd></div>
-              <div><dt>Price and returns</dt><dd>Mid price, returns over 1, 5, 20, and 100 ticks, plus recent mid prices.</dd></div>
-              <div><dt>L2 book and depth</dt><dd>Spread in basis points, book imbalance, top five bid and ask levels, and cumulative bid and ask depth within 10, 25, and 50 basis points.</dd></div>
-              <div><dt>Public trade tape</dt><dd>Trade count, buy size, sell size, cumulative volume delta, VWAP, last price, last side, and recent public trades.</dd></div>
-              <div><dt>Current position</dt><dd>Coin, side, size, notional, entry, current leverage, liquidation price, liquidation distance, and unrealized PnL.</dd></div>
-              <div><dt>Indicators</dt><dd>SMA 20, SMA 50, EMA 20, mid distance from both SMAs, RSI 14, 20 tick volatility, high, low, and range position.</dd></div>
-              <div><dt>Venue asset context</dt><dd>Mark price, oracle price, funding, premium, open interest, daily notional volume, daily change, and the asset maximum leverage.</dd></div>
-              <div><dt>Max leverage</dt><dd>The venue maximum repeated as the decision cap and used to derive the allowed integer leverage rungs.</dd></div>
-            </dl>
-            <p className={styles.exclusion}>Wallet identity, account equity, lifetime realized PnL, fees, and private credentials are excluded.</p>
+          <article className={styles.section} aria-labelledby="jev-program-title">
+            <h2 id="jev-program-title">Session model program</h2>
+            <p>Bias, intent and leverage remain code-owned trading answers. Add observational questions, choose catalog features and edit presets for your paper session on the dedicated configuration page.</p>
+            <p>Selecting a preset only changes its editable draft. Apply it explicitly while the paper session is stopped. This editor does not change the shared demo or private operator program.</p>
+            <nav className={styles.resources} aria-label="Model program resources"><Link href="/model/configure">Configure paper model</Link><Link href="/help#questions">Program and feature help</Link></nav>
           </article>
         </section>
 

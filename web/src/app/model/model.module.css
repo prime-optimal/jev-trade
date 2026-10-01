@@ -6,6 +6,8 @@
 .toolbar p { color: var(--muted); font-size: var(--text-12); }
 .refresh { margin-left: auto; min-height: 32px; padding: 0 var(--space-3); border: 1px solid var(--border-2); background: transparent; color: var(--ink); font-size: var(--text-12); cursor: pointer; }
 .refresh:hover { background: var(--panel-2); }
+.links { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-12); }
+.links a { color: var(--link); text-decoration: underline; }
 .body { display: grid; grid-template-columns: 352px minmax(0, 1fr); min-height: 0; }
 
 @media (max-width: 1099.98px) {

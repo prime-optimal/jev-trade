@@ -15,6 +15,7 @@ const START_COOLDOWN_MS = 30_000;
 const ROUTES: Readonly<Record<string, readonly string[]>> = {
   operator: ["GET"],
   settings: ["POST"],
+  program: ["GET", "POST"],
   validate: ["POST"],
   start: ["POST"],
   stop: ["POST"],

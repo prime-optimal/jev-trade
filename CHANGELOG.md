@@ -6,6 +6,11 @@ All notable changes to this project are documented here. This changelog starts f
 
 ### Added
 
+- Added `/help` to the top menu as a model reference for all 17 inputs, with field anchors, calculations, sources, units, windows, null rules, questions, revisions, privacy boundaries, and trailing Price returns versus future Outcome markouts.
+- Added `/model/configure` for isolated visitor paper programs, with editable supplemental observational questions, provider-supported types and criteria, per-group allowlisted input selection, and Default and Tape focus starting drafts. Presets do not autoapply or recommend trades; required trading answers, resolvers, and projection remain code-owned.
+- Added capability-protected `GET` and `POST /sessions/program`, proxied through `/api/session/program`, with stopped-only activation, server-side schema, provider and catalog validation, and canonical revision hashing. Per-runtime programs reach subsequent real-provider and mock-model captures without changing in-flight captures, history, other visitors, or the shared operator. Session and owner credentials remain outside browser-readable payloads.
+- Documented the provider-specific question type matrix and validation limits, explicit Apply-then-Start paper workflow, same-Worker program retention, and open-but-silent socket freshness caveat.
+- Added explicit Start paper session and Stop paper session controls to Configure, targeting the same visitor Worker as its status and program through `/api/session`, including localhost without an API URL override. Hid the unrelated Header run switch only there and removed misleading Session settings links. Apply requires this page's session to be stopped and never starts it or changes operator settings.
 - Added a Performance view on `/model` with hit rates by horizon, intent, and leverage, a cumulative closed-PnL chart, and picked-answer confidence calibration over loaded history.
 - Added `test/fixtures/decision-journal.json`, a sample of real production decision journal rows, and `just smoke-model`, `just smoke-bot`, and `just smoke-clean` recipes that load it into a local Postgres for dashboard smoke checks.
 - Pinned `just` in `mise.toml`, added UI work rules to `CLAUDE.md`, and vendored the `refactoring-ui` agent skill in `.claude/skills` with its source recorded in `skills-lock.json`.

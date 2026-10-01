@@ -4,7 +4,7 @@ The dashboard is a separate Next.js App Router application in [`web/`](../web/).
 
 ## Routes and shared state
 
-[`web/src/app/page.tsx`](../web/src/app/page.tsx) renders the market dashboard. [`web/src/app/settings/page.tsx`](../web/src/app/settings/page.tsx) renders the non-indexed settings page. [`SettingsProvider`](../web/src/lib/trading/SettingsProvider.tsx) sits above both routes, so navigation does not create another market feed or reset a run display.
+[`web/src/app/page.tsx`](../web/src/app/page.tsx) renders the market dashboard. `/settings` contains session settings, `/model` reads decision history, `/model/configure` edits the visitor paper program, and `/help` is the model reference linked in the top menu. [`SettingsProvider`](../web/src/lib/trading/SettingsProvider.tsx) is shared across these routes, so navigation does not create another market feed or reset a run display.
 
 The Header separates two facts:
 
@@ -31,7 +31,7 @@ History ([`Feed`](../web/src/components/Feed/Feed.tsx)) lists recent calls. Clic
 
 ## Operator and visitor views
 
-Remote visitors get an isolated, keyless paper executor. The page creates one server-side Bun Worker, then uses that worker for its feed, settings, run lifecycle, history, and tape. Save, Start, and Stop affect only that visitor's worker. They never mutate the shared demo or its wallet-backed executor.
+Remote visitors get an isolated, keyless paper executor. The page creates one server-side Bun Worker, then uses that worker for its feed, settings, program, run lifecycle, history, and tape. Save, Apply program, Start, and Stop affect only that visitor's worker. They never mutate the shared demo or its wallet-backed executor.
 
 The visitor flow starts Off:
 
@@ -62,7 +62,7 @@ The run switch sits at the right end of the top row after the balance. It shows 
 The page has four tabs:
 
 - Trading contains network, mode, assets, execution-only controls, and run limits.
-- Jev model shows the legacy prompt label `jev-trade-2026-09-23.1`, its questions and input catalog, and edits `tickMs` and `horizonBlocks`. The active versioned program revision is recorded in decision history. See the [Jev model contract](jev-model.md) for detailed field definitions.
+- Jev model edits the decision interval `tickMs` and lookback `horizonBlocks`. Configure opens the separate paper-session editor for questions, feature selections and presets; it does not change the shared demo or private operator program. Help documents the input fields and data pipeline. Historical decision revisions are recorded per evaluation. See the [Jev model contract](jev-model.md).
 - Connections contains official visitor connection checks or the local operator transport controls.
 - Top row shows and, on a local dev server, edits the site branding described above.
 
@@ -80,7 +80,7 @@ Decision-history reads use same-origin `GET /api/session/decisions?limit=&before
 
 ![The /model decision browser with the timeline, decision rail, and selected decision record](../assets/model.png)
 
-The `/model` page is linked from the primary navigation between Dashboard and Settings. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads through same-origin `GET /api/session/decisions?limit=&before=` and fetches a linked record by id when it is outside the first page; the server resolves the owner from the session capability. The existing live feed supplies SSE triggers only; rows are never rendered from feed payloads, and the page creates no market subscription. Navigating to this page does not restart runs or reset the browser session.
+The `/model` page is linked from the primary navigation. Its first view, Decisions, is a read-only browser of the owner-scoped decision journal. It reads through same-origin `GET /api/session/decisions?limit=&before=` and fetches a linked record by id when it is outside the first page; the server resolves the owner from the session capability. The existing live feed supplies SSE triggers only; rows are never rendered from feed payloads, and the page creates no market subscription. Navigating to this page does not restart runs or reset the browser session. Its Configure link opens the separate paper-program editor at `/model/configure`.
 
 The panel-by-panel reference for the Decisions tab lives in [Model page](model-page.md). It maps each card to its wire field, the bot code and Hyperliquid call that produce it, and explains the difference between the Price pane (the window Jev saw) and the Outcome pane (markouts resolved afterwards).
 
@@ -108,6 +108,26 @@ The toolbar switches between Decisions and Performance. Performance covers the c
 
 
 Legacy rows remain readable. When program fields were not persisted, the page shows `Program metadata unavailable for this record.`
+
+## Configure model
+
+`/model/configure` loads `{ definition, revision, presets }` from same-origin `GET /api/session/program` and applies a draft with `POST /api/session/program` and `{ definition }`. Even on localhost this page targets an isolated visitor paper session, never the shared operator or real wallets. Session capabilities and owner credentials are not exposed to browser code; provider credentials are not returned.
+
+Default and Tape focus are editable starting drafts, not recommendations or automatically applied strategies. Selecting a preset does not start a run or save a program. The editor shows whether the draft matches or has been modified from a preset, the applied revision, and unapplied changes. Reset draft restores the applied program.
+
+Supplemental observational questions can be added, removed, and edited with provider-supported answer types, instructions, and criteria. Per-group checkboxes select only the existing 17 allowlisted inputs, with links to their Help definitions. An empty selection sends an empty feature state. Required bias, intent, and leverage answers, their instructions, schema and resolvers, and the trade projection remain code-owned. Observational answers cannot change or suppress the required decision.
+
+Draft editing remains available during a run, but Apply requires `off` or `expired`. Use **Stop paper session** on Configure first. Its status, Apply guard, and explicit **Start paper session** and **Stop paper session** buttons all target the same visitor Worker through `/api/session`, including on localhost with no API URL override. The root Header's run switch is hidden only on Configure; its navigation and price connection status remain visible, and other pages retain their existing controls. Configure does not link to Settings as a session control because local Settings can target the unrelated shared operator. The server validates the definition and recomputes its canonical revision; success displays that returned revision. The new definition affects only subsequent tick captures, including mock evaluations. In-flight captures and historical records retain their original definition and revision. Disconnected or expired sessions offer explicit connect or reconnect; a new Worker starts with the default program rather than recovering an old draft from history.
+
+Apply program does not start trading or save Settings changes. After a successful apply, choose **Start paper session** on Configure to begin the next timed paper run with the applied program, not unapplied draft changes. Connecting, selecting a preset, and applying never start it automatically. The same Worker's later runs keep that applied program until it is replaced; reconnecting to a new Worker resets it to Default. Provider support and exact question-validation limits are listed in the [program workflow](jev-model.md#configuring-a-visitor-paper-program).
+
+Settings still owns timing, lookback, assets, execution controls, and connections for its current scope. Configure owns the visitor paper program and exposes explicit lifecycle controls for that same visitor session without changing operator settings or provider scope. See the [program workflow](jev-model.md#configuring-a-visitor-paper-program) and [API contract](api.md#visitor-paper-program).
+
+## Help page
+
+`/help` is a public reference reached from the top menu, Settings, and Configure. It covers all 17 inputs with `#feature-<id>` anchors, calculations, Hyperliquid or bot sources, units, windows, and null, zero, and empty rules. It also explains unknown freshness, synthetic book sides, warmup values, required and observational questions, program revisions, privacy boundaries, and legacy records.
+
+Its Price vs Outcome section distinguishes the trailing returns Jev saw from forward markouts measured after the decision. A Price 5t return is not an Outcome 5t result, and a bias-signed markout is not a filled trade's PnL. The maintainer references remain [Jev model contract](jev-model.md), [Model page](model-page.md), and [Model performance](model-performance.md).
 
 ## Feed lifecycle
 

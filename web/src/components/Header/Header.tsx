@@ -16,6 +16,7 @@ export interface HeaderProps {
   balance: number | null;
   unrealized: number | null;
   realized: number | null;
+  showRunControl?: boolean;
 }
 
 function Score({ label, value, signed = true }: { label: string; value: number | null; signed?: boolean }) {
@@ -42,7 +43,7 @@ function clock(value: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function Header({ connection, balance, unrealized, realized }: HeaderProps) {
+export default function Header({ connection, balance, unrealized, realized, showRunControl = true }: HeaderProps) {
   const pathname = usePathname();
   const { settings, scope, sessionState, run, connection: venueConnection, start, stop, ready } = useSettings();
   const [now, setNow] = useState(() => Date.now());
@@ -153,7 +154,7 @@ export default function Header({ connection, balance, unrealized, realized }: He
         <span className={styles.dot} aria-hidden="true" />
         Prices {connection === "live" ? "connected" : connection === "reconnecting" ? "reconnecting" : "connecting"}
       </span>
-      {actionError ? <span className={styles.actionError} role="alert">{actionError}</span> : null}
+      {showRunControl && actionError ? <span className={styles.actionError} role="alert">{actionError}</span> : null}
       <span className={styles.scores}>
         {showScores ? (
           <>
@@ -162,13 +163,13 @@ export default function Header({ connection, balance, unrealized, realized }: He
             <Score label="realized" value={realized} />
           </>
         ) : null}
-        <span className={styles.runControl} title={switchHint ?? statusTitle}>
+        {showRunControl && <span className={styles.runControl} title={switchHint ?? statusTitle}>
           <button className={styles.switch} type="button" role="switch" aria-checked={active} aria-label={active ? "Turn trading off" : "Turn trading on"} disabled={switchDisabled} onClick={toggleRun}>
             <span className={styles.switchTrack} aria-hidden="true"><span className={styles.switchThumb} /></span>
             <span>{active ? "On" : "Off"}</span>
           </button>
           <span className={styles.runStatus} data-running={status === "running"} aria-label={statusTitle}>{statusText}</span>
-        </span>
+        </span>}
       </span>
     </header>
   );

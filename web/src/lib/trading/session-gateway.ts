@@ -7,6 +7,7 @@ const OWNER_TOKEN_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 const ROUTES: Readonly<Record<string, readonly string[]>> = {
   operator: ["GET"],
+  program: ["GET", "POST"],
   settings: ["POST"],
   validate: ["POST"],
   start: ["POST"],
